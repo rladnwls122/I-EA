@@ -70,10 +70,12 @@ enum ExamSessionStatus {
 model User {
   id          String   @id @default(uuid()) @db.Char(36)
   email       String   @unique @db.VarChar(255)
-  nickname    String   @db.VarChar(100)
-  creatorBio  String?  @map("creator_bio") @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  // 이메일+비밀번호 가입: Bcrypt 해시만 저장(평문 금지)
+  passwordHash String  @map("password_hash") @db.VarChar(255)
+  nickname     String  @db.VarChar(100)
+  creatorBio   String? @map("creator_bio") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   roles                UserRole[]
   aiGenerations        AiGeneration[]
@@ -220,9 +222,14 @@ model Question {
   publishedAt     DateTime?      @map("published_at")
   searchText      String?        @map("search_text") @db.Text
 
+  // 출제자가 제공하는 풀이 힌트 (설계문서 3.6 [신규])
+  hintContent     String?        @map("hint_content") @db.Text
+
   // --- 확장: 정답률 캐시 컬럼 ---
   totalSolvedCount   Int @default(0) @map("total_solved_count")
   correctSolvedCount Int @default(0) @map("correct_solved_count")
+  // 인기순 정렬 성능 최적화용 누적 조회수 캐시 (설계문서 3.6 [신규])
+  viewCount          Int @default(0) @map("view_count")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -246,6 +253,7 @@ model Question {
   @@index([primaryUnitId, status])
   @@index([variantGroupId])
   @@index([totalSolvedCount])
+  @@index([viewCount])
   @@map("questions")
 }
 
@@ -317,6 +325,9 @@ model ExamSessionQuestion {
   questionId    String @map("question_id") @db.Char(36)
   displayOrder  Int    @map("display_order")
   snapshot      Json
+  // 힌트 트래킹 (설계문서 3.12 [신규]): 힌트 열람 여부 + 최초 열람 시각
+  isHintUsed    Boolean   @default(false) @map("is_hint_used")
+  hintUsedAt    DateTime? @map("hint_used_at")
 
   examSession ExamSession @relation(fields: [examSessionId], references: [id], onDelete: Cascade)
   question    Question    @relation(fields: [questionId], references: [id])
@@ -351,7 +362,10 @@ model QuestionReview {
   id         String   @id @default(uuid()) @db.Char(36)
   questionId String   @map("question_id") @db.Char(36)
   reviewerId String   @map("reviewer_id") @db.Char(36)
+  // 문제 품질 추천도(1~5). 수험생 체감 난이도(perceived)와 이원화 (설계문서 3.20)
   rating     Int      @db.TinyInt
+  // 수험생이 직접 느낀 주관적 난이도(1~5). 기존 리뷰 호환 위해 nullable (설계문서 3.20 [신규])
+  perceivedDifficulty Int? @map("perceived_difficulty") @db.TinyInt
   reviewText String?  @map("review_text") @db.Text
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
