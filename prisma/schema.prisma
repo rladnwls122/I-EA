@@ -1,0 +1,434 @@
+// =====================================================================
+// Q-Idea — Prisma Schema
+// 원본 DDL(exam_studio_db_schema)의 15개 테이블 + 확장 3종을 반영합니다.
+//   - questions.total_solved_count / correct_solved_count (정답률 캐시)
+//   - user_question_memos (개인 메모)
+//   - question_variants (변형문제 추적)
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------
+
+enum UserRoleType {
+  CREATOR
+  CONSUMER
+  ADMIN
+}
+
+enum GenerationStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum PassageStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  OX
+  SHORT_ANSWER
+  ESSAY
+}
+
+enum QuestionStatus {
+  DRAFT
+  IN_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum MediaAssetType {
+  IMAGE
+  GRAPH_CODE
+  SVG
+}
+
+enum ExamSessionStatus {
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
+}
+
+// ---------------------------------------------------------------------
+// 1. users
+// ---------------------------------------------------------------------
+model User {
+  id          String   @id @default(uuid()) @db.Char(36)
+  email       String   @unique @db.VarChar(255)
+  nickname    String   @db.VarChar(100)
+  creatorBio  String?  @map("creator_bio") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  roles                UserRole[]
+  aiGenerations        AiGeneration[]
+  passages             Passage[]
+  questionsCreated     Question[]           @relation("QuestionCreator")
+  mediaUploaded        MediaAsset[]
+  examSessions         ExamSession[]
+  questionReviews      QuestionReview[]
+  questionComments     QuestionComment[]
+  memos                UserQuestionMemo[]
+  variantRequests      QuestionVariant[]
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------
+// 2. subjects
+// ---------------------------------------------------------------------
+model Subject {
+  id           String  @id @default(uuid()) @db.Char(36)
+  name         String  @db.VarChar(100)
+  examCategory String  @map("exam_category") @db.VarChar(50)
+  sortOrder    Int     @default(0) @map("sort_order")
+  isActive     Boolean @default(true) @map("is_active")
+
+  units         Unit[]
+  aiGenerations AiGeneration[]
+  examSessions  ExamSession[]
+
+  @@map("subjects")
+}
+
+// ---------------------------------------------------------------------
+// 3. tags
+// ---------------------------------------------------------------------
+model Tag {
+  id       String @id @default(uuid()) @db.Char(36)
+  name     String @db.VarChar(100)
+  category String @db.VarChar(50)
+
+  questionTags QuestionTag[]
+
+  @@map("tags")
+}
+
+// ---------------------------------------------------------------------
+// 4. user_roles (M:N — 복합 PK)
+// ---------------------------------------------------------------------
+model UserRole {
+  userId String       @map("user_id") @db.Char(36)
+  role   UserRoleType
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, role])
+  @@map("user_roles")
+}
+
+// ---------------------------------------------------------------------
+// 5. units (자기참조 트리)
+// ---------------------------------------------------------------------
+model Unit {
+  id           String  @id @default(uuid()) @db.Char(36)
+  subjectId    String  @map("subject_id") @db.Char(36)
+  parentUnitId String? @map("parent_unit_id") @db.Char(36)
+  name         String  @db.VarChar(200)
+  depth        Int     @default(0)
+  isLeaf       Boolean @default(false) @map("is_leaf")
+  sortOrder    Int     @default(0) @map("sort_order")
+
+  subject      Subject        @relation(fields: [subjectId], references: [id])
+  parent       Unit?          @relation("UnitTree", fields: [parentUnitId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children     Unit[]         @relation("UnitTree")
+  aiGenerations AiGeneration[]
+  questions    Question[]
+
+  @@index([subjectId, parentUnitId])
+  @@map("units")
+}
+
+// ---------------------------------------------------------------------
+// 6. ai_generations
+// ---------------------------------------------------------------------
+model AiGeneration {
+  id          String           @id @default(uuid()) @db.Char(36)
+  creatorId   String           @map("creator_id") @db.Char(36)
+  subjectId   String?          @map("subject_id") @db.Char(36)
+  unitId      String?          @map("unit_id") @db.Char(36)
+  inputParams Json             @map("input_params")
+  model       String           @db.VarChar(100)
+  status      GenerationStatus @default(PENDING)
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  creator  User      @relation(fields: [creatorId], references: [id])
+  subject  Subject?  @relation(fields: [subjectId], references: [id])
+  unit     Unit?     @relation(fields: [unitId], references: [id])
+  passages Passage[]
+  questions Question[]
+  mediaAssets MediaAsset[]
+  variants QuestionVariant[]
+
+  @@map("ai_generations")
+}
+
+// ---------------------------------------------------------------------
+// 7. passages
+// ---------------------------------------------------------------------
+model Passage {
+  id           String        @id @default(uuid()) @db.Char(36)
+  creatorId    String        @map("creator_id") @db.Char(36)
+  generationId String?       @map("generation_id") @db.Char(36)
+  content      Json
+  status       PassageStatus @default(DRAFT)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  creator    User          @relation(fields: [creatorId], references: [id])
+  generation AiGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  questions  Question[]
+  mediaAssets MediaAsset[]
+
+  @@map("passages")
+}
+
+// ---------------------------------------------------------------------
+// 8. questions (핵심 테이블 + 정답률 캐시 확장)
+// ---------------------------------------------------------------------
+model Question {
+  id              String         @id @default(uuid()) @db.Char(36)
+  creatorId       String         @map("creator_id") @db.Char(36)
+  generationId    String?        @map("generation_id") @db.Char(36)
+  primaryUnitId   String         @map("primary_unit_id") @db.Char(36)
+  passageId       String?        @map("passage_id") @db.Char(36)
+  variantGroupId  String?        @map("variant_group_id") @db.Char(36)
+  questionType    QuestionType   @map("question_type")
+  stem            Json
+  choices         Json?
+  explanation     Json?
+  difficulty      Int            @default(3) @db.TinyInt
+  points          Decimal        @default(1.00) @db.Decimal(6, 2)
+  status          QuestionStatus @default(DRAFT)
+  metadata        Json?
+  autosavedAt     DateTime?      @map("autosaved_at")
+  publishedAt     DateTime?      @map("published_at")
+  searchText      String?        @map("search_text") @db.Text
+
+  // --- 확장: 정답률 캐시 컬럼 ---
+  totalSolvedCount   Int @default(0) @map("total_solved_count")
+  correctSolvedCount Int @default(0) @map("correct_solved_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  creator    User          @relation("QuestionCreator", fields: [creatorId], references: [id])
+  generation AiGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  unit       Unit          @relation(fields: [primaryUnitId], references: [id])
+  passage    Passage?      @relation(fields: [passageId], references: [id], onDelete: SetNull)
+
+  mediaAssets    MediaAsset[]
+  questionTags   QuestionTag[]
+  examSessionQuestions ExamSessionQuestion[]
+  reviews        QuestionReview[]
+  comments       QuestionComment[]
+  memos          UserQuestionMemo[]
+
+  variantsAsSource  QuestionVariant[] @relation("VariantSource")
+  variantsAsResult  QuestionVariant[] @relation("VariantResult")
+
+  @@index([status])
+  @@index([primaryUnitId, status])
+  @@index([variantGroupId])
+  @@index([totalSolvedCount])
+  @@map("questions")
+}
+
+// ---------------------------------------------------------------------
+// 9. media_assets
+// ---------------------------------------------------------------------
+model MediaAsset {
+  id           String         @id @default(uuid()) @db.Char(36)
+  passageId    String?        @map("passage_id") @db.Char(36)
+  questionId   String?        @map("question_id") @db.Char(36)
+  generationId String?        @map("generation_id") @db.Char(36)
+  uploaderId   String         @map("uploader_id") @db.Char(36)
+  assetType    MediaAssetType @map("asset_type")
+  storageUrl   String         @map("storage_url") @db.VarChar(500)
+  sourceCode   String?        @map("source_code") @db.Text
+  widthPx      Int?           @map("width_px")
+  heightPx     Int?           @map("height_px")
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  passage    Passage?      @relation(fields: [passageId], references: [id], onDelete: Cascade)
+  question   Question?     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  generation AiGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  uploader   User          @relation(fields: [uploaderId], references: [id])
+
+  @@map("media_assets")
+}
+
+// ---------------------------------------------------------------------
+// 10. question_tags (M:N)
+// ---------------------------------------------------------------------
+model QuestionTag {
+  questionId String @map("question_id") @db.Char(36)
+  tagId      String @map("tag_id") @db.Char(36)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, tagId])
+  @@map("question_tags")
+}
+
+// ---------------------------------------------------------------------
+// 11. exam_sessions
+// ---------------------------------------------------------------------
+model ExamSession {
+  id             String            @id @default(uuid()) @db.Char(36)
+  userId         String            @map("user_id") @db.Char(36)
+  subjectId      String            @map("subject_id") @db.Char(36)
+  filterCriteria Json              @map("filter_criteria")
+  status         ExamSessionStatus @default(IN_PROGRESS)
+  startedAt      DateTime?         @map("started_at")
+  submittedAt    DateTime?         @map("submitted_at")
+  durationSec    Int?              @map("duration_sec")
+
+  user    User    @relation(fields: [userId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+
+  sessionQuestions ExamSessionQuestion[]
+
+  @@map("exam_sessions")
+}
+
+// ---------------------------------------------------------------------
+// 12. exam_session_questions
+// ---------------------------------------------------------------------
+model ExamSessionQuestion {
+  id            String @id @default(uuid()) @db.Char(36)
+  examSessionId String @map("exam_session_id") @db.Char(36)
+  questionId    String @map("question_id") @db.Char(36)
+  displayOrder  Int    @map("display_order")
+  snapshot      Json
+
+  examSession ExamSession @relation(fields: [examSessionId], references: [id], onDelete: Cascade)
+  question    Question    @relation(fields: [questionId], references: [id])
+  answer      ExamSessionAnswer?
+
+  @@map("exam_session_questions")
+}
+
+// ---------------------------------------------------------------------
+// 13. exam_session_answers
+// ---------------------------------------------------------------------
+model ExamSessionAnswer {
+  id                       String    @id @default(uuid()) @db.Char(36)
+  examSessionQuestionId    String    @unique @map("exam_session_question_id") @db.Char(36)
+  selectedChoiceIds        Json?     @map("selected_choice_ids")
+  blankAnswers             Json?     @map("blank_answers")
+  answerText               String?   @map("answer_text") @db.Text
+  isCorrect                Boolean?  @map("is_correct")
+  annotations              Json?
+  timeSpentSec             Int?      @map("time_spent_sec")
+  answeredAt               DateTime? @map("answered_at")
+
+  examSessionQuestion ExamSessionQuestion @relation(fields: [examSessionQuestionId], references: [id], onDelete: Cascade)
+
+  @@map("exam_session_answers")
+}
+
+// ---------------------------------------------------------------------
+// 14. question_reviews
+// ---------------------------------------------------------------------
+model QuestionReview {
+  id         String   @id @default(uuid()) @db.Char(36)
+  questionId String   @map("question_id") @db.Char(36)
+  reviewerId String   @map("reviewer_id") @db.Char(36)
+  rating     Int      @db.TinyInt
+  reviewText String?  @map("review_text") @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  reviewer User     @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, reviewerId])
+  @@map("question_reviews")
+}
+
+// ---------------------------------------------------------------------
+// 15. question_comments (자기참조)
+// ---------------------------------------------------------------------
+model QuestionComment {
+  id              String   @id @default(uuid()) @db.Char(36)
+  questionId      String   @map("question_id") @db.Char(36)
+  authorId        String   @map("author_id") @db.Char(36)
+  parentCommentId String?  @map("parent_comment_id") @db.Char(36)
+  content         String   @db.Text
+  isPinned        Boolean  @default(false) @map("is_pinned")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  question Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  author   User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent   QuestionComment?  @relation("CommentTree", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies  QuestionComment[] @relation("CommentTree")
+
+  @@index([questionId, isPinned, createdAt])
+  @@map("question_comments")
+}
+
+// =====================================================================
+// 확장 테이블 (신규 설계)
+// =====================================================================
+
+// ---------------------------------------------------------------------
+// 16. user_question_memos — 개인 메모 (비공개)
+// ---------------------------------------------------------------------
+model UserQuestionMemo {
+  id         String   @id @default(uuid()) @db.Char(36)
+  userId     String   @map("user_id") @db.Char(36)
+  questionId String   @map("question_id") @db.Char(36)
+  // 텍스트 메모(평문 또는 Tiptap 직렬화). 캔버스만 있는 메모는 null 가능
+  content    String?  @db.Text
+  // 캔버스(펜 필기) 스트로크. exam_session_answers.annotations와 동일 스키마:
+  // { version, strokes: [{ id, tool, color, width, alpha, points: [{x,y,p}] }] }, 좌표 0~1 정규화
+  canvas     Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId, updatedAt])
+  @@map("user_question_memos")
+}
+
+// ---------------------------------------------------------------------
+// 17. question_variants — 변형문제 관계 추적
+// ---------------------------------------------------------------------
+model QuestionVariant {
+  id                 String   @id @default(uuid()) @db.Char(36)
+  sourceQuestionId   String   @map("source_question_id") @db.Char(36)
+  variantQuestionId  String   @map("variant_question_id") @db.Char(36)
+  generationId       String?  @map("generation_id") @db.Char(36)
+  requestedBy        String   @map("requested_by") @db.Char(36)
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  sourceQuestion  Question      @relation("VariantSource", fields: [sourceQuestionId], references: [id], onDelete: Cascade)
+  variantQuestion Question      @relation("VariantResult", fields: [variantQuestionId], references: [id], onDelete: Cascade)
+  generation      AiGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  requester       User          @relation(fields: [requestedBy], references: [id])
+
+  @@unique([sourceQuestionId, variantQuestionId])
+  @@index([sourceQuestionId])
+  @@map("question_variants")
+}

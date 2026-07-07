@@ -1,0 +1,6 @@
+8d674765 feat(fe): Next.js 스캐폴딩 + Tailwind/shadcn/react-query
+1611f232 docs: 플랜 Cloudflare 배포 타깃 + npm 조정
+3528e1b7 feat(be): /me/exam-sessions, /me/wrong-notes 읽기 엔드포인트
+5280ae30 feat(be): CORS 활성화 + 데모 시드 스크립트
+77736d7a docs: Q-Idea 프론트엔드 1주 구현 계획(16 태스크)
+da69fb42 docs: Q-Idea 프론트엔드 1주 E2E 데모 설계안 추가
