@@ -38,7 +38,8 @@ export class QuestionsService {
         where,
         skip: query.skip,
         take: query.limit,
-        orderBy: { createdAt: 'desc' },
+        // 인기순(popular) = 누적 조회수 내림차순, 기본(latest) = 최신순.
+        orderBy: query.sort === 'popular' ? { viewCount: 'desc' } : { createdAt: 'desc' },
         select: {
           id: true,
           questionType: true,
@@ -48,6 +49,7 @@ export class QuestionsService {
           primaryUnitId: true,
           totalSolvedCount: true,
           correctSolvedCount: true,
+          viewCount: true,
           createdAt: true,
           publishedAt: true,
         },
@@ -58,18 +60,26 @@ export class QuestionsService {
     return { items, total, page: query.page, limit: query.limit };
   }
 
-  /** 단건 상세 — 콘텐츠 전체 + 태그 + 지문 + 평점 요약. */
+  /** 단건 상세 — 콘텐츠 전체 + 태그 + 지문 + 평점 요약. 조회 시 view_count를 1 증가시킨다. */
   async getById(id: string) {
-    const question = await this.prisma.question.findUnique({
-      where: { id },
-      include: {
-        unit: { select: { id: true, name: true } },
-        passage: { select: { id: true, status: true } },
-        questionTags: { include: { tag: { select: { id: true, name: true, category: true } } } },
-        mediaAssets: { select: { id: true, assetType: true, storageUrl: true } },
-        _count: { select: { reviews: true, comments: true } },
-      },
-    });
+    // 조회수 캐시를 증가시키면서 증가된 레코드를 그대로 받아온다(단일 쿼리).
+    const question = await this.prisma.question
+      .update({
+        where: { id },
+        data: { viewCount: { increment: 1 } },
+        include: {
+          unit: { select: { id: true, name: true } },
+          passage: { select: { id: true, status: true } },
+          questionTags: { include: { tag: { select: { id: true, name: true, category: true } } } },
+          mediaAssets: { select: { id: true, assetType: true, storageUrl: true } },
+          _count: { select: { reviews: true, comments: true } },
+        },
+      })
+      .catch((e: unknown) => {
+        // 존재하지 않는 ID면 P2025 → 404로 변환, 그 외 에러는 그대로 전파.
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') return null;
+        throw e;
+      });
     if (!question) throw new NotFoundException('문제를 찾을 수 없습니다.');
 
     const correctRate =
@@ -98,6 +108,7 @@ export class QuestionsService {
         ...(dto.choices ? { choices: dto.choices as JsonWritable } : {}),
         ...(dto.explanation ? { explanation: dto.explanation as JsonWritable } : {}),
         ...(dto.metadata ? { metadata: dto.metadata as JsonWritable } : {}),
+        ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
         difficulty: dto.difficulty ?? 3,
         points: dto.points ?? 1,
         status: 'DRAFT',
@@ -137,6 +148,7 @@ export class QuestionsService {
         ...(dto.choices !== undefined ? { choices: dto.choices as JsonWritable } : {}),
         ...(dto.explanation !== undefined ? { explanation: dto.explanation as JsonWritable } : {}),
         ...(dto.metadata !== undefined ? { metadata: dto.metadata as JsonWritable } : {}),
+        ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
         ...(dto.difficulty !== undefined ? { difficulty: dto.difficulty } : {}),
         ...(dto.points !== undefined ? { points: dto.points } : {}),
         ...(searchText !== undefined ? { searchText } : {}),

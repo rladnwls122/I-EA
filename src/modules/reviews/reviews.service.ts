@@ -17,7 +17,7 @@ export class ReviewsService {
       }),
       this.prisma.questionReview.aggregate({
         where: { questionId },
-        _avg: { rating: true },
+        _avg: { rating: true, perceivedDifficulty: true },
         _count: { _all: true },
       }),
     ]);
@@ -25,6 +25,9 @@ export class ReviewsService {
     return {
       summary: {
         averageRating: agg._avg.rating ? Math.round(agg._avg.rating * 10) / 10 : null,
+        averagePerceivedDifficulty: agg._avg.perceivedDifficulty
+          ? Math.round(agg._avg.perceivedDifficulty * 10) / 10
+          : null,
         count: agg._count._all,
       },
       items: reviews,
@@ -41,13 +44,15 @@ export class ReviewsService {
         questionId,
         reviewerId,
         rating: dto.rating,
+        perceivedDifficulty: dto.perceivedDifficulty ?? null,
         reviewText: dto.reviewText ?? null,
       },
       update: {
         rating: dto.rating,
+        perceivedDifficulty: dto.perceivedDifficulty ?? null,
         reviewText: dto.reviewText ?? null,
       },
-      select: { id: true, rating: true, updatedAt: true },
+      select: { id: true, rating: true, perceivedDifficulty: true, updatedAt: true },
     });
   }
 

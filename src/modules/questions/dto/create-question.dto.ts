@@ -6,8 +6,10 @@ import {
   IsInt,
   IsNumber,
   IsOptional,
+  IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { QuestionContentDto } from './question-content.dto';
@@ -42,6 +44,12 @@ export class CreateQuestionDto extends QuestionContentDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   points?: number;
+
+  @ApiPropertyOptional({ description: '풀이 힌트(응시 중 열람 가능)', maxLength: 2000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  hintContent?: string;
 
   @ApiPropertyOptional({ description: '태그 ID 배열(question_tags 매핑)', type: [String] })
   @IsOptional()

@@ -132,6 +132,8 @@ export class ExamSessionsService {
           sessionQuestionId: sq.id,
           questionId: sq.questionId,
           displayOrder: sq.displayOrder,
+          isHintUsed: sq.isHintUsed,
+          hintUsedAt: sq.hintUsedAt,
           // 진행 중에는 정답 은닉, 채점 완료 후에는 원본 스냅샷 공개.
           snapshot: inProgress ? maskSnapshot(snapshot) : snapshot,
           answer: sq.answer
@@ -196,6 +198,40 @@ export class ExamSessionsService {
 
     // 진행 중에는 정오 결과를 숨기고, 저장 여부만 반환한다.
     return { sessionQuestionId, saved: true };
+  }
+
+  /**
+   * 문항 힌트 열람. 최초 열람 시각을 exam_session_questions에 기록하고(is_hint_used),
+   * 라이브 문제의 hint_content를 반환한다. 채점 근거가 아니므로 스냅샷이 아닌 원본에서 가져온다.
+   */
+  async revealHint(sessionQuestionId: string, userId: string) {
+    const sq = await this.prisma.examSessionQuestion.findUnique({
+      where: { id: sessionQuestionId },
+      select: {
+        id: true,
+        isHintUsed: true,
+        hintUsedAt: true,
+        question: { select: { hintContent: true } },
+        examSession: { select: { userId: true, status: true } },
+      },
+    });
+    if (!sq) throw new NotFoundException('세션 문항을 찾을 수 없습니다.');
+    if (sq.examSession.userId !== userId) throw new ForbiddenException('본인 세션만 응시할 수 있습니다.');
+    if (sq.examSession.status !== 'IN_PROGRESS') {
+      throw new BadRequestException('이미 제출된 세션입니다.');
+    }
+    if (!sq.question.hintContent) throw new NotFoundException('이 문항에는 힌트가 없습니다.');
+
+    // 최초 열람 시각만 남긴다(이미 열람했으면 기존 값 유지).
+    const hintUsedAt = sq.hintUsedAt ?? new Date();
+    if (!sq.isHintUsed) {
+      await this.prisma.examSessionQuestion.update({
+        where: { id: sessionQuestionId },
+        data: { isHintUsed: true, hintUsedAt },
+      });
+    }
+
+    return { sessionQuestionId, hint: sq.question.hintContent, isHintUsed: true, hintUsedAt };
   }
 
   /**

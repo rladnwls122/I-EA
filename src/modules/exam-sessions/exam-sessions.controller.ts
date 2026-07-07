@@ -34,6 +34,15 @@ export class ExamSessionsController {
     return this.service.submitAnswer(sessionQuestionId, user.id, dto);
   }
 
+  @Post('questions/:sessionQuestionId/hint')
+  @ApiOperation({ summary: '문항 힌트 열람 (is_hint_used·hint_used_at 기록 후 힌트 반환)' })
+  revealHint(
+    @Param('sessionQuestionId', ParseUUIDPipe) sessionQuestionId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.service.revealHint(sessionQuestionId, user.id);
+  }
+
   @Post(':id/submit')
   @ApiOperation({ summary: '세션 최종 제출 (채점 집계 + 정답률 캐시 갱신)' })
   submit(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
