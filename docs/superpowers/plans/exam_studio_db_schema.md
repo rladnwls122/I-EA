@@ -1,334 +1,334 @@
-# 낢음 수정 필요!
----
+# Q-Idea / Exam Studio DB 스키마 설계서
 
-# 출제 스튜디오 (Exam Studio) — DB 스키마 설계안 (최신 고도화 버전)
+> 기준 파일: `prisma/schema.prisma`
+>
+> 이 문서는 현재 MVP 리팩터링이 반영된 Prisma 스키마를 설명한다. 운영 스키마의 기준은 `prisma/schema.prisma`이며, 이 문서는 테이블 의도와 화면/기능 연결을 빠르게 이해하기 위한 보조 문서다.
 
 ## 1. 설계 원칙
 
-나중에 기능이 추가돼도 스키마 마이그레이션 없이 버틸 수 있도록 네 가지 원칙을 축으로 잡았습니다.
-
-* **단원은 고정 깊이 컬럼이 아니라 자기참조 트리로 둡니다.** 대단원/중단원/소단원/마이크로단원처럼 깊이가 늘어날 수 있는 구조를 `parent_unit_id` 하나로 표현하면, 나중에 "마이크로단원 아래 세부 유형"이 하나 더 생겨도 컬럼을 추가할 필요가 없습니다.
-* **리치 콘텐츠(지문·발문·해설)는 JSON 문서로 저장하고, 미디어는 그 안에서 ID로 참조합니다.** 밑줄, 빈칸 토글, 미디어 그리드(5:5, 4:6 배치) 같은 표현은 관계형 컬럼으로 흩어놓기보다 ProseMirror/Tiptap류의 JSON 노드 트리로 저장하는 게 맞습니다. 그리드 레이아웃(폭 비율, 정렬)은 이 JSON 안의 노드 속성이므로, 나중에 배치 방식이 다양해져도 테이블 구조는 그대로 두고 프론트엔드 렌더러만 확장하면 됩니다.
-* **필터 조건과 부가 속성은 JSONB로 열어둡니다.** 소비자가 고르는 필터(과목/단원/난이도/태그…)는 종류가 계속 늘어날 걸로 예상되므로, 모의고사 요청을 저장할 때 조건 자체를 JSONB로 스냅샷 떠서 저장합니다. 문제의 부가 메타데이터(출처, 연도, 배점 정책 등)도 `metadata JSONB`로 열어두면 새 속성이 생겨도 컬럼 추가 없이 대응됩니다.
-* **[개선] 강력한 보안 정책 및 데이터 독립성을 보장합니다.** 고유 ID는 외부 노출 시 유추가 불가능하고 분산 환경에서 충돌이 없는 `UUID v4 (CHAR(36))`로 통일합니다. 회원 비밀번호는 레인보우 테이블 및 무차별 대입 공격을 방어하기 위해 단방향 암호화 알고리즘인 `Bcrypt` 또는 `Argon2id` 해시 연산을 의무화합니다. 유저의 학습 행동 데이터(드래그 메모, 검색어, 힌트 확인)는 독립 엔티티로 격리하여 통계 가치를 극대화합니다.
+* **단원 트리 대신 세부 과목으로 직접 분류한다.** 현재 MVP에는 `units` 테이블이 없다. `subjects.exam_category`가 대분류(예: 국어, 수학), `subjects.name`이 세부 과목(예: 문학, 독해)을 나타내고, `questions.subject_id`가 이를 직접 참조한다.
+* **문항 본문은 ProseMirror/Tiptap JSON으로 저장한다.** `questions.stem`, `questions.choices`, `questions.explanation`, `passages.content`는 모두 `Json` 컬럼이다. LLM은 평문만 만들고, 서버의 ProseMirror 유틸이 JSON 문서로 조립한다.
+* **응시 시점의 문항은 스냅샷으로 고정한다.** `exam_session_questions.snapshot`에 출제 당시 문항 내용을 저장해, 이후 원본 문제가 수정되어도 이미 응시한 시험의 채점 기준은 바뀌지 않는다.
+* **출제자는 문항별 풀이 힌트를 등록할 수 있다.** `questions.hint_content`가 출제자 제공 힌트 원본이다. 시험 조립 시 스냅샷에도 함께 고정되어, 지난 풀이 세션과 오답노트에서 당시 힌트 내용을 재현할 수 있다.
+* **힌트 열람 이력은 풀이 세션 단위로 추적한다.** 사용자가 풀이 중 힌트를 열면 `exam_session_questions.is_hint_used`와 `hint_used_at`에 기록한다. 오답노트는 틀린 답안의 `exam_session_question_id`를 따라가 지난 세션의 힌트 사용 여부, 최초 열람 시각, 스냅샷 힌트를 표시한다.
+* **오답노트는 문항 주석과 오답 풀이 이력을 분리한다.** `user_question_annotations`는 드래그 기반 하이라이트/밑줄/메모를 저장하고, 오답 여부와 풀이 세션 정보는 `exam_session_answers` 및 `exam_session_questions`에서 가져온다.
+* **비밀번호는 해시만 저장한다.** `users.password_hash`에는 bcrypt 해시를 저장하며 평문 비밀번호는 저장하지 않는다.
 
 ## 2. ERD
 
 ```mermaid
 erDiagram
     USERS ||--o{ USER_ROLES : "assigned"
-    SUBJECTS ||--o{ UNITS : "has"
-    UNITS ||--o{ UNITS : "parent_of"
-    UNITS ||--o{ QUESTIONS : "classifies"
-    USERS ||--o{ QUESTIONS : "creates"
+    USERS ||--o{ AI_GENERATIONS : "requests"
     USERS ||--o{ PASSAGES : "creates"
-    PASSAGES ||--o{ QUESTIONS : "shared by (nullable)"
-    QUESTIONS ||--o{ QUESTION_CHOICES : "has"
-    QUESTIONS ||--o{ QUESTION_REVISIONS : "versioned as"
+    USERS ||--o{ QUESTIONS : "creates"
+    USERS ||--o{ MEDIA_ASSETS : "uploads"
+    USERS ||--o{ EXAM_SESSIONS : "takes"
+    USERS ||--o{ QUESTION_REVIEWS : "reviews"
+    USERS ||--o{ QUESTION_COMMENTS : "comments"
+    USERS ||--o{ USER_QUESTION_ANNOTATIONS : "writes"
+
+    SUBJECTS ||--o{ AI_GENERATIONS : "scopes"
+    SUBJECTS ||--o{ QUESTIONS : "classifies"
+    SUBJECTS ||--o{ EXAM_SESSIONS : "filters"
+
+    AI_GENERATIONS ||--o{ PASSAGES : "creates"
+    AI_GENERATIONS ||--o{ QUESTIONS : "creates"
+    AI_GENERATIONS ||--o{ MEDIA_ASSETS : "creates"
+
+    PASSAGES ||--o{ QUESTIONS : "shared by"
+    PASSAGES ||--o{ MEDIA_ASSETS : "has"
+
+    QUESTIONS ||--o{ MEDIA_ASSETS : "has"
     QUESTIONS ||--o{ QUESTION_TAGS : "tagged with"
     TAGS ||--o{ QUESTION_TAGS : "applied to"
-    QUESTIONS ||--o{ MEDIA_ASSETS : "owner (polymorphic)"
-    PASSAGES ||--o{ MEDIA_ASSETS : "owner (polymorphic)"
-    USERS ||--o{ EXAM_SESSIONS : "requests"
-    EXAM_SESSIONS ||--o{ EXAM_SESSION_QUESTIONS : "contains (snapshot)"
-    QUESTIONS ||--o{ EXAM_SESSION_QUESTIONS : "sourced from"
-    EXAM_SESSION_QUESTIONS ||--o| EXAM_SESSION_ANSWERS : "answered by"
-    EXAM_SESSIONS ||--o{ EXAM_SESSION_TAG_STATS : "aggregated into"
-    TAGS ||--o{ EXAM_SESSION_TAG_STATS : "grouped by"
-    QUESTIONS ||--|| QUESTION_STATS : "has stat"
-    USERS ||--o{ USER_QUESTION_MEMOS : "writes"
-    QUESTIONS ||--o{ USER_QUESTION_MEMOS : "annotated in"
-    USERS ||--o{ SEARCH_LOGS : "generates"
-    USERS ||--o{ USER_BOOKMARKS : "bookmarks"
-    QUESTIONS ||--o{ USER_BOOKMARKS : "bookmarked in"
-    USERS ||--o{ USER_DAILY_REPORTS : "has reports"
-    USERS ||--o{ AI_GENERATIONS : "requests"
+    QUESTIONS ||--o{ EXAM_SESSION_QUESTIONS : "snapshotted as"
     QUESTIONS ||--o{ QUESTION_REVIEWS : "reviewed in"
     QUESTIONS ||--o{ QUESTION_COMMENTS : "commented on"
+    QUESTIONS ||--o{ USER_QUESTION_ANNOTATIONS : "annotated in"
 
+    EXAM_SESSIONS ||--o{ EXAM_SESSION_QUESTIONS : "contains"
+    EXAM_SESSION_QUESTIONS ||--o| EXAM_SESSION_ANSWERS : "answered by"
+    QUESTION_COMMENTS ||--o{ QUESTION_COMMENTS : "replies"
 ```
 
----
+## 3. Enum
 
-## 3. 테이블 정의
+### `UserRoleType`
 
-### 3.1 `users` — 사용자
-
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 표준 규격 고유 ID |
-| email | string, unique |  |
-| password_hash | string | Bcrypt 또는 Argon2id 알고리즘으로 안전하게 해시화된 값 (평문 저장 금지) |
-| nickname | string |  |
-| creator_bio | text, nullable | 크리에이터 이코노미용 프로필 |
-| status | enum(ACTIVE, SLEEP, BANNED) | 회원 상태 (활성, 휴면, 정지) |
-| last_login_at | timestamp, nullable | 휴면 계정 판단용 |
-| created_at / updated_at | timestamp |  |
-
-### 3.1.1 `user_roles` — 사용자 권한 (M:N 매핑 테이블 분리)
-
-한 사람이 출제자(Creator)이면서 동시에 소비자(Consumer)일 수 있는 크리에이터 이코노미 환경을 완벽히 지원하기 위해 매핑 테이블로 분리합니다.
-
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| user_id | CHAR(36) PK, FK | `users.id` 참조 (ON DELETE CASCADE) |
-| role | VARCHAR(50) PK | `CREATOR`, `CONSUMER`, `ADMIN` 등 권한 코드 |
-
-### 3.2 `subjects` — 과목
-
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| name | string | 예: 행정법, 국어 |
-| exam_category | string | 공시/수능/기타 — 대분류 확장성 확보 |
-| sort_order | int |  |
-| is_active | bool |  |
-
-### 3.3 `units` — 단원 (자기참조 트리)
-
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| subject_id | FK → subjects |  |
-| parent_unit_id | FK → units, nullable | 루트 단원은 null |
-| name | string | 예: "부관", "행정행위의 부관" |
-| path | string | 조상 경로 캐싱 (`01.03.02`), Breadcrumb용 |
-| depth | int | 0=대단원, 조회 편의용 캐시 필드 |
-| is_leaf | bool | 리프 단원(마이크로단원)만 문제에 실제 태깅 |
-| sort_order | int |  |
-
-### 3.4 `tags` — 교차 분류 태그
-
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| name | string, unique | 예: "판례", "조문", "함정유형-이중부정" |
-| category | string | unit_related / concept / skill / weakness 등 |
-
-### 3.5 `passages` — 지문 (세트형 문항 지원 독립 엔티티)
-
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| creator_id | FK → users |  |
-| content | JSON | 리치텍스트 문서 (ProseMirror/Tiptap 구조 트리) |
-| status | enum(DRAFT, PUBLISHED, ARCHIVED) |  |
-| deleted_at | timestamp, nullable | 소프트 딜리트 안전장치 |
-| created_at / updated_at | timestamp |  |
-
-### 3.6 `questions` — 문제 (힌트 및 인기순 캐시 통합)
-
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| creator_id | FK → users |  |
-| primary_unit_id | FK → units | 마이크로 단원 태깅 |
-| passage_id | FK → passages, nullable | 세트형 지문 연결, 단독형은 null |
-| question_type | VARCHAR(30) | SINGLE_CHOICE, MULTI_CHOICE, OX, SHORT_ANSWER 등 |
-| stem | JSON | 발문(질문) 리치텍스트 |
-| explanation | JSON | 정답 해설 리치텍스트 |
-| difficulty | VARCHAR(20) | 출제자가 지정한 객관적 난이도 (상, 중, 하) |
-| points | numeric | 배점 |
-| correct_answer_text | text, nullable | 주관식/서술형용 정답 텍스트 |
-| **hint_content** | **TEXT, nullable** | **[신규] 출제자가 제공하는 문제 풀이용 힌트** |
-| **view_count** | **INT** | **[신규] 인기순 정렬 성능 최적화를 위한 누적 조회수 캐시 (기본값: 0)** |
-| status | enum(DRAFT, IN_REVIEW, PUBLISHED, ARCHIVED) |  |
-| metadata | JSON | 출처, 기출연도 등 확장형 메타데이터 |
-| version | int | 최신 버전 번호 |
-| autosaved_at | timestamp, nullable | 백엔드 자동저장 시각 |
-| published_at / deleted_at | timestamp, nullable | 소프트 딜리트 포함 |
-| created_at / updated_at | timestamp |  |
-
-*(※ 3.6.1 절의 `stem`/`content` JSON 내부 구조 사양은 동일하게 유지됩니다.)*
-
-### 3.7 `question_choices` — 객관식 선택지
-
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| question_id | FK → questions |  |
-| choice_order | int |  |
-| content | JSON | 선택지 리치텍스트 |
-| is_correct | bool | 복수정답 지원용 플래그 |
-
-### 3.8 `media_assets` — 미디어 (이미지/그래프)
-
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| owner_type | enum(PASSAGE, QUESTION, CHOICE) | 폴리모픽 참조 |
-| owner_id | CHAR(36) | 가리키는 대상 테이블의 PK |
-| uploader_id | FK → users |  |
-| asset_type | enum(IMAGE, GRAPH_CODE, SVG) |  |
-| storage_url | string |  |
-| source_code | text, nullable | AI 그래프 재생성용 원본 코드 |
-| width_px / height_px | int |  |
-| created_at | timestamp |  |
-
-### 3.9 `question_tags` — 문제-태그 매핑 (M:N)
-
-| 필드 | 타입 |
+| 값 | 설명 |
 | --- | --- |
-| question_id | FK → questions |
-| tag_id | FK → tags |
+| CREATOR | 출제자 |
+| CONSUMER | 소비자/수험생 |
+| ADMIN | 관리자 |
 
-### 3.10 `question_revisions` — 버전 이력 / 자동저장 스냅샷
+### `GenerationStatus`
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| question_id | FK → questions |  |
-| revision_number | int |  |
-| snapshot | JSON | 해당 시점의 문제 전체 상태 스냅샷 |
-| save_type | enum(AUTOSAVE, MANUAL, PUBLISH) |  |
-| created_at | timestamp |  |
+| 값 | 설명 |
+| --- | --- |
+| PENDING | 생성 대기/진행 중 |
+| COMPLETED | 생성 완료 |
+| FAILED | 생성 실패 |
 
-### 3.11 `exam_sessions` — 소비자가 조립한 모의고사 (시험지)
+### `PassageStatus`, `QuestionStatus`, `ExamSessionStatus`
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| user_id | FK → users |  |
-| subject_id | FK → subjects |  |
-| filter_criteria | JSON | 조립 시점 필터 조건 스냅샷 (`unit_ids`, `difficulty` 등) |
-| status | enum(IN_PROGRESS, SUBMITTED, EXPIRED) |  |
-| started_at / submitted_at | timestamp |  |
-| duration_sec | int |  |
+| enum | 값 |
+| --- | --- |
+| PassageStatus | DRAFT, PUBLISHED, ARCHIVED |
+| QuestionStatus | DRAFT, IN_REVIEW, PUBLISHED, ARCHIVED |
+| ExamSessionStatus | IN_PROGRESS, SUBMITTED, EXPIRED |
 
-### 3.12 `exam_session_questions` — 조립된 문제 스냅샷 (힌트 트래킹 통합)
+### `MediaAssetType`
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| exam_session_id | FK → exam_sessions |  |
-| question_id | FK → questions |  |
-| display_order | int | 사용자에게 노출되는 문제 순서 (인덱스 적용) |
-| **is_hint_used** | **BOOLEAN** | **[신규] 해당 문제를 풀 때 유저가 힌트를 열람했는지 여부 (Default: False)** |
-| **hint_used_at** | **TIMESTAMP, nullable** | **[신규] 힌트를 최초로 열람한 시각** |
-| snapshot | JSON | 응시 무결성을 위해 출제 당시 원본 문제 내용을 그대로 고정 |
+| 값 | 설명 |
+| --- | --- |
+| IMAGE | MVP에서는 이미지 업로드만 지원한다. `GRAPH_CODE`, `SVG`는 현재 Prisma 스키마에 없다. |
 
-### 3.13 `exam_session_answers` — 사용자 답안 및 채점
+## 4. 테이블 정의
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| exam_session_question_id | FK → exam_session_questions |  |
-| selected_choice_ids | JSON, nullable | 객관식 선택 ID 목록 |
-| answer_text | text, nullable | 주관식 작성 정답 |
-| is_correct | bool | 채점 결과 -> 오답노트 필터링의 핵심 기준점 |
-| time_spent_sec | int | 풀이 소요 시간 (초) |
-| answered_at | timestamp |  |
+### 4.1 `users` - 사용자 (Prisma: `User`)
 
-### 3.14 `exam_session_tag_stats` — 취약점 리포트 캐시
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| email | email | VARCHAR(255), unique | 로그인 이메일 |
+| password_hash | passwordHash | VARCHAR(255) | bcrypt 해시 |
+| nickname | nickname | VARCHAR(100) | 표시 이름 |
+| creator_bio | creatorBio | TEXT, nullable | 출제자 소개 |
+| created_at | createdAt | DateTime | 생성 시각 |
+| updated_at | updatedAt | DateTime | 수정 시각 |
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| exam_session_id | FK → exam_sessions |  |
-| tag_id | FK → tags |  |
-| total_count | int |  |
-| correct_count | int |  |
-| accuracy_rate | numeric | 리포트 조회 성능 향상을 위한 사전 집계 캐시 |
+### 4.2 `user_roles` - 사용자 권한 (Prisma: `UserRole`)
 
-### 3.15 `question_stats` — 문항별 통계
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| user_id | userId | CHAR(36), PK/FK | `users.id`, 삭제 시 cascade |
+| role | role | UserRoleType, PK | CREATOR, CONSUMER, ADMIN |
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| question_id | PK, FK → questions | 1:1 관계 |
-| total_attempts | int | 총 풀이 시도 횟수 |
-| correct_attempts | int | 정답 맞춤 횟수 |
-| correct_rate | float | 정답률 캐시 필드 |
+### 4.3 `subjects` - 세부 과목 (Prisma: `Subject`)
 
-### 3.16 `user_question_memos` — [구조 정상화/고도화] 드래그 기반 오답노트 코멘트
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| name | name | VARCHAR(100) | 세부 과목명 |
+| exam_category | examCategory | VARCHAR(50) | 대분류 |
+| sort_order | sortOrder | INT | 정렬 순서 |
+| is_active | isActive | BOOLEAN | 사용 여부 |
 
-틀린 문항에 무의미한 통텍스트를 달던 구조를 전면 개편했습니다. 사용자가 지문, 발문, 보기, 해설의 **특정 텍스트 영역을 드래그하여 형광펜 하이라이트를 치고 핀포인트 댓글(주석)을 남길 수 있는** 차세대 학습 기능입니다.
+인덱스: `(exam_category, sort_order)`
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| user_id | FK → users | 작성자 ID (ON DELETE CASCADE) |
-| question_id | FK → questions | 대상 문항 ID (ON DELETE CASCADE) |
-| error_reason_code | VARCHAR(20), null | 오답 분석 통계용 태그 코드 (`CONCEPT`: 개념부족, `MISTAKE`: 실수, `TIME`: 시간부족 등) |
-| target_type | VARCHAR(20) | 드래그 대상 구역 (`PASSAGE`: 지문, `STEM`: 발문, `CHOICES`: 보기, `EXPLANATION`: 해설) |
-| target_id | CHAR(36), null | 특히 지문 테이블(`passages.id`) 등 특정 엔티티 조인용 앵커 ID |
-| selected_text | TEXT | 유저가 마우스/터치로 긁어 박제한 화면상의 원본 문구 문자열 |
-| selection_range | JSON | 웹 에디터 내 정밀 오프셋 위치 정보 (예: `{"start_offset": 12, "end_offset": 28}`) |
-| memo_text | TEXT | 드래그한 문구에 사용자가 직접 남긴 오답 메모/주석 내용 |
-| highlight_color | VARCHAR(20) | 형광펜 UI 렌더링 색상 (기본값: 'yellow') |
-| created_at / updated_at | timestamp | 한 문제 내 다중 메모 작성을 위해 UNIQUE 제약 해제 |
+### 4.4 `tags` - 문항 태그 (Prisma: `Tag`)
 
-### 3.17 `user_bookmarks` — 사용자 문항 스크랩 (찜)
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| name | name | VARCHAR(100) | 태그명 |
+| category | category | VARCHAR(50) | 태그 분류 |
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| user_id | PK, FK → users |  |
-| question_id | PK, FK → questions |  |
-| created_at | timestamp |  |
+### 4.5 `ai_generations` - AI 생성 작업 (Prisma: `AiGeneration`)
 
-### 3.18 `user_daily_reports` — 일일 잔디(스트릭) 학습 통계
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| creator_id | creatorId | CHAR(36), FK | 요청자 |
+| subject_id | subjectId | CHAR(36), FK | 생성 대상 세부 과목, NOT NULL |
+| input_params | inputParams | JSON | 생성 요청 파라미터 스냅샷 |
+| model | model | VARCHAR(100) | 사용 모델 |
+| status | status | GenerationStatus | PENDING, COMPLETED, FAILED |
+| created_at | createdAt | DateTime | 생성 시각 |
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| user_id | FK → users |  |
-| date | date | 연-월-일 (user_id와 결합 UNIQUE) |
-| solved_count | int | 하루 풀이 문항 수 |
-| correct_count | int | 하루 맞춘 문항 수 |
-| total_study_sec | int | 총 학습 소요 시간 |
+### 4.6 `passages` - 지문 (Prisma: `Passage`)
 
-### 3.19 `ai_generations` — AI 생성 이력
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| creator_id | creatorId | CHAR(36), FK | 작성자 |
+| generation_id | generationId | CHAR(36), nullable FK | AI 생성 작업 |
+| content | content | JSON | ProseMirror/Tiptap 문서 |
+| status | status | PassageStatus | DRAFT, PUBLISHED, ARCHIVED |
+| created_at | createdAt | DateTime | 생성 시각 |
+| updated_at | updatedAt | DateTime | 수정 시각 |
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| creator_id | FK → users |  |
-| subject_id | FK → subjects, nullable |  |
-| unit_id | FK → units, nullable |  |
-| input_params | JSON |  |
-| model | string |  |
-| status | enum(PENDING, COMPLETED, FAILED) |  |
-| created_at | timestamp |  |
+### 4.7 `questions` - 문제 (Prisma: `Question`)
 
-### 3.20 `question_reviews` — 문제 리뷰 및 주관적 난이도 평가 (평가 이원화)
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| creator_id | creatorId | CHAR(36), FK | 출제자 |
+| generation_id | generationId | CHAR(36), nullable FK | AI 생성 작업 |
+| subject_id | subjectId | CHAR(36), FK | 세부 과목, NOT NULL |
+| passage_id | passageId | CHAR(36), nullable FK | 연결 지문 |
+| question_type | questionType | VARCHAR(20) | 현재 DTO 상수 기준: 객관식/주관식 |
+| stem | stem | JSON | 발문 리치 문서 |
+| choices | choices | JSON, nullable | 객관식 보기 배열/문서 |
+| explanation | explanation | JSON, nullable | 해설 리치 문서 |
+| correct_answer_text | correctAnswerText | TEXT, nullable | 주관식 자동 채점용 정답. null이면 자기 채점 |
+| difficulty | difficulty | TINYINT | 기본값 3 |
+| points | points | DECIMAL(6,2) | 기본값 1.00 |
+| status | status | QuestionStatus | DRAFT, IN_REVIEW, PUBLISHED, ARCHIVED |
+| metadata | metadata | JSON, nullable | 출처, 연도 등 확장 메타데이터 |
+| autosaved_at | autosavedAt | DateTime, nullable | 자동 저장 시각 |
+| published_at | publishedAt | DateTime, nullable | 발행 시각 |
+| search_text | searchText | TEXT, nullable | JSON 문서에서 추출한 검색용 평문 |
+| hint_content | hintContent | TEXT, nullable | 출제자가 문제 편집/풀이 설계 단계에서 등록하는 풀이 힌트 |
+| total_solved_count | totalSolvedCount | INT | 누적 풀이 수 캐시 |
+| correct_solved_count | correctSolvedCount | INT | 누적 정답 수 캐시 |
+| view_count | viewCount | INT | 누적 조회수 캐시 |
+| created_at | createdAt | DateTime | 생성 시각 |
+| updated_at | updatedAt | DateTime | 수정 시각 |
 
-단순한 1~5점 별점 구성을 넘어, 문제의 완성도(추천)와 수험생 체감 난이도를 철저히 이원화하여 통계 신뢰도를 크게 높였습니다.
+인덱스: `status`, `(subject_id, status)`, `total_solved_count`, `view_count`
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| user_id | FK → users | 평가 작성자 ID (한 유저는 문제당 1개만 생성 가능 - UNIQUE) |
-| question_id | FK → questions | 대상 문항 ID |
-| rating | INT | 문제의 품질 및 구성 추천도 (1~5점 점수제) |
-| **perceived_difficulty** | **INT** | **[신규] 수험생이 직접 몸으로 느낀 주관적 난이도 (1: 최하 ~ 5: 최상)** |
-| review_text | text, nullable | 주관평 코멘트 |
-| created_at | timestamp |  |
+힌트 표시 정책:
 
-### 3.21 `question_comments` — 문제 커뮤니티 (Q&A 스레드)
+* 출제자가 입력한 `hint_content`는 원본 문항의 힌트다.
+* 시험지를 조립할 때 `exam_session_questions.snapshot`에 당시 문항 내용과 함께 고정한다.
+* 풀이 중 힌트를 열면 세션 문항의 `is_hint_used`, `hint_used_at`에 기록한다.
+* 오답노트는 틀린 답안의 세션 문항을 기준으로 지난 풀이에서 힌트를 봤는지와 당시 힌트 내용을 표시한다.
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| question_id | FK → questions | 대상 문항 |
-| parent_comment_id | FK → question_comments | 대댓글 구현을 위한 자기참조 트리 구조 (루트는 NULL) |
-| user_id | FK → users | 작성자 |
-| content | text | 내용 |
-| created_at | timestamp |  |
+### 4.8 `media_assets` - 이미지 미디어 (Prisma: `MediaAsset`)
 
-### 3.22 `search_logs` — [신규 추가] 인기 검색어 통계용 로그
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| passage_id | passageId | CHAR(36), nullable FK | 연결 지문 |
+| question_id | questionId | CHAR(36), nullable FK | 연결 문항 |
+| generation_id | generationId | CHAR(36), nullable FK | AI 생성 작업 |
+| uploader_id | uploaderId | CHAR(36), FK | 업로더 |
+| asset_type | assetType | MediaAssetType | 현재 IMAGE만 지원 |
+| storage_url | storageUrl | VARCHAR(500) | Supabase Storage public URL |
+| width_px | widthPx | INT, nullable | 이미지 너비 |
+| height_px | heightPx | INT, nullable | 이미지 높이 |
+| created_at | createdAt | DateTime | 생성 시각 |
 
-메인 화면 및 검색 창에 "실시간/기간별 인기 검색 키워드 Top 10" 리스트를 정교하게 큐레이션하기 위해 사용자의 검색 이력을 실시간 스냅샷으로 저장합니다.
+### 4.9 `question_tags` - 문제/태그 매핑 (Prisma: `QuestionTag`)
 
-| 필드 | 타입 | 설명 |
-| --- | --- | --- |
-| id | CHAR(36) PK | UUID v4 |
-| user_id | CHAR(36), null | 로그인 사용자의 경우 추적용 매핑 (비회원 검색 허용을 위해 NULL 허용) |
-| keyword | VARCHAR(255) | 사용자가 실제로 입력하여 검색한 키워드 텍스트 (인덱스 적용) |
-| created_at | TIMESTAMP | 검색이 발생한 시각 |
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| question_id | questionId | CHAR(36), PK/FK | 문제 |
+| tag_id | tagId | CHAR(36), PK/FK | 태그 |
 
----
+### 4.10 `exam_sessions` - 모의고사 풀이 세션 (Prisma: `ExamSession`)
 
-## 4. 확장 시나리오 체크
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| user_id | userId | CHAR(36), FK | 응시자 |
+| subject_id | subjectId | CHAR(36), FK | 세부 과목 |
+| filter_criteria | filterCriteria | JSON | 수동 선택 또는 필터 조건 스냅샷 |
+| status | status | ExamSessionStatus | IN_PROGRESS, SUBMITTED, EXPIRED |
+| started_at | startedAt | DateTime, nullable | 시작 시각 |
+| submitted_at | submittedAt | DateTime, nullable | 제출 시각 |
+| duration_sec | durationSec | INT, nullable | 제한/풀이 시간 |
 
-* **인기 콘텐츠 정렬 및 트렌드 분석 기능이 추가된다면** ➡️ `questions.view_count` 컬럼 캐시와 신설된 `search_logs` 테이블 덕분에 조인 부하 없이 기간별 인기 검색어 랭킹 리포트와 인기 큐레이션 풀을 즉시 구성할 수 있습니다.
-* **오답노트 기반의 취약점 AI 피드백을 강화한다면** ➡️ 고도화된 오답노트 스키마(`user_question_memos`)의 `error_reason_code`와 `target_type`을 기반으로 통계 분석을 돌려 "OO님은 지문 문항에서 '개념부족'으로 문구를 오해하여 하이라이트한 비중이 70%로 매우 높습니다"와 같은 차세대 맞춤형 분석을 테이블 마이그레이션 없이 추출해 낼 수 있습니다.
-* **힌트 패널티나 모드 전환 정책이 생긴다면** ➡️ 응시 스냅샷 테이블(`exam_session_questions`)에 이미 `is_hint_used` 유무와 로그 시간이 안전하게 기록되므로, 백엔드의 채점/감점 비즈니스 로직만 고도화하면 유연하게 수용됩니다.
-* **미디어 다중 배치 방식이 늘어난다면** / **필터 조건이 늘어난다면** ➡️ 기존 설계 기조에 부합하게 JSON 레이아웃 구조 확장 및 JSONB 메타데이터 인덱싱 연동만으로 완벽하게 대응 가능합니다.
+### 4.11 `exam_session_questions` - 세션별 문항 스냅샷 (Prisma: `ExamSessionQuestion`)
+
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| exam_session_id | examSessionId | CHAR(36), FK | 풀이 세션 |
+| question_id | questionId | CHAR(36), FK | 원본 문제 |
+| display_order | displayOrder | INT | 세션 내 노출 순서 |
+| snapshot | snapshot | JSON | 출제 당시 문항 전체 스냅샷 |
+| is_hint_used | isHintUsed | BOOLEAN | 해당 풀이에서 힌트를 열람했는지 여부, 기본값 false |
+| hint_used_at | hintUsedAt | DateTime, nullable | 힌트를 최초로 연 시각 |
+
+오답노트 표시 흐름:
+
+* `exam_session_answers.is_correct = false`인 답안을 찾는다.
+* 해당 답안의 `exam_session_question_id`로 `exam_session_questions`를 조인한다.
+* 오답노트 카드에는 세션 문항의 `is_hint_used`, `hint_used_at`, `snapshot` 안의 힌트 정보를 함께 표시한다.
+* 같은 문제를 여러 번 틀린 경우, 각 과거 풀이 세션의 힌트 사용 기록을 별도로 보여줄 수 있다.
+
+### 4.12 `exam_session_answers` - 답안 및 채점 결과 (Prisma: `ExamSessionAnswer`)
+
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| exam_session_question_id | examSessionQuestionId | CHAR(36), unique FK | 세션 문항 |
+| selected_choice_ids | selectedChoiceIds | JSON, nullable | 객관식 선택값 |
+| answer_text | answerText | TEXT, nullable | 주관식 답안 |
+| is_correct | isCorrect | BOOLEAN, nullable | 자동 채점 결과 또는 자기 채점 전 null |
+| annotations | annotations | JSON, nullable | 답안 부가 표시/메모용 확장 JSON |
+| time_spent_sec | timeSpentSec | INT, nullable | 풀이 소요 시간 |
+| answered_at | answeredAt | DateTime, nullable | 답안 제출 시각 |
+
+### 4.13 `question_reviews` - 리뷰와 체감 난이도 (Prisma: `QuestionReview`)
+
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| question_id | questionId | CHAR(36), FK | 리뷰 대상 문제 |
+| reviewer_id | reviewerId | CHAR(36), FK | 리뷰 작성자 |
+| rating | rating | TINYINT | 문제 품질/추천 별점, 1~5 |
+| perceived_difficulty | perceivedDifficulty | TINYINT, nullable | 수험생 체감 난이도, 1~5 |
+| review_text | reviewText | TEXT, nullable | 리뷰 내용 |
+| created_at | createdAt | DateTime | 작성 시각 |
+| updated_at | updatedAt | DateTime | 수정 시각 |
+
+제약: `(question_id, reviewer_id)` unique
+
+### 4.14 `question_comments` - 문제 Q&A 댓글 (Prisma: `QuestionComment`)
+
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| question_id | questionId | CHAR(36), FK | 대상 문제 |
+| author_id | authorId | CHAR(36), FK | 작성자 |
+| parent_comment_id | parentCommentId | CHAR(36), nullable FK | 부모 댓글 |
+| content | content | TEXT | 댓글 내용 |
+| created_at | createdAt | DateTime | 작성 시각 |
+| updated_at | updatedAt | DateTime | 수정 시각 |
+
+인덱스: `(question_id, created_at)`
+
+### 4.15 `user_question_annotations` - 오답노트 2.0 주석 (Prisma: `UserQuestionAnnotation`)
+
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| user_id | userId | CHAR(36), FK | 작성자 |
+| question_id | questionId | CHAR(36), FK | 대상 문제 |
+| target | target | VARCHAR(20) | GENERAL, PASSAGE, STEM, CHOICES, EXPLANATION |
+| target_id | targetId | VARCHAR(36), nullable | 지문/보기 등 세부 앵커 ID |
+| mark_style | markStyle | VARCHAR(20) | HIGHLIGHT, UNDERLINE |
+| color | color | VARCHAR(20) | 표시 색상, 기본 yellow |
+| selected_text | selectedText | TEXT, nullable | 선택한 원문 문자열 |
+| selection_range | selectionRange | JSON, nullable | 에디터 오프셋/앵커 정보 |
+| reason_code | reasonCode | VARCHAR(20), nullable | CONCEPT, MISTAKE, TIME, OTHER 등 오답 원인 |
+| memo_text | memoText | TEXT, nullable | 개인 메모 |
+| created_at | createdAt | DateTime | 작성 시각 |
+| updated_at | updatedAt | DateTime | 수정 시각 |
+
+인덱스: `(user_id, question_id)`, `(user_id, updated_at)`, `(user_id, reason_code)`
+
+오답노트 API 구성:
+
+* 주석 자체는 문제 단위로 여러 개 저장된다.
+* 틀린 문제 목록은 `exam_session_answers.is_correct = false`를 기준으로 만든다.
+* 화면에서는 틀린 풀이 이력, 세션 문항 스냅샷, 힌트 사용 이력, 사용자 주석을 합쳐 보여준다.
+
+## 5. 현재 Prisma 기준에서 제거된/없는 테이블
+
+아래 항목은 이전 설계안에는 있었지만 현재 `prisma/schema.prisma`에는 없다.
+
+| 이전 항목 | 현재 상태 |
+| --- | --- |
+| `units` | 제거. `subjects`가 세부 과목을 직접 표현한다. |
+| `question_choices` | 제거. `questions.choices` JSON에 저장한다. |
+| `question_revisions` | 현재 없음. 자동 저장 시각은 `questions.autosaved_at`만 유지한다. |
+| `exam_session_tag_stats` | 현재 없음. 취약점 통계는 API/쿼리 레벨 집계로 처리한다. |
+| `question_stats` | 별도 테이블 없음. `questions.total_solved_count`, `correct_solved_count` 캐시 컬럼 사용. |
+| `user_question_memos` | 제거. `user_question_annotations`로 대체. |
+| `user_bookmarks` | 현재 없음. |
+| `user_daily_reports` | 현재 없음. |
+| `search_logs` | 현재 없음. |
+| 미디어 `GRAPH_CODE`, `SVG`, `source_code` | 현재 없음. `MediaAssetType.IMAGE`와 이미지 URL만 사용. |
+
+## 6. 확장 시나리오 체크
+
+* **힌트 패널티/모드 전환**: 이미 세션 문항 단위로 `is_hint_used`, `hint_used_at`을 기록하므로 채점 로직에서 감점 정책만 추가하면 된다.
+* **오답노트에서 지난 풀이 세션 표시**: 오답 답안 -> 세션 문항 -> 스냅샷/힌트 기록 흐름으로 과거 풀이별 힌트 사용 상태를 표시한다.
+* **문항 검색**: `questions.search_text`를 검색 인덱스 대상으로 사용한다. 리치 JSON을 직접 검색하지 않는다.
+* **세부 단원 트리 복원**: 현재는 `units`가 없으므로, 다시 도입하려면 `subjects`와 별개로 신규 테이블 및 `questions.unit_id` 계열 FK가 필요하다.
+* **이미지 외 미디어**: 현재 Prisma enum은 `IMAGE`뿐이다. 그래프 코드나 SVG를 지원하려면 `MediaAssetType`과 관련 저장 컬럼을 다시 설계해야 한다.

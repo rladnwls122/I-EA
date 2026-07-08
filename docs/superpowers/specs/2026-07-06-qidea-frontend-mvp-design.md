@@ -1,170 +1,267 @@
-# Q-Idea 프론트엔드 — 1주 E2E 데모 설계안
+# Q-Idea 프론트엔드 MVP 디자인 가이드
 
 - 작성일: 2026-07-06
+- 수정일: 2026-07-08
 - 대상: `C:\Users\kryuk\dev` (Q-Idea / IΔEA)
-- 목표: **이미 배포된 NestJS 백엔드 위에, 1주 안에 AI 보조로 프론트엔드 E2E 데모를 완성**
-- 완성 정의: 출제자 → 응시자 골든패스 하나를 최소기능으로 관통하고, 수험생 생태계 기능(리뷰·댓글·메모·필기·오답노트)을 얕게라도 시연 가능한 상태
+- 참고: Solves 워크북 페이지 분석, `2026-07-08-qidea-mvp-refactor.md`, `2026-07-08-qidea-wrongnote-annotation-design.md`
+- 목표: 배포된 NestJS 백엔드 위에, **출제자 → 응시자 → 재학습** 골든패스를 1주 MVP 안에서 설득력 있게 시연하는 프론트엔드 디자인 기준을 정의한다.
 
 ---
 
-## 1. 배경 & 현 상태
+## 1. 제품 UX 원칙
 
-- **백엔드**: NestJS 10 + Prisma(MySQL) + BullMQ(Redis). 11개 모듈(auth, ai-generation, questions, passages, exam-sessions, media, reviews, comments, memos, variants, catalog) 구현 완료, Railway 배포, Swagger `/api/docs` 존재. **거의 완성 상태 — 재사용이 원칙.**
-- **프론트엔드**: 없음. standalone HTML 프로토타입 2개(출제 스튜디오, 문제 상세)만 존재.
-- **AI 생성**: Gemini/Anthropic LLM 서비스로 지문+문항 비동기 생성(BullMQ). 현 LLM 출력계약(`llm.types.ts`)은 **평문 stem/choices/explanation만** 생산 — 시각화 필드 없음.
-- **콘텐츠 포맷**: `stem/choices/explanation`은 Tiptap/ProseMirror JSON. 서버 `prosemirror.util`이 조립·평문추출 담당.
-- **인증**: 비밀번호 컬럼 없음. 외부 IdP로 검증된 email을 받는 프로비저닝 방식(`POST /auth/login`).
-- **디자인 스크래치**: Figma에 로그인/회원가입, 문제 검색결과 조회, 상세 결과 조회 3화면 존재. (파일: `llu0XN63If2yDAb8Vk306L`)
+Q-Idea의 MVP는 단순한 문제 목록이나 출제 폼이 아니라, **학습 생성 → 즉시 풀이 → 탐색/재사용 → 오답 반영**으로 이어지는 반복 학습 시스템처럼 보여야 한다. Solves 워크북 페이지에서 가져올 핵심은 “AI가 만든 학습 경험을 문제 단위가 아니라 문제집/세션 단위로 패키징하고, 곧바로 풀고, 다시 다른 콘텐츠로 이어가게 하는 정보구조”다.
 
-## 2. 확정 결정 사항 (브레인스토밍 결과)
+프론트엔드는 다음 네 가지 약속을 화면 전체에서 유지한다.
 
-| 항목 | 결정 |
-|---|---|
-| 1주 목표 | 얇은 E2E 데모 (양 페르소나 관통, 각 기능 얕게) |
-| 시각화 자료 | AI 생성 + 안전 렌더 (저작 UI 없음) |
-| 스튜디오 편집 | 경량 인라인 편집 |
-| 디자인 언어 | shadcn/ui 기반 신규 디자인 시스템 |
-| 실행 전략 | A안 — 수직 슬라이스 + 타입 클라이언트(orval) |
-| 펜 필기 | 경량 구현. 재사용 컴포넌트 1개로 메모+응시 양쪽 |
-| 변형문제 | UI 셸 + 기존 엔드포인트 연결 |
-| 핀 | UI만 |
-| 오답노트 | 그래프+리스트 + 백엔드 읽기 엔드포인트 2개 추가 |
-| 커뮤니티 | 리뷰·댓글·대댓글·메모 전부 작성+읽기 포함 |
+| 원칙 | 적용 |
+| --- | --- |
+| 생성은 시작점이다 | 첫 화면과 생성 화면은 “무엇을 만들지”보다 “만든 뒤 어떤 학습 루프가 시작되는지”를 먼저 보여준다. |
+| 풀이는 즉시 이어진다 | 문제 상세, 응시, 결과 화면은 다음 행동(힌트, 자기채점, 주석, 재풀이)을 항상 가까이에 둔다. |
+| 탐색은 재방문 동기다 | 검색/목록은 제목보다 메타정보, 정답률, 풀이 수, 평가를 빠르게 스캔하게 한다. |
+| 오답은 자산이다 | 오답노트는 틀린 문제 모음이 아니라 주석, 원인 태그, 통계가 쌓이는 개인 학습 기록으로 보인다. |
 
-## 3. 아키텍처 & 스택
+## 2. 정보구조
 
-```
-[Next.js App Router / Vercel]
-   ├─ RSC: 목록·상세 데이터 페칭 (서버에서 REST 호출)
-   ├─ Client Components: 스튜디오 편집, 응시(OMR·타이머·필기), 캔버스
-   ├─ Route Handler /api/ai/visualize ──(Gemini, 키 은닉)──► Vega-Lite/SVG 스펙 반환
-   └─ orval 타입 클라이언트 (Swagger 자동생성) ──REST /api──► [NestJS API / Railway]
-```
+MVP의 상위 내비게이션은 기능명 나열보다 학습 흐름을 기준으로 묶는다.
 
-- **프레임워크**: Next.js(App Router) + TypeScript strict
-- **스타일**: Tailwind CSS + shadcn/ui + Radix. `cn`(clsx+tailwind-merge)
-- **서버상태**: TanStack Query (React Query)
-- **클라이언트상태**: Zustand (응시 세션: OMR 답안·타이머·현재 문항)
-- **타입 안전**: `orval`로 Swagger → 훅·타입·zod 스키마 자동생성 (수기 타이핑 0)
-- **수식**: KaTeX
-- **시각화**: react-vega + vega-lite, SVG는 DOMPurify sanitize
-- **에디터**: Tiptap (경량 인라인 편집, read/write 최소 확장셋)
-- **필기**: perfect-freehand
-- **패키지매니저/툴**: pnpm, ESLint, Prettier
-- **배포**: 프론트=Vercel, 백엔드=기존 Railway
+```text
+Top Nav
+[Q-Idea]  [문제 탐색] [AI 출제] [모의고사] [오답노트]              [로그인/계정]
 
-### 3.1 디렉터리 구조 (CLAUDE.md 규약 준수)
-
-```
-app/
-  (auth)/login/           로그인
-  (auth)/signup/          회원가입
-  questions/              문제 검색결과 조회 (필터·검색 리스트)
-  questions/[id]/         문제 상세 허브
-  create/                 AI 생성 시작 폼
-  studio/[genId]/         출제 스튜디오 (렌더+경량편집+발행+변형셸)
-  exam/assemble/          모의고사 조립
-  exam/[sessionId]/       응시 (OMR·타이머·필기)
-  exam/[sessionId]/result/  채점 결과
-  me/notes/               오답노트·풀이기록
-components/
-  ui/        shadcn 프리미티브
-  editor/    Tiptap 경량 에디터 + 렌더러
-  viz/       VizRenderer (Vega/SVG/KaTeX)
-  exam/      OMR 시트, 타이머, 문항 뷰어
-  community/ 리뷰·댓글트리·메모
-  canvas/    SketchCanvas (재사용)
-hooks/       orval 생성 훅 + 커스텀 훅
-lib/         api 클라이언트, auth, cn
-types/       공유 타입
+Home / Directory
+┌──────────────────────────────────────────────────────────────────┐
+│ Hero: 세부과목 선택 + AI 출제 진입 + 최근 생성/풀이 신호          │
+├──────────────────────────────────────────────────────────────────┤
+│ Generate Preview: 입력 예시 → 생성 결과 → 발행/응시 흐름           │
+├──────────────────────────────────────────────────────────────────┤
+│ Workbook-like Problem Feed: 인기/신규/추천 문제 카드              │
+├──────────────────────────────────────────────────────────────────┤
+│ Learning Loop: 풀이 → 채점 → 주석 → 오답노트 → 재풀이              │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-## 4. 화면별 명세 (골든패스 순)
+화면은 “랜딩 페이지”처럼 설명만 하거나 “관리 도구”처럼 목록만 보여주지 않는다. 첫 화면부터 생성 바, 콘텐츠 카드, 학습 루프를 함께 배치해 Q-Idea가 문제 생성기보다 넓은 학습 플랫폼이라는 인상을 준다.
 
-1. **로그인 / 회원가입** — Figma 참조. email(+nickname) 입력 → `POST /auth/login`(프로비저닝) → JWT 저장. "데모 출제자 / 데모 응시자" 퀵버튼.
-2. **문제 검색결과 조회** (`/questions`) — Figma 참조. `GET /questions`(필터·검색: unit/난이도/유형/키워드) 리스트. 카드 → 상세 이동. 생태계 발견성 진입점.
-3. **AI 생성 시작** (`/create`) — 과목·단원 트리(`GET /subjects/:id/units`) 선택, 프롬프트·난이도·문항수·지문포함·유형 입력 → `POST /ai-generations`(202).
-4. **생성 진행/폴링** — `GET /ai-generations/:id` 상태 폴링(PENDING→COMPLETED). 완료 시 스튜디오 이동.
-5. **출제 스튜디오** (`/studio/[genId]`) — 지문+문항 렌더. **경량 인라인 편집**(발문·선지·해설 텍스트, 정답 토글, 난이도, 문항 삭제) → `PATCH /questions/:id`. 시각화 렌더. **변형문제 UI 셸**(`GET/POST /questions/:id/variants`). `POST /questions/:id/publish`.
-6. **모의고사 조립** (`/exam/assemble`) — 과목+필터 → `POST /exam-sessions`(문항 스냅샷).
-7. **응시** (`/exam/[sessionId]`) — 문항 뷰어 + OMR 답안(`PUT /exam-sessions/questions/:id/answer`) + 타이머 + **문항 필기(SketchCanvas → annotations)**. 진행 중 정답 마스킹 유지.
-8. **채점 결과** (`/exam/[sessionId]/result`) — `POST /exam-sessions/:id/submit` 후 점수·문항별 정오·해설·정답률.
-9. **문제 상세 허브** (`/questions/[id]`) — Figma 참조. 해설 + 정답률 + **별점 리뷰**(`PUT /questions/:id/reviews`) + **댓글·대댓글**(`GET/POST /questions/:id/comments`, `parentCommentId`) + **개인메모 텍스트+캔버스**(`PUT /questions/:id/memo`, `memos.canvas`) + **핀 UI**(버튼 배치).
-10. **오답노트·풀이기록** (`/me/notes`) — 단원·유형별 오답비율 그래프(VizRenderer 재사용) + 오답 문항 리스트 → 상세(재풀이·변형) 링크.
+## 3. 최신 MVP 범위 반영
 
-## 5. 시각화 — 가능여부 & 우회 설계
+이 문서는 2026-07-08 리팩터 기준을 우선한다. 초기 설계의 일부 항목은 아래처럼 교체한다.
 
-- **직접 저작 UI는 v1에서 만들지 않음.** 대신 **AI 생성 + 안전 렌더**.
-- **생성**: Route Handler `/api/ai/visualize`가 문항 컨텍스트를 받아 Gemini에 **Vega-Lite 스펙(JSON)** 또는 **제약된 inline SVG**를 요청. Gemini 키는 서버사이드 은닉.
-- **검증**: 반환 스펙을 스키마 검증(zod). 허용 형태만 통과.
-- **렌더 (`components/viz/VizRenderer`)**:
-  - Vega-Lite → `react-vega`
-  - SVG → `DOMPurify.sanitize` 후 삽입
-  - 수식 → KaTeX
-  - **임의 JS(D3/Plotly 코드) 실행 금지** — XSS 차단.
-- **저장**: 기존 `MediaAsset`(assetType `GRAPH_CODE` sourceCode=스펙 / `SVG`)에 연결. 데모 초기엔 문항 metadata 인라인 보관도 허용.
-- **데모 이후 정식화**: 이 스펙 생성을 백엔드 BullMQ 파이프라인 + `LlmQuestion.visual` 필드로 이관(향후 B안).
+| 기존 설계 | 최신 MVP 기준 |
+| --- | --- |
+| 단원 트리 `UnitTreeSelect` | `SubjectSelect`: `subjects.examCategory`로 대분류 그룹핑, `subjects.name`을 세부과목으로 선택 |
+| 유형 enum 다섯 가지 | `"객관식"` / `"주관식"` 두 가지. 단답/서술형은 `correctAnswerText` 유무로 판별 |
+| AI Vega/SVG 자동 시각화 | 제거. 시각자료는 이미지 업로드 + 클라이언트 크롭 |
+| 변형문제 UI 셸 | 제거 |
+| 댓글 핀 | 제거 |
+| 문제당 단일 메모 | 오답노트 2.0: 텍스트 범위 주석 + 오답원인 태그 + 플로팅 메모 |
+| `/me/wrong-notes` | `/me/notes`: 통계와 주석이 병합된 오답노트 |
 
-## 6. 백엔드 작업 (최소, 의도적 추가 1건)
+## 4. 디자인 언어
 
-기존 API 재사용이 원칙. 필요한 것만:
+Q-Idea는 “고급 다크 SaaS”로만 보이면 흔하다. 디자인 톤은 시험지의 선명함, 학습 도구의 정돈감, AI 런타임의 미세한 생동감을 섞는다. 한 화면에 장식적 그래픽을 많이 넣기보다, 카드의 정보 위계와 인터랙션 반응으로 깊이를 만든다.
 
-1. **CORS** — Vercel 도메인 허용 (`main.ts`).
-2. **데모 시드** — CREATOR+CONSUMER 롤 보유 유저 시드, 로그인 프로비저닝 동작 확인.
-3. **빌드/배포 검증** — README가 `tsc` 미검증 명시. `pnpm build` 통과 확인.
-4. **`/me` 읽기 엔드포인트 2개 (의도적 추가, 읽기 전용)**:
-   ```
-   GET /me/exam-sessions   제출된 내 세션 목록 (풀이기록)
-   GET /me/wrong-notes     오답 집계: unit·questionType별 groupBy
-       ← exam_session_answers(isCorrect=false) JOIN questions(primaryUnitId, questionType)
-   ```
-   Prisma `groupBy` 쿼리. `me`(또는 stats) 모듈 1개. `WHERE/JOIN` 컬럼 인덱스 확인.
-5. **(선택)** 시각화 asset을 media 엔드포인트로 저장.
+### 4.1 디자인 토큰
 
-## 7. 데이터 흐름 핵심
+```scss
+--background: #080A0D;       // 전체 배경. 거의 검정이지만 순수 블랙은 피한다.
+--surface: #11151B;          // 카드, 패널, 내비게이션
+--surface-raised: #181E26;   // 떠 있는 입력 바, 활성 패널
+--border: #27303B;           // 얇은 경계선
+--foreground: #F2F5F7;       // 본문 주요 텍스트
+--muted: #8A94A3;            // 날짜, 조회수, 부가 설명
 
-- **인증**: 로그인 → JWT를 클라이언트 저장 → orval 클라이언트가 `Authorization: Bearer` 자동 첨부. 전역 `JwtAuthGuard`, `@Public()` 예외.
-- **생성 비동기**: 생성 요청은 202 즉시 응답 → 프론트 폴링. 요청 스레드가 LLM 대기 안 함.
-- **문항 스냅샷**: 세션 조립 시 문제를 `exam_session_questions.snapshot`에 보존 — 채점 근거 고정.
-- **정답 마스킹**: IN_PROGRESS 세션 조회 시 `isCorrect`·빈칸정답·해설 숨김. 결과 화면에서만 노출.
-- **필기 스키마 공유**: `<SketchCanvas>`는 정규화 좌표(0~1) stroke 스키마 하나로 `memos.canvas`와 `answers.annotations` 양쪽 저장/재생.
+--primary: #4F7BFF;          // 핵심 CTA, 현재 상태
+--learning: #20C997;         // 정답, 성장, 완료
+--warning: #F2B84B;          // 자기채점 대기, 주의
+--danger: #F06A6A;           // 오답, 취약 원인
+--ink: #DDE7FF;              // 시험지/수식 영역의 차가운 흰색
+```
 
-## 8. 컴포넌트 경계 (재사용 단위)
+보라/남색 계열을 전체 팔레트로 밀지 않는다. `primary`는 기능의 현재 상태에 제한하고, 정답/오답/대기/주석은 각각 다른 의미 색으로 분리한다.
 
-- `VizRenderer` — 입력: 시각화 스펙. 출력: 안전 렌더. 내부(vega/svg/katex 분기) 격리.
-- `SketchCanvas` — 입력: stroke JSON + onChange. 메모/응시 공용. 저장 위치는 부모가 결정.
-- `CommentTree` — 재귀 렌더 + 답글(부모ID 세팅). depth 캡 2~3.
-- `QuestionViewer` — Tiptap JSON + 시각화 + 수식 렌더 (읽기). 스튜디오는 편집 모드 토글.
-- `OmrSheet` — 답안 상태(Zustand) 바인딩, 문항 이동.
-- `WrongNoteChart` — VizRenderer 재사용, `/me/wrong-notes` 데이터 바인딩.
+### 4.2 타이포그래피
 
-## 9. 테스트 & 검증
+- 기본 UI: `Geist Sans` 또는 동급 산세리프. 표, 메타, 버튼은 14px 중심.
+- 문항/지문: 본문보다 행간을 넓게 주고, 카드 안에서도 읽기 영역은 배경 대비를 높인다.
+- 숫자/점수/정답률: `Geist Mono`를 보조로 사용해 통계가 스캔되게 한다.
+- 한국어 문항은 자간을 줄이지 않는다. 긴 세부과목명과 태그는 줄바꿈 가능한 칩으로 처리한다.
 
-- 데모 성격상 풀 테스트 스위트는 비목표. **골든패스 스모크 1개**(Playwright, stretch): 로그인 → 생성 → 발행 → 조립 → 응시 → 채점.
-- 각 Day 종료 시 해당 화면 수동 E2E 확인.
-- 백엔드 `/me` 엔드포인트는 Prisma 쿼리 유닛 검증.
+## 5. 핵심 화면 가이드
 
-## 10. 1주 일정
+### 5.1 홈 / 문제 탐색
 
-| Day | 내용 |
-|---|---|
-| D1 | 스캐폴딩·orval·shadcn·인증 셋업 / **로그인·회원가입(Figma)** / 백엔드 CORS·시드·빌드검증·`/me` 2개 |
-| D2 | **문제 검색결과 조회(Figma)** + 카탈로그 트리 + AI 생성폼·폴링 |
-| D3 | 출제 스튜디오(렌더+경량편집) + 발행 + 변형 UI 셸 |
-| D4 | 시각화 Route Handler + `VizRenderer`(Vega/SVG/KaTeX) + `SketchCanvas` |
-| D5 | 모의고사 조립 + 응시(OMR·타이머·문항필기) |
-| D6 | 채점 결과·정답률 + **문제상세 허브(Figma)**: 리뷰·댓글·대댓글·메모·캔버스·핀UI |
-| D7 | **오답노트 그래프** + 디자인 폴리시·반응형·버그픽스·배포·데모 리허설 |
+홈은 “AI로 문제를 만든다”보다 “만든 문제를 바로 풀고 학습 기록으로 남긴다”를 보여준다.
 
-## 11. 리스크 & 컷라인
+구성:
+- 상단: 세부과목 선택 + 프롬프트 입력 + `문제 만들기` CTA.
+- 보조 CTA: `문제 탐색`으로 생성 부담 없이 진입.
+- 모델 배지는 과시형 로고 나열보다 “AI 생성 중 / 힌트 가능 / 검색 근거 표시”처럼 기능 상태에 붙인다.
+- 하단: 인기/신규 문제 카드. 카드에는 제목, 세부과목, 유형, 난이도, 정답률, 풀이 수, 별점 요약을 표시한다.
 
-- **최대 리스크**: D7 오답노트가 유일 압박 지점. 밀리면 그래프 먼저, 리스트는 축소.
-- **시각화 품질**: Gemini 스펙 생성 불안정 가능 → 스키마 검증 실패 시 폴백(텍스트 문항으로 표시).
-- **Figma 접근**: MCP Starter 호출 한도 존재. 구현 시 화면별로 `get_design_context` 아껴 사용, 한도 리셋/업그레이드 활용.
-- **백엔드 실행 미검증**: 로컬 Node 환경에서 `build` 최종 확인 필요.
-- **컷라인**: 없음(전부 포함). 압박 시 순서 — 핀 배선 > 대댓글 depth > 오답 리스트 상세.
-- **명시적 비목표**: Tiptap 풀에디터, 시각화 저작 UI, 소셜 로그인 검증 실물, 풀 테스트 커버리지.
+카드 규칙:
+- 제목은 2줄까지, 메타는 칩으로 분리한다.
+- “10명 이상 풀이 시 평균/정답률 표시” 같은 사회적 증거는 풀이 수 기준 충족 시에만 활성 라벨로 보여준다.
+- 카드 전체가 링크지만, `바로 풀기`와 `상세 보기` 행동은 분리한다.
 
-## 12. 데모 스토리라인 (리허설용)
+### 5.2 AI 출제 시작 / 스튜디오
 
-출제자 로그인 → 단원 선택·AI 생성 → 스튜디오에서 시각화 확인·문구 손질·발행 → (응시자 전환) 검색결과에서 문항 탐색 → 모의고사 조립 → OMR 응시·수식 필기 → 제출·즉시 채점·정답률 → 문제상세에서 리뷰·댓글·메모 → 오답노트 그래프로 약점 단원 확인 → 변형문제로 재도전.
+출제 시작 화면은 Solves의 “사용자 입력 → AI 학습 계획/문항 미리보기” 구조를 따른다.
+
+```text
+Create
+┌───────────────────────┐  ┌──────────────────────────────────┐
+│ 세부과목 / 유형 / 난이도 │  │ 생성 미리보기                     │
+│ 프롬프트 입력           │  │ - 예상 문항 구성                  │
+│ 문항 수 / 지문 포함      │  │ - 발행 후 가능한 다음 행동         │
+└───────────────────────┘  └──────────────────────────────────┘
+```
+
+스튜디오는 편집 도구보다 “발행 전 검토대”처럼 보이게 한다.
+- 문항은 읽기 영역을 크게 두고, 인라인 편집은 필요한 필드에서만 노출한다.
+- `이미지 추가`는 문항/지문에 붙는 보조 자료로 취급한다. 업로드 후 크롭된 결과가 곧바로 본문 폭에 맞춰 보인다.
+- 발행 버튼은 고정 하단 또는 우측 패널에 둔다.
+- 변형문제, AI 시각화 자동생성, 단원 트리 선택은 노출하지 않는다.
+
+### 5.3 문제 상세 허브
+
+문제 상세는 문제 풀이 이후의 중심 허브다. 정보 위계는 다음 순서를 따른다.
+
+1. 지문/문항/선지
+2. 정답률과 평가 요약
+3. 해설과 힌트
+4. 텍스트 주석 생성/조회
+5. 리뷰와 댓글
+
+오답노트 2.0 상호작용:
+- 텍스트를 드래그하면 하이라이트/밑줄, 색상, 오답원인 태그, 메모 입력 팝오버를 띄운다.
+- 하이라이트 호버 시 플로팅 메모를 보여준다.
+- `확장` 시 modal Popover로 승격해 포커스를 메모에 고정한다. 마우스가 화면 밖으로 나가도 닫히지 않고, ESC 또는 바깥 클릭으로만 닫는다.
+- 주석은 본인 전용이며, 리뷰/댓글과 시각적으로 섞이지 않게 “개인 기록” 톤으로 표시한다.
+
+### 5.4 모의고사 조립 / 응시
+
+조립 화면은 “문항을 고르는 도구”보다 “학습 세션을 만드는 도구”로 보이게 한다.
+- 필터: 세부과목, 유형, 난이도, 태그, 문항 수.
+- 선택 결과: 예상 문항 수와 조립 가능 여부를 즉시 피드백한다.
+- 수동 플레이리스트가 도입되면 문제 카드의 `담기` 액션으로 확장한다.
+
+응시 화면은 좌측 풀이, 우측 진행 상태를 기본으로 한다.
+- 데스크톱: `lg:grid-cols-12`, 문항 8칸 / OMR·타이머·진행 4칸.
+- 모바일: 문항 → 답안 → OMR 순서의 단일 컬럼.
+- 정답과 해설은 제출 전 마스킹된다.
+- 주관식 서술형은 제출 후 결과 화면에서 자기채점 O/X로 확정한다.
+
+### 5.5 결과 / 오답노트
+
+결과 화면은 점수 발표에서 끝나지 않는다. 다음 학습 행동을 바로 제안한다.
+- 객관식/단답: 자동 채점 결과를 즉시 표시한다.
+- 서술형: 자기채점이 필요한 문항은 `채점 대기` 상태로 묶고 O/X 버튼을 제공한다.
+- 틀린 문항에는 `오답 원인 표시하기` 액션을 제공해 상세 허브의 주석 생성으로 이어간다.
+
+오답노트는 `/me/notes` 한 화면에 통계와 주석을 함께 보여준다.
+- 상단: 총 풀이 수, 평균 점수, 최근 제출 세션.
+- 중단: 세부과목별 / 유형별 / 오답원인별 막대 그래프.
+- 하단: 오답 문항 리스트. 각 항목은 세부과목, 유형, 정오, 주석 수, 최근 메모를 표시한다.
+
+## 6. 컴포넌트 구조
+
+```text
+web/
+  app/
+    (auth)/login
+    (auth)/signup
+    questions
+    questions/[id]
+    create
+    studio/[genId]
+    exam/assemble
+    exam/[sessionId]
+    exam/[sessionId]/result
+    me/notes
+  components/
+    layout/AppNav.tsx
+    catalog/SubjectSelect.tsx
+    home/HeroGenerationInput.tsx
+    workbook/QuestionCard.tsx
+    workbook/FilterChipGroup.tsx
+    studio/StudioQuestionEditor.tsx
+    media/ImageCropUpload.tsx
+    question/QuestionViewer.tsx
+    question/AnnotationLayer.tsx
+    question/AnnotationPopover.tsx
+    exam/OmrSheet.tsx
+    exam/ExamTimer.tsx
+    exam/SelfGradeToggle.tsx
+    community/ReviewPanel.tsx
+    community/CommentTree.tsx
+    notes/WrongNoteDashboard.tsx
+```
+
+제거 대상 컴포넌트명은 새 코드에서 만들지 않는다: `UnitTreeSelect`, `VariantShell`, `MemoPanel`, `AIExplanationAccordion`의 shimmer 중심 연출, AI Vega/SVG 생성용 `VizRenderer` Route Handler.
+
+## 7. 데이터 흐름
+
+- 인증: 이메일+비밀번호 로그인/회원가입. JWT를 저장하고 API 요청에 `Authorization`을 붙인다.
+- 세부과목: `GET /subjects`를 받아 프론트에서 `examCategory`로 그룹핑한다.
+- 생성: `POST /ai-generations` 후 `GET /ai-generations/:id` 폴링. 완료되면 스튜디오로 이동한다.
+- 검색: `GET /questions?subjectId=&questionType=&difficulty=&q=&tagIds=`.
+- 응시: `POST /exam-sessions`로 세션 조립, `PUT /exam-sessions/questions/:id/answer`로 답안 저장, `POST /exam-sessions/:id/submit`으로 제출.
+- 자기채점: 서술형은 `PUT /exam-sessions/questions/:id/self-grade`로 결과를 확정한다.
+- 주석: `GET/POST /questions/:id/annotations`, `PATCH/DELETE /annotations/:id`.
+- 오답노트: `GET /me/notes`로 통계와 주석을 한 번에 읽는다.
+- 이미지: 클라이언트 크롭 → Supabase Storage 직접 업로드 → `POST /media-assets`로 public URL 등록.
+
+## 8. 상태와 피드백
+
+| 상태 | UI |
+| --- | --- |
+| 생성 대기 | Skeleton + “문항을 구성하는 중” 상태 문구. 진행률을 꾸며내지 않는다. |
+| 생성 실패 | 재시도 버튼 + 프롬프트 수정 제안. 원인 모를 실패를 장황하게 설명하지 않는다. |
+| 빈 검색 결과 | 필터 완화 액션을 먼저 제공한다. |
+| 제출 전 응시 | 정답/해설은 보이지 않는다. 저장 상태는 작게 표시한다. |
+| 서술형 채점 대기 | 노란 상태 칩 + 자기채점 O/X 버튼. |
+| 주석 위치 불명 | 리스트에는 남기고 본문에는 “위치 복원 필요” 상태로 표시한다. |
+
+## 9. 반응형 기준
+
+- 360px 모바일에서 버튼 텍스트가 잘리지 않게 한다.
+- 카드 그리드는 `grid-cols-1 md:grid-cols-2 xl:grid-cols-3`.
+- 응시/스튜디오의 우측 패널은 모바일에서 본문 아래로 내려간다.
+- 칩은 줄바꿈 가능해야 하며, 긴 세부과목명은 말줄임보다 다음 줄 배치를 우선한다.
+- 카드 안에 카드 중첩을 만들지 않는다. 반복 항목, 모달, 실제 프레임 도구에만 카드 스타일을 사용한다.
+
+## 10. 1주 데모 스토리라인
+
+1. 출제자 로그인
+2. 세부과목 선택 후 AI 문항 생성
+3. 스튜디오에서 문항 확인, 이미지 크롭 추가, 발행
+4. 응시자로 전환
+5. 문제 탐색에서 발행 문항 확인
+6. 모의고사 조립 후 응시
+7. 제출, 자동채점과 서술형 자기채점
+8. 틀린 문항 상세에서 텍스트 하이라이트와 오답원인 메모 작성
+9. 오답노트에서 세부과목/유형/오답원인 통계와 주석 확인
+
+## 11. 컷라인
+
+반드시 유지:
+- 로그인/회원가입
+- 문제 탐색/상세
+- AI 생성/스튜디오/발행
+- 모의고사 조립/응시/채점
+- 리뷰, 댓글/대댓글
+- 오답노트 2.0의 최소 주석 생성과 `/me/notes` 통계
+
+압박 시 축소:
+- 대시보드 차트의 시각적 장식
+- 수동 플레이리스트
+- 주석 색상 옵션 수
+- 홈의 추천 섹션 수
+
+하지 않음:
+- 단원 트리
+- 변형문제
+- 댓글 핀
+- AI Vega/SVG 자동 시각화
+- 문제당 단일 메모/캔버스형 오답노트
