@@ -6,9 +6,10 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
+import { QuestionKind } from '@/common/constants/question';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
-import { grade, maskSnapshot, QuestionSnapshot } from './grading.util';
+import { grade, isSelfGradable, maskSnapshot, QuestionSnapshot } from './grading.util';
 
 // Json 컬럼 쓰기용 국소 캐스팅(생성 클라이언트가 InputJsonValue를 표면화하지 않음).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,20 +29,36 @@ export class ExamSessionsService {
       where: { id: dto.subjectId },
       select: { id: true },
     });
-    if (!subject) throw new NotFoundException('과목을 찾을 수 없습니다.');
+    if (!subject) throw new NotFoundException('세부과목을 찾을 수 없습니다.');
 
-    const where = this.buildQuestionWhere(dto);
-
-    // 후보 ID만 가볍게 조회한 뒤 앱에서 셔플·표본추출(간단·MySQL 무관).
-    const candidates = await this.prisma.question.findMany({
-      where,
-      select: { id: true },
-      take: 1000,
-    });
-    if (candidates.length === 0) {
-      throw new BadRequestException('조건에 맞는 문제가 없습니다. 필터를 완화하세요.');
+    // 두 모드: (1) 플레이리스트 — 지정 문항, (2) 필터 — 조건 랜덤 추출.
+    let picked: string[];
+    if (dto.questionIds?.length) {
+      // 지정 문항 중 해당 세부과목의 PUBLISHED만, 지정 순서를 보존해 세트를 구성한다.
+      const found = await this.prisma.question.findMany({
+        where: { id: { in: dto.questionIds }, status: 'PUBLISHED', subjectId: dto.subjectId },
+        select: { id: true },
+      });
+      const ok = new Set(found.map((q) => q.id));
+      picked = dto.questionIds.filter((id) => ok.has(id));
+      if (picked.length === 0) {
+        throw new BadRequestException('플레이리스트에 유효한(발행된) 문항이 없습니다.');
+      }
+    } else {
+      if (!dto.questionCount) {
+        throw new BadRequestException('questionCount 또는 questionIds 중 하나가 필요합니다.');
+      }
+      // 후보 ID만 가볍게 조회한 뒤 앱에서 셔플·표본추출(간단·MySQL 무관).
+      const candidates = await this.prisma.question.findMany({
+        where: this.buildQuestionWhere(dto),
+        select: { id: true },
+        take: 1000,
+      });
+      if (candidates.length === 0) {
+        throw new BadRequestException('조건에 맞는 문제가 없습니다. 필터를 완화하세요.');
+      }
+      picked = this.sample(candidates.map((c) => c.id), dto.questionCount);
     }
-    const picked = this.sample(candidates.map((c) => c.id), dto.questionCount);
 
     const full = await this.prisma.question.findMany({
       where: { id: { in: picked } },
@@ -51,6 +68,7 @@ export class ExamSessionsService {
         stem: true,
         choices: true,
         explanation: true,
+        correctAnswerText: true,
         points: true,
         difficulty: true,
       },
@@ -63,7 +81,9 @@ export class ExamSessionsService {
         data: {
           userId,
           subjectId: dto.subjectId,
-          filterCriteria: { questionCount: dto.questionCount, ...dto.filter } as JsonWritable,
+          filterCriteria: (dto.questionIds?.length
+            ? { mode: 'playlist', questionIds: picked }
+            : { mode: 'filter', questionCount: dto.questionCount, ...(dto.filter ?? {}) }) as JsonWritable,
           status: 'IN_PROGRESS',
           startedAt: new Date(),
         },
@@ -76,10 +96,11 @@ export class ExamSessionsService {
             const q = byId.get(qid);
             if (!q) return null;
             const snapshot: QuestionSnapshot = {
-              questionType: q.questionType,
+              questionType: q.questionType as QuestionKind,
               stem: q.stem as JsonWritable,
               choices: (q.choices ?? undefined) as JsonWritable,
               explanation: (q.explanation ?? undefined) as JsonWritable,
+              correctAnswerText: q.correctAnswerText,
               points: Number(q.points),
               difficulty: q.difficulty,
             };
@@ -139,7 +160,6 @@ export class ExamSessionsService {
           answer: sq.answer
             ? {
                 selectedChoiceIds: sq.answer.selectedChoiceIds,
-                blankAnswers: sq.answer.blankAnswers,
                 answerText: sq.answer.answerText,
                 annotations: sq.answer.annotations,
                 isCorrect: inProgress ? undefined : sq.answer.isCorrect,
@@ -169,7 +189,6 @@ export class ExamSessionsService {
     const snapshot = sq.snapshot as unknown as QuestionSnapshot;
     const isCorrect = grade(snapshot, {
       selectedChoiceIds: dto.selectedChoiceIds,
-      blankAnswers: dto.blankAnswers,
       answerText: dto.answerText,
     });
 
@@ -178,7 +197,6 @@ export class ExamSessionsService {
       create: {
         examSessionQuestionId: sessionQuestionId,
         selectedChoiceIds: (dto.selectedChoiceIds ?? undefined) as JsonWritable,
-        blankAnswers: (dto.blankAnswers ?? undefined) as JsonWritable,
         answerText: dto.answerText ?? null,
         annotations: (dto.annotations ?? undefined) as JsonWritable,
         isCorrect,
@@ -187,7 +205,6 @@ export class ExamSessionsService {
       },
       update: {
         selectedChoiceIds: (dto.selectedChoiceIds ?? undefined) as JsonWritable,
-        blankAnswers: (dto.blankAnswers ?? undefined) as JsonWritable,
         answerText: dto.answerText ?? null,
         annotations: (dto.annotations ?? undefined) as JsonWritable,
         isCorrect,
@@ -300,10 +317,63 @@ export class ExamSessionsService {
     };
   }
 
+  /**
+   * 서술형(자기채점 대상) 문항의 정오를 응시자가 직접 확정한다.
+   * 세션 제출(SUBMITTED) 이후 결과 화면에서 호출. 최초 확정 시 문항 정답률 캐시도 갱신한다.
+   */
+  async selfGrade(sessionQuestionId: string, userId: string, isCorrect: boolean) {
+    const sq = await this.prisma.examSessionQuestion.findUnique({
+      where: { id: sessionQuestionId },
+      select: {
+        id: true,
+        questionId: true,
+        snapshot: true,
+        answer: { select: { id: true, isCorrect: true } },
+        examSession: { select: { userId: true, status: true } },
+      },
+    });
+    if (!sq) throw new NotFoundException('세션 문항을 찾을 수 없습니다.');
+    if (sq.examSession.userId !== userId) throw new ForbiddenException('본인 세션만 채점할 수 있습니다.');
+    if (sq.examSession.status !== 'SUBMITTED') {
+      throw new BadRequestException('제출된 세션에서만 자기채점할 수 있습니다.');
+    }
+    if (!sq.answer) throw new BadRequestException('제출된 답안이 없습니다.');
+
+    const snapshot = sq.snapshot as unknown as QuestionSnapshot;
+    if (!isSelfGradable(snapshot)) {
+      throw new BadRequestException('자기채점 대상(서술형) 문항이 아닙니다.');
+    }
+
+    const answerId = sq.answer.id;
+    const prev = sq.answer.isCorrect; // null(미채점) | boolean(재채점)
+
+    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      await tx.examSessionAnswer.update({ where: { id: answerId }, data: { isCorrect } });
+
+      // 정답률 캐시 델타: 최초 확정이면 total+1(+정답 시 correct+1), 재채점이면 correct만 보정.
+      if (prev === null || prev === undefined) {
+        await tx.question.update({
+          where: { id: sq.questionId },
+          data: {
+            totalSolvedCount: { increment: 1 },
+            ...(isCorrect ? { correctSolvedCount: { increment: 1 } } : {}),
+          },
+        });
+      } else if (prev !== isCorrect) {
+        await tx.question.update({
+          where: { id: sq.questionId },
+          data: { correctSolvedCount: { increment: isCorrect ? 1 : -1 } },
+        });
+      }
+    });
+
+    return { sessionQuestionId, isCorrect };
+  }
+
   // --- 헬퍼 -----------------------------------------------------------
 
   private buildQuestionWhere(dto: CreateSessionDto): Prisma.QuestionWhereInput {
-    const f = dto.filter;
+    const f = dto.filter ?? {};
     const difficulty =
       f.minDifficulty || f.maxDifficulty
         ? { gte: f.minDifficulty ?? 1, lte: f.maxDifficulty ?? 5 }
@@ -311,9 +381,8 @@ export class ExamSessionsService {
 
     return {
       status: 'PUBLISHED',
-      // 과목 소속: 문항의 핵심 단원이 해당 과목에 속해야 한다.
-      unit: { subjectId: dto.subjectId },
-      ...(f.unitIds?.length ? { primaryUnitId: { in: f.unitIds } } : {}),
+      // 세부과목 소속.
+      subjectId: dto.subjectId,
       ...(f.questionTypes?.length ? { questionType: { in: f.questionTypes } } : {}),
       ...(difficulty ? { difficulty } : {}),
       ...(f.tagIds?.length ? { questionTags: { some: { tagId: { in: f.tagIds } } } } : {}),

@@ -22,7 +22,7 @@ export class QuestionsService {
   /** 문제 은행 목록 — 단원/상태/유형/난이도/태그/검색어 필터 + 페이지네이션. */
   async list(query: QueryQuestionDto): Promise<PaginatedResult<unknown>> {
     const where: Prisma.QuestionWhereInput = {
-      ...(query.unitId ? { primaryUnitId: query.unitId } : {}),
+      ...(query.subjectId ? { subjectId: query.subjectId } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.questionType ? { questionType: query.questionType } : {}),
       ...(query.difficulty ? { difficulty: query.difficulty } : {}),
@@ -46,7 +46,7 @@ export class QuestionsService {
           difficulty: true,
           points: true,
           status: true,
-          primaryUnitId: true,
+          subjectId: true,
           totalSolvedCount: true,
           correctSolvedCount: true,
           viewCount: true,
@@ -68,7 +68,7 @@ export class QuestionsService {
         where: { id },
         data: { viewCount: { increment: 1 } },
         include: {
-          unit: { select: { id: true, name: true } },
+          subject: { select: { id: true, name: true, examCategory: true } },
           passage: { select: { id: true, status: true } },
           questionTags: { include: { tag: { select: { id: true, name: true, category: true } } } },
           mediaAssets: { select: { id: true, assetType: true, storageUrl: true } },
@@ -96,17 +96,18 @@ export class QuestionsService {
 
   /** 문항 직접 생성(DRAFT). tagIds가 있으면 question_tags도 함께 매핑한다. */
   async create(creatorId: string, dto: CreateQuestionDto) {
-    await this.assertUnitExists(dto.primaryUnitId);
+    await this.assertSubjectExists(dto.subjectId);
 
     return this.prisma.question.create({
       data: {
         creatorId,
-        primaryUnitId: dto.primaryUnitId,
+        subjectId: dto.subjectId,
         passageId: dto.passageId ?? null,
         questionType: dto.questionType,
         stem: dto.stem as JsonWritable,
         ...(dto.choices ? { choices: dto.choices as JsonWritable } : {}),
         ...(dto.explanation ? { explanation: dto.explanation as JsonWritable } : {}),
+        ...(dto.correctAnswerText !== undefined ? { correctAnswerText: dto.correctAnswerText } : {}),
         ...(dto.metadata ? { metadata: dto.metadata as JsonWritable } : {}),
         ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
         difficulty: dto.difficulty ?? 3,
@@ -127,7 +128,10 @@ export class QuestionsService {
 
     // 콘텐츠가 바뀌면 search_text도 다시 계산(부분 필드만 온 경우 기존 값과 병합).
     const contentChanged =
-      dto.stem !== undefined || dto.choices !== undefined || dto.explanation !== undefined;
+      dto.stem !== undefined ||
+      dto.choices !== undefined ||
+      dto.explanation !== undefined ||
+      dto.correctAnswerText !== undefined;
     const searchText = contentChanged
       ? this.buildSearchText({
           stem: (dto.stem ?? existing.stem) as Record<string, unknown>,
@@ -135,18 +139,20 @@ export class QuestionsService {
           explanation: (dto.explanation ?? existing.explanation) as
             | Array<Record<string, unknown>>
             | undefined,
+          correctAnswerText: dto.correctAnswerText ?? existing.correctAnswerText,
         })
       : undefined;
 
     return this.prisma.question.update({
       where: { id },
       data: {
-        ...(dto.primaryUnitId ? { primaryUnitId: dto.primaryUnitId } : {}),
+        ...(dto.subjectId ? { subjectId: dto.subjectId } : {}),
         ...(dto.passageId !== undefined ? { passageId: dto.passageId ?? null } : {}),
         ...(dto.questionType ? { questionType: dto.questionType } : {}),
         ...(dto.stem !== undefined ? { stem: dto.stem as JsonWritable } : {}),
         ...(dto.choices !== undefined ? { choices: dto.choices as JsonWritable } : {}),
         ...(dto.explanation !== undefined ? { explanation: dto.explanation as JsonWritable } : {}),
+        ...(dto.correctAnswerText !== undefined ? { correctAnswerText: dto.correctAnswerText } : {}),
         ...(dto.metadata !== undefined ? { metadata: dto.metadata as JsonWritable } : {}),
         ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
         ...(dto.difficulty !== undefined ? { difficulty: dto.difficulty } : {}),
@@ -185,27 +191,39 @@ export class QuestionsService {
 
   // --- 내부 헬퍼 -------------------------------------------------------
 
-  private async assertUnitExists(unitId: string): Promise<void> {
-    const unit = await this.prisma.unit.findUnique({ where: { id: unitId }, select: { id: true } });
-    if (!unit) throw new NotFoundException('단원을 찾을 수 없습니다.');
+  private async assertSubjectExists(subjectId: string): Promise<void> {
+    const subject = await this.prisma.subject.findUnique({
+      where: { id: subjectId },
+      select: { id: true },
+    });
+    if (!subject) throw new NotFoundException('세부과목을 찾을 수 없습니다.');
   }
 
   /** 존재 + 소유권 확인. 통과 시 콘텐츠 필드를 반환한다. */
   private async assertOwner(id: string, userId: string) {
     const q = await this.prisma.question.findUnique({
       where: { id },
-      select: { id: true, creatorId: true, status: true, stem: true, choices: true, explanation: true },
+      select: {
+        id: true,
+        creatorId: true,
+        status: true,
+        stem: true,
+        choices: true,
+        explanation: true,
+        correctAnswerText: true,
+      },
     });
     if (!q) throw new NotFoundException('문제를 찾을 수 없습니다.');
     if (q.creatorId !== userId) throw new ForbiddenException('본인이 작성한 문제만 수정할 수 있습니다.');
     return q;
   }
 
-  /** 발문/선지/해설 텍스트를 합쳐 검색 캐시(search_text)를 만든다. */
+  /** 발문/선지/해설/주관식 정답 텍스트를 합쳐 검색 캐시(search_text)를 만든다. */
   private buildSearchText(content: {
     stem: Record<string, unknown> | null;
     choices?: Array<Record<string, unknown>> | null;
     explanation?: Array<Record<string, unknown>> | null;
+    correctAnswerText?: string | null;
   }): string {
     const parts: string[] = [extractPlainText(content.stem as PMNode)];
     for (const c of content.choices ?? []) {
@@ -214,6 +232,7 @@ export class QuestionsService {
       }
     }
     if (content.explanation) parts.push(extractPlainText(content.explanation as PMNode[]));
+    if (content.correctAnswerText) parts.push(content.correctAnswerText);
     return parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 5000);
   }
 }

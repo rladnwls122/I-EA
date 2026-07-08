@@ -5,6 +5,7 @@ import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
 import { ExamSessionsService } from './exam-sessions.service';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
+import { SelfGradeDto } from './dto/self-grade.dto';
 
 @ApiTags('exam-sessions')
 @ApiBearerAuth()
@@ -41,6 +42,16 @@ export class ExamSessionsController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.service.revealHint(sessionQuestionId, user.id);
+  }
+
+  @Put('questions/:sessionQuestionId/self-grade')
+  @ApiOperation({ summary: '서술형 자기채점 (제출된 세션의 서술형 문항 정오 확정)' })
+  selfGrade(
+    @Param('sessionQuestionId', ParseUUIDPipe) sessionQuestionId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: SelfGradeDto,
+  ) {
+    return this.service.selfGrade(sessionQuestionId, user.id, dto.isCorrect);
   }
 
   @Post(':id/submit')

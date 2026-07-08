@@ -1,22 +1,21 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
-import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 
-/** question_comments — Q&A 커뮤니티. 1-depth 대댓글 트리 + 상단 고정. */
+/** question_comments — Q&A 커뮤니티. 1-depth 대댓글 트리. (핀 고정은 MVP에서 제거) */
 @Injectable()
 export class CommentsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * 문제별 댓글 목록. 상단 고정 → 최신순으로 최상위 댓글을 뽑고,
+   * 문제별 댓글 목록. 최신순으로 최상위 댓글을 뽑고,
    * 각 댓글의 답글을 오래된 순으로 중첩한다.
    */
   async listByQuestion(questionId: string) {
     const roots = await this.prisma.questionComment.findMany({
       where: { questionId, parentCommentId: null },
-      orderBy: [{ isPinned: 'desc' }, { createdAt: 'desc' }],
+      orderBy: { createdAt: 'desc' },
       include: {
         author: { select: { id: true, nickname: true } },
         replies: {
@@ -70,30 +69,6 @@ export class CommentsService {
     // onDelete: Cascade로 답글도 함께 삭제된다.
     await this.prisma.questionComment.delete({ where: { id } });
     return { id, deleted: true };
-  }
-
-  /**
-   * 상단 고정 토글 — 문제 작성자 또는 ADMIN만 가능.
-   * (수험생이 남의 문제 댓글을 마음대로 고정하지 못하도록 권한을 좁힌다.)
-   */
-  async setPinned(id: string, user: CurrentUserPayload, pinned: boolean) {
-    const comment = await this.prisma.questionComment.findUnique({
-      where: { id },
-      select: { id: true, question: { select: { creatorId: true } } },
-    });
-    if (!comment) throw new NotFoundException('댓글을 찾을 수 없습니다.');
-
-    const isOwner = comment.question.creatorId === user.id;
-    const isAdmin = user.roles.includes('ADMIN');
-    if (!isOwner && !isAdmin) {
-      throw new ForbiddenException('문제 작성자만 댓글을 고정할 수 있습니다.');
-    }
-
-    return this.prisma.questionComment.update({
-      where: { id },
-      data: { isPinned: pinned },
-      select: { id: true, isPinned: true },
-    });
   }
 
   // --- 헬퍼 -----------------------------------------------------------

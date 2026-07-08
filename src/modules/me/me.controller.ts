@@ -16,9 +16,9 @@ export class MeController {
     return this.service.examSessions(user.id);
   }
 
-  @Get('wrong-notes')
-  @ApiOperation({ summary: '내 오답노트(단원·유형별 집계 + 오답 문항)' })
-  wrongNotes(@CurrentUser() user: CurrentUserPayload) {
-    return this.service.wrongNotes(user.id);
+  @Get('notes')
+  @ApiOperation({ summary: '통합 오답노트 (세부과목·유형·원인별 집계 + 오답 문항 + 내 주석)' })
+  notes(@CurrentUser() user: CurrentUserPayload) {
+    return this.service.notes(user.id);
   }
 }

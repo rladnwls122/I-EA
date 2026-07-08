@@ -1,25 +1,26 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { QuestionStatus, QuestionType } from '@prisma/client';
+import { QuestionStatus } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import { IsArray, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
+import { QUESTION_KINDS, QuestionKind } from '@/common/constants/question';
 
 /** 문제 은행 목록/검색 필터. */
 export class QueryQuestionDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ description: '단원 ID' })
+  @ApiPropertyOptional({ description: '세부과목 ID' })
   @IsOptional()
   @IsUUID()
-  unitId?: string;
+  subjectId?: string;
 
   @ApiPropertyOptional({ enum: QuestionStatus })
   @IsOptional()
   @IsEnum(QuestionStatus)
   status?: QuestionStatus;
 
-  @ApiPropertyOptional({ enum: QuestionType })
+  @ApiPropertyOptional({ description: '문제 유형', enum: QUESTION_KINDS })
   @IsOptional()
-  @IsEnum(QuestionType)
-  questionType?: QuestionType;
+  @IsIn(QUESTION_KINDS)
+  questionType?: QuestionKind;
 
   @ApiPropertyOptional({ description: '난이도 1~5' })
   @IsOptional()

@@ -3,9 +3,8 @@ import { IsArray, IsInt, IsObject, IsOptional, IsPositive, IsString } from 'clas
 
 /**
  * 실시간 OMR 답안 제출. 문제 유형별로 사용하는 필드가 다르다.
- * - 객관식/OX: selectedChoiceIds
- * - SHORT_ANSWER: blankAnswers (빈칸 순서대로)
- * - ESSAY: answerText (자동 채점 불가)
+ * - 객관식: selectedChoiceIds
+ * - 주관식(단답/서술형): answerText
  * annotations: 필기(펜) 스트로크 JSON.
  */
 export class SubmitAnswerDto {
@@ -15,13 +14,7 @@ export class SubmitAnswerDto {
   @IsString({ each: true })
   selectedChoiceIds?: string[];
 
-  @ApiPropertyOptional({ description: '단답형 빈칸 정답(빈칸 순서대로)', type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  blankAnswers?: string[];
-
-  @ApiPropertyOptional({ description: '서술형 답안 텍스트' })
+  @ApiPropertyOptional({ description: '주관식 답안 텍스트(단답/서술형)' })
   @IsOptional()
   @IsString()
   answerText?: string;

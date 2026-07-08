@@ -11,8 +11,7 @@ import { CommentsModule } from './modules/comments/comments.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { MediaModule } from './modules/media/media.module';
 import { PassagesModule } from './modules/passages/passages.module';
-import { MemosModule } from './modules/memos/memos.module';
-import { VariantsModule } from './modules/variants/variants.module';
+import { AnnotationsModule } from './modules/annotations/annotations.module';
 import { ExamSessionsModule } from './modules/exam-sessions/exam-sessions.module';
 import { AiGenerationModule } from './modules/ai-generation/ai-generation.module';
 import { MeModule } from './modules/me/me.module';
@@ -44,8 +43,7 @@ import { MeModule } from './modules/me/me.module';
     ReviewsModule,
     MediaModule,
     PassagesModule,
-    MemosModule,
-    VariantsModule,
+    AnnotationsModule,
     ExamSessionsModule,
     AiGenerationModule,
     MeModule,

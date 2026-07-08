@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { PrismaService } from '@/prisma/prisma.service';
 import { CreateMediaDto } from './dto/create-media.dto';
 
-/** media_assets — 이미지/SVG/그래프코드. 지문 또는 문제 중 하나에만 배타 귀속. */
+/** media_assets — 이미지(외부 스토리지 URL). 지문 또는 문제 중 하나에만 배타 귀속. */
 @Injectable()
 export class MediaService {
   constructor(private readonly prisma: PrismaService) {}
@@ -24,7 +24,6 @@ export class MediaService {
         uploaderId,
         assetType: dto.assetType,
         storageUrl: dto.storageUrl,
-        sourceCode: dto.sourceCode ?? null,
         passageId: dto.passageId ?? null,
         questionId: dto.questionId ?? null,
         generationId: dto.generationId ?? null,

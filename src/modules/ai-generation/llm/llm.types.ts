@@ -1,8 +1,9 @@
 /**
  * LLM에 강제하는 출력 계약(JSON only).
- * 노드 트리(ProseMirror)를 직접 생성시키지 않고 "평문 + 빈칸 토큰"만 받는다 —
- * 저장 포맷(3.6.1) 조립은 우리 코드(prosemirror.util)가 담당한다.
+ * 노드 트리(ProseMirror)를 직접 생성시키지 않고 "평문"만 받는다 —
+ * 저장 포맷 조립은 우리 코드(prosemirror.util)가 담당한다.
  */
+import { QuestionKind } from '@/common/constants/question';
 
 export interface LlmChoice {
   /** 선지 본문(평문) */
@@ -13,13 +14,13 @@ export interface LlmChoice {
 }
 
 export interface LlmQuestion {
-  questionType: 'SINGLE_CHOICE' | 'MULTI_CHOICE' | 'OX' | 'SHORT_ANSWER' | 'ESSAY';
-  /** 발문 평문. SHORT_ANSWER는 빈칸 자리에 [[blank]] 토큰을 넣는다. */
+  questionType: QuestionKind; // "객관식" | "주관식"
+  /** 발문 평문 */
   stemText: string;
-  /** 객관식/OX 전용 */
+  /** 객관식 전용 선지 */
   choices?: LlmChoice[];
-  /** SHORT_ANSWER 전용: stemText의 [[blank]] 순서대로 대응하는 정답들 */
-  shortAnswers?: string[];
+  /** 주관식 단답 정답(평문). 있으면 자동채점, 없으면 서술형(자기채점) */
+  answerText?: string;
   /** 전체 해설(평문, 선택) */
   explanationText?: string;
   difficulty: number;
@@ -39,7 +40,9 @@ export interface LlmGenerationContext {
   difficulty: number;
   questionCount: number;
   includePassage: boolean;
-  questionType?: string;
+  questionType?: QuestionKind;
+  /** 세부과목명 (예: 문학) */
   subjectName?: string;
-  unitName?: string;
+  /** 대분류 (예: 국어) */
+  examCategory?: string;
 }

@@ -1,34 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MediaAssetType } from '@prisma/client';
-import {
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsPositive,
-  IsString,
-  IsUrl,
-  IsUUID,
-  MaxLength,
-} from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsPositive, IsUrl, IsUUID, MaxLength } from 'class-validator';
 
 /**
  * media_assets. DDL의 CHECK(지문 XOR 문제 배타적 매핑)을 애플리케이션에서도 보장한다:
  * passageId와 questionId 중 정확히 하나만 지정해야 한다.
+ * 파일 업로드는 클라이언트가 Supabase Storage에 직접 수행하고, 여기엔 결과 public URL만 등록한다.
  */
 export class CreateMediaDto {
-  @ApiProperty({ enum: MediaAssetType, description: 'IMAGE | GRAPH_CODE | SVG' })
+  @ApiProperty({ enum: MediaAssetType, description: 'IMAGE (MVP는 이미지 전용)' })
   @IsEnum(MediaAssetType)
   assetType!: MediaAssetType;
 
-  @ApiProperty({ description: '스토리지 URL', maxLength: 500 })
+  @ApiProperty({ description: 'Supabase Storage 등 외부 스토리지 public URL', maxLength: 500 })
   @IsUrl({ require_tld: false })
   @MaxLength(500)
   storageUrl!: string;
-
-  @ApiPropertyOptional({ description: 'GRAPH_CODE/SVG 원본 소스(렌더 재현용)' })
-  @IsOptional()
-  @IsString()
-  sourceCode?: string;
 
   @ApiPropertyOptional({ description: '지문 ID (문제 ID와 배타)' })
   @IsOptional()

@@ -1,13 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
+import { REASON_LABELS, ReasonCode } from '@/common/constants/question';
 
-export interface WrongStat { key: string; label: string; total: number; wrong: number; wrongRatio: number; }
-export interface WrongQuestion { questionId: string; unitName: string; questionType: string; sessionId: string; }
+export interface WrongStat {
+  key: string;
+  label: string;
+  total: number;
+  wrong: number;
+  wrongRatio: number;
+}
+export interface ReasonStat {
+  code: string;
+  label: string;
+  count: number;
+}
 
 @Injectable()
 export class MeService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** 풀이기록 — 제출된 세션 요약(최신순). */
   async examSessions(userId: string) {
     const sessions = await this.prisma.examSession.findMany({
       where: { userId, status: 'SUBMITTED' },
@@ -33,51 +45,104 @@ export class MeService {
     });
   }
 
-  async wrongNotes(userId: string) {
-    const answers = await this.prisma.examSessionAnswer.findMany({
-      where: { examSessionQuestion: { examSession: { userId, status: 'SUBMITTED' } } },
+  /**
+   * 통합 오답노트 — 통계(bySubject/byType/byReason) + 오답 문항 + 각 문항의 내 주석을 한 번에.
+   * 정오가 확정된(is_correct NOT NULL) 답안만 통계 대상(서술형은 자기채점 후 반영).
+   */
+  async notes(userId: string) {
+    const graded = await this.prisma.examSessionAnswer.findMany({
+      where: {
+        isCorrect: { not: null },
+        examSessionQuestion: { examSession: { userId, status: 'SUBMITTED' } },
+      },
       include: {
         examSessionQuestion: {
           select: {
             examSessionId: true,
             questionId: true,
             question: {
-              select: { primaryUnitId: true, questionType: true, unit: { select: { name: true } } },
+              select: { subjectId: true, questionType: true, subject: { select: { name: true } } },
             },
           },
         },
       },
     });
 
-    const unitMap = new Map<string, WrongStat>();
+    const subjectMap = new Map<string, WrongStat>();
     const typeMap = new Map<string, WrongStat>();
-    const wrongQuestions: WrongQuestion[] = [];
+    const sessionIds = new Set<string>();
+    const wrongList: {
+      questionId: string;
+      subjectId: string;
+      subjectName: string;
+      questionType: string;
+      sessionId: string;
+    }[] = [];
+    let solved = 0;
+    let correct = 0;
 
-    for (const a of answers) {
-      const q = a.examSessionQuestion.question;
+    const bump = (map: Map<string, WrongStat>, key: string, label: string, isWrong: boolean) => {
+      const cur = map.get(key) ?? { key, label, total: 0, wrong: 0, wrongRatio: 0 };
+      cur.total += 1;
+      if (isWrong) cur.wrong += 1;
+      cur.wrongRatio = Math.round((cur.wrong / cur.total) * 100) / 100;
+      map.set(key, cur);
+    };
+
+    for (const a of graded) {
+      const sq = a.examSessionQuestion;
+      const q = sq.question;
       const isWrong = a.isCorrect === false;
-      const bump = (map: Map<string, WrongStat>, key: string, label: string) => {
-        const cur = map.get(key) ?? { key, label, total: 0, wrong: 0, wrongRatio: 0 };
-        cur.total += 1;
-        if (isWrong) cur.wrong += 1;
-        cur.wrongRatio = Math.round((cur.wrong / cur.total) * 100) / 100;
-        map.set(key, cur);
-      };
-      bump(unitMap, q.primaryUnitId, q.unit.name);
-      bump(typeMap, q.questionType, q.questionType);
+      solved += 1;
+      if (a.isCorrect === true) correct += 1;
+      sessionIds.add(sq.examSessionId);
+      bump(subjectMap, q.subjectId, q.subject.name, isWrong);
+      bump(typeMap, q.questionType, q.questionType, isWrong);
       if (isWrong) {
-        wrongQuestions.push({
-          questionId: a.examSessionQuestion.questionId,
-          unitName: q.unit.name,
+        wrongList.push({
+          questionId: sq.questionId,
+          subjectId: q.subjectId,
+          subjectName: q.subject.name,
           questionType: q.questionType,
-          sessionId: a.examSessionQuestion.examSessionId,
+          sessionId: sq.examSessionId,
         });
       }
     }
 
+    // 내 주석 — byReason 통계 + 오답 문항별 주석 조인.
+    const annotations = await this.prisma.userQuestionAnnotation.findMany({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    const annByQuestion = new Map<string, typeof annotations>();
+    const reasonMap = new Map<string, number>();
+    for (const ann of annotations) {
+      const list = annByQuestion.get(ann.questionId) ?? [];
+      list.push(ann);
+      annByQuestion.set(ann.questionId, list);
+      if (ann.reasonCode) reasonMap.set(ann.reasonCode, (reasonMap.get(ann.reasonCode) ?? 0) + 1);
+    }
+    const byReason: ReasonStat[] = [...reasonMap.entries()].map(([code, count]) => ({
+      code,
+      label: REASON_LABELS[code as ReasonCode] ?? code,
+      count,
+    }));
+
+    const wrongQuestions = wrongList.map((w) => {
+      const anns = annByQuestion.get(w.questionId) ?? [];
+      return { ...w, annotationCount: anns.length, annotations: anns };
+    });
+
     return {
-      byUnit: [...unitMap.values()],
-      byType: [...typeMap.values()],
+      summary: {
+        sessions: sessionIds.size,
+        solved,
+        correct,
+        scorePercent: solved > 0 ? Math.round((correct / solved) * 1000) / 10 : 0,
+        bySubject: [...subjectMap.values()],
+        byType: [...typeMap.values()],
+        byReason,
+      },
       wrongQuestions,
     };
   }

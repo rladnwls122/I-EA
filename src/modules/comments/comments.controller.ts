@@ -22,7 +22,7 @@ export class CommentsController {
   constructor(private readonly service: CommentsService) {}
 
   @Get('questions/:questionId/comments')
-  @ApiOperation({ summary: '문제별 댓글 트리 조회 (고정 → 최신, 답글 중첩)' })
+  @ApiOperation({ summary: '문제별 댓글 트리 조회 (최신순, 답글 중첩)' })
   list(@Param('questionId', ParseUUIDPipe) questionId: string) {
     return this.service.listByQuestion(questionId);
   }
@@ -51,17 +51,5 @@ export class CommentsController {
   @ApiOperation({ summary: '댓글 삭제 (작성자 본인, 답글 동반 삭제)' })
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.service.remove(id, user.id);
-  }
-
-  @Post('comments/:id/pin')
-  @ApiOperation({ summary: '댓글 상단 고정 (문제 작성자/ADMIN)' })
-  pin(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
-    return this.service.setPinned(id, user, true);
-  }
-
-  @Delete('comments/:id/pin')
-  @ApiOperation({ summary: '댓글 고정 해제 (문제 작성자/ADMIN)' })
-  unpin(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
-    return this.service.setPinned(id, user, false);
   }
 }

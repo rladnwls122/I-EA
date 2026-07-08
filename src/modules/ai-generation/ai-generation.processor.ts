@@ -9,6 +9,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JsonWritable = any;
 import { buildRichBlocks, buildRichDoc, extractPlainText } from '@/common/prosemirror/prosemirror.util';
+import { QuestionKind } from '@/common/constants/question';
 import { GeminiLlmService } from './llm/gemini-llm.service';
 import { LlmGenerationContext, LlmQuestion } from './llm/llm.types';
 import { AI_GENERATION_QUEUE } from './ai-generation.constants';
@@ -34,8 +35,7 @@ export class AiGenerationProcessor extends WorkerHost {
     const generation = await this.prisma.aiGeneration.findUnique({
       where: { id: generationId },
       include: {
-        subject: { select: { name: true } },
-        unit: { select: { name: true } },
+        subject: { select: { name: true, examCategory: true } },
       },
     });
     if (!generation) {
@@ -54,9 +54,9 @@ export class AiGenerationProcessor extends WorkerHost {
       difficulty: Number(params.difficulty ?? 3),
       questionCount: Number(params.questionCount ?? 1),
       includePassage: Boolean(params.includePassage ?? false),
-      questionType: (params.questionType as string) ?? undefined,
+      questionType: (params.questionType as QuestionKind) ?? undefined,
       subjectName: generation.subject?.name,
-      unitName: generation.unit?.name,
+      examCategory: generation.subject?.examCategory,
     };
 
     try {
@@ -79,17 +79,22 @@ export class AiGenerationProcessor extends WorkerHost {
         }
 
         for (const q of result.questions) {
-          const choices = this.buildChoices(q);
+          const kind = this.normalizeType(q.questionType);
+          const choices = this.buildChoices(q, kind);
+          // 주관식 단답 정답(있으면 자동채점 근거). 서술형이면 null → 자기채점.
+          const correctAnswerText =
+            kind === '주관식' && q.answerText?.trim() ? q.answerText.trim() : null;
           await tx.question.create({
             data: {
               creatorId: generation.creatorId,
               generationId: generation.id,
-              primaryUnitId: generation.unitId!, // 생성 요청에서 unitId 필수
+              subjectId: generation.subjectId,
               passageId,
-              questionType: this.normalizeType(q.questionType),
+              questionType: kind,
               stem: this.buildStem(q) as JsonWritable,
               // nullable Json은 값이 없으면 필드를 생략 → 컬럼 NULL로 저장
               ...(choices ? { choices: choices as JsonWritable } : {}),
+              ...(correctAnswerText ? { correctAnswerText } : {}),
               ...(q.explanationText
                 ? { explanation: buildRichBlocks(q.explanationText) as JsonWritable }
                 : {}),
@@ -138,17 +143,11 @@ export class AiGenerationProcessor extends WorkerHost {
   }
 
   private buildStem(q: LlmQuestion) {
-    // SHORT_ANSWER만 빈칸 정답을 stem에 심는다(3.6.0 정답 출처 매트릭스).
-    const answers = q.questionType === 'SHORT_ANSWER' ? q.shortAnswers ?? [] : [];
-    return buildRichDoc(q.stemText, answers);
+    return buildRichDoc(q.stemText);
   }
 
-  private buildChoices(q: LlmQuestion) {
-    const isChoiceType =
-      q.questionType === 'SINGLE_CHOICE' ||
-      q.questionType === 'MULTI_CHOICE' ||
-      q.questionType === 'OX';
-    if (!isChoiceType || !q.choices?.length) return undefined;
+  private buildChoices(q: LlmQuestion, kind: QuestionKind) {
+    if (kind !== '객관식' || !q.choices?.length) return undefined;
 
     return q.choices.map((c, i) => ({
       id: `c${i + 1}`,
@@ -158,26 +157,18 @@ export class AiGenerationProcessor extends WorkerHost {
     }));
   }
 
-  /** search_text: 발문/선지/해설/지문 텍스트를 합쳐 검색 매칭용으로 캐싱(3.6.1). */
+  /** search_text: 발문/선지/해설/주관식 정답/지문 텍스트를 합쳐 검색 매칭용으로 캐싱. */
   private buildSearchText(q: LlmQuestion, passageBody?: string): string {
     const parts: string[] = [extractPlainText(this.buildStem(q))];
     for (const c of q.choices ?? []) parts.push(extractPlainText(buildRichBlocks(c.content)));
+    if (q.answerText) parts.push(q.answerText);
     if (q.explanationText) parts.push(q.explanationText);
     if (passageBody) parts.push(passageBody);
     return parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 5000);
   }
 
-  private normalizeType(t: string): LlmQuestion['questionType'] {
-    const allowed: LlmQuestion['questionType'][] = [
-      'SINGLE_CHOICE',
-      'MULTI_CHOICE',
-      'OX',
-      'SHORT_ANSWER',
-      'ESSAY',
-    ];
-    return allowed.includes(t as LlmQuestion['questionType'])
-      ? (t as LlmQuestion['questionType'])
-      : 'SINGLE_CHOICE';
+  private normalizeType(t: string): QuestionKind {
+    return t === '주관식' ? '주관식' : '객관식';
   }
 
   private clampDifficulty(d: number): number {

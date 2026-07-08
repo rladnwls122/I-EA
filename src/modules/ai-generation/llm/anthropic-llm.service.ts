@@ -82,10 +82,10 @@ export class AnthropicLlmService {
       '  "passage": { "title": string(선택), "bodyText": string } | null,',
       '  "questions": [',
       '    {',
-      '      "questionType": "SINGLE_CHOICE"|"MULTI_CHOICE"|"OX"|"SHORT_ANSWER"|"ESSAY",',
+      '      "questionType": "객관식"|"주관식",',
       '      "stemText": string,',
-      '      "choices": [ { "content": string, "isCorrect": boolean, "explanation": string(선택) } ](객관식/OX),',
-      '      "shortAnswers": [ string ](SHORT_ANSWER 전용, stemText의 [[blank]] 순서대로),',
+      '      "choices": [ { "content": string, "isCorrect": boolean, "explanation": string(선택) } ](객관식 전용),',
+      '      "answerText": string(주관식 단답 정답, 선택),',
       '      "explanationText": string(선택),',
       '      "difficulty": 1~5',
       '    }',
@@ -93,17 +93,17 @@ export class AnthropicLlmService {
       '}',
       '',
       '규칙:',
-      '- SINGLE_CHOICE/OX는 isCorrect:true가 정확히 1개. MULTI_CHOICE는 1개 이상.',
-      '- SHORT_ANSWER는 stemText의 빈칸 자리에 정확히 [[blank]] 토큰을 넣고 shortAnswers를 순서대로 채운다.',
-      '- ESSAY는 choices/shortAnswers 없이 explanationText에 모범답안을 서술한다.',
+      '- 객관식은 choices를 제공하고 isCorrect:true가 1개 이상(단일정답이면 정확히 1개).',
+      '- 주관식 단답형은 answerText에 정답을 넣는다(자동채점 대상).',
+      '- 주관식 서술형은 answerText 없이 explanationText에 모범답안을 서술한다.',
       '- 모든 텍스트는 한국어. JSON 외 문자는 절대 출력하지 않는다.',
     ].join('\n');
   }
 
   private buildUserPrompt(ctx: LlmGenerationContext): string {
     const lines = [
-      `과목: ${ctx.subjectName ?? '(미지정)'}`,
-      `단원: ${ctx.unitName ?? '(미지정)'}`,
+      `대분류: ${ctx.examCategory ?? '(미지정)'}`,
+      `세부과목: ${ctx.subjectName ?? '(미지정)'}`,
       `난이도: ${ctx.difficulty} (1 쉬움 ~ 5 어려움)`,
       `문항 수: ${ctx.questionCount}`,
       `지문 포함: ${ctx.includePassage ? '예' : '아니오'}`,

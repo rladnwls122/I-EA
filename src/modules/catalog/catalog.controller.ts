@@ -1,22 +1,14 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  ParseUUIDPipe,
-  Post,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRoleType } from '@prisma/client';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { RolesGuard } from '@/modules/auth/roles.guard';
 import { CatalogService } from './catalog.service';
-import { CreateSubjectDto, CreateTagDto, CreateUnitDto } from './dto/catalog.dto';
+import { CreateSubjectDto, CreateTagDto } from './dto/catalog.dto';
 
 /**
- * 과목/단원/태그 마스터. 조회는 모든 인증 사용자, 생성은 ADMIN/CREATOR로 제한한다.
+ * 세부과목/태그 마스터. 조회는 모든 인증 사용자, 생성은 ADMIN/CREATOR로 제한한다.
+ * (단원 트리는 MVP에서 제거 — 문제는 세부과목[subjects]에 직접 분류된다.)
  */
 @ApiTags('catalog')
 @ApiBearerAuth()
@@ -25,32 +17,18 @@ import { CreateSubjectDto, CreateTagDto, CreateUnitDto } from './dto/catalog.dto
 export class CatalogController {
   constructor(private readonly service: CatalogService) {}
 
-  // subjects
+  // subjects (세부과목)
   @Get('subjects')
-  @ApiOperation({ summary: '과목 목록' })
+  @ApiOperation({ summary: '세부과목 목록 (대분류 examCategory 포함)' })
   listSubjects() {
     return this.service.listSubjects();
   }
 
   @Post('subjects')
   @Roles(UserRoleType.ADMIN)
-  @ApiOperation({ summary: '과목 생성 (ADMIN)' })
+  @ApiOperation({ summary: '세부과목 생성 (ADMIN)' })
   createSubject(@Body() dto: CreateSubjectDto) {
     return this.service.createSubject(dto);
-  }
-
-  // units
-  @Get('subjects/:subjectId/units')
-  @ApiOperation({ summary: '과목 단원 트리 조회' })
-  unitTree(@Param('subjectId', ParseUUIDPipe) subjectId: string) {
-    return this.service.unitTree(subjectId);
-  }
-
-  @Post('units')
-  @Roles(UserRoleType.ADMIN, UserRoleType.CREATOR)
-  @ApiOperation({ summary: '단원 생성 (ADMIN/CREATOR)' })
-  createUnit(@Body() dto: CreateUnitDto) {
-    return this.service.createUnit(dto);
   }
 
   // tags

@@ -11,7 +11,7 @@ export class QuestionContentDto {
   @IsObject()
   stem!: Record<string, unknown>;
 
-  @ApiPropertyOptional({ description: '선지 배열(객관식/OX). ESSAY/SHORT_ANSWER는 생략', type: [Object] })
+  @ApiPropertyOptional({ description: '선지 배열(객관식 전용). 주관식은 생략', type: [Object] })
   @IsOptional()
   @IsArray()
   choices?: Array<Record<string, unknown>>;

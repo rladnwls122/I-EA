@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
-  IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -11,25 +11,12 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-
-/** Prisma의 QuestionType과 값이 일치해야 한다(문자열 enum). */
-export enum RequestedQuestionType {
-  SINGLE_CHOICE = 'SINGLE_CHOICE',
-  MULTI_CHOICE = 'MULTI_CHOICE',
-  OX = 'OX',
-  SHORT_ANSWER = 'SHORT_ANSWER',
-  ESSAY = 'ESSAY',
-}
+import { QUESTION_KINDS, QuestionKind } from '@/common/constants/question';
 
 export class CreateGenerationDto {
-  @ApiProperty({ description: '생성할 문제가 태깅될 리프 단원 ID (questions.primary_unit_id는 NOT NULL)' })
+  @ApiProperty({ description: '생성 문제가 분류될 세부과목 ID (questions.subject_id는 NOT NULL)' })
   @IsUUID()
-  unitId!: string;
-
-  @ApiPropertyOptional({ description: '컨텍스트용 과목 ID' })
-  @IsOptional()
-  @IsUUID()
-  subjectId?: string;
+  subjectId!: string;
 
   @ApiProperty({ description: '자연어 출제 지시 (주제/조건 등)', maxLength: 2000 })
   @IsString()
@@ -54,8 +41,8 @@ export class CreateGenerationDto {
   @IsBoolean()
   includePassage?: boolean;
 
-  @ApiPropertyOptional({ enum: RequestedQuestionType, description: '선호 문제 유형(힌트)' })
+  @ApiPropertyOptional({ description: '선호 문제 유형(힌트)', enum: QUESTION_KINDS })
   @IsOptional()
-  @IsEnum(RequestedQuestionType)
-  questionType?: RequestedQuestionType;
+  @IsIn(QUESTION_KINDS)
+  questionType?: QuestionKind;
 }

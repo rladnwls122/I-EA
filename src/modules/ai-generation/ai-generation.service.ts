@@ -20,18 +20,17 @@ export class AiGenerationService {
    * 요청 스레드에서 LLM 호출을 기다리지 않으므로, 다건/장시간 생성에도 API가 막히지 않는다.
    */
   async createGeneration(creatorId: string, dto: CreateGenerationDto) {
-    // primary_unit_id가 NOT NULL이므로 단원 존재를 먼저 확정한다.
-    const unit = await this.prisma.unit.findUnique({
-      where: { id: dto.unitId },
+    // subject_id가 NOT NULL이므로 세부과목 존재를 먼저 확정한다.
+    const subject = await this.prisma.subject.findUnique({
+      where: { id: dto.subjectId },
       select: { id: true },
     });
-    if (!unit) throw new NotFoundException('단원을 찾을 수 없습니다.');
+    if (!subject) throw new NotFoundException('세부과목을 찾을 수 없습니다.');
 
     const generation = await this.prisma.aiGeneration.create({
       data: {
         creatorId,
-        subjectId: dto.subjectId ?? null,
-        unitId: dto.unitId,
+        subjectId: dto.subjectId,
         model: this.llm.model,
         status: 'PENDING',
         // input_params: 재생성 시 그대로 재사용할 수 있도록 요청 전체를 스냅샷
