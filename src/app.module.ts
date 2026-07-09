@@ -16,6 +16,8 @@ import { AnnotationsModule } from './modules/annotations/annotations.module';
 import { ExamSessionsModule } from './modules/exam-sessions/exam-sessions.module';
 import { AiGenerationModule } from './modules/ai-generation/ai-generation.module';
 import { MeModule } from './modules/me/me.module';
+import { TutorModule } from './modules/tutor/tutor.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -37,6 +39,8 @@ import { MeModule } from './modules/me/me.module';
       }),
     }),
     PrismaModule,
+    // Redis(ioredis) 전역 클라이언트 — 튜터 히스토리/레이트 리밋이 공유한다.
+    RedisModule,
     AuthModule,
     CatalogModule,
     QuestionsModule,
@@ -49,6 +53,7 @@ import { MeModule } from './modules/me/me.module';
     ExamSessionsModule,
     AiGenerationModule,
     MeModule,
+    TutorModule,
   ],
   providers: [
     // 전역 인증 가드 — @Public() 라우트만 우회한다.

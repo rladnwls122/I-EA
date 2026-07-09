@@ -54,6 +54,15 @@ export interface LlmRegenerateChoicesResult {
   choices: LlmChoice[];
 }
 
+/**
+ * AI 튜터 대화 한 턴. Redis 히스토리 저장 형식이자 streamChat의 입력 형식이다.
+ * Gemini contents의 role 규약(user/model)을 그대로 따른다.
+ */
+export interface TutorTurn {
+  role: 'user' | 'model';
+  text: string;
+}
+
 /** 생성 파이프라인에 넘기는 컨텍스트 */
 export interface LlmGenerationContext {
   prompt: string;
