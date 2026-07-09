@@ -11,6 +11,7 @@ import {
   LlmGenerationResult,
   LlmRegenerateChoicesContext,
   LlmRegenerateChoicesResult,
+  TutorTurn,
 } from './llm.types';
 
 /**
@@ -102,6 +103,122 @@ export class GeminiLlmService {
       { timeoutMs: REGENERATE_TIMEOUT_MS, attempts: REGENERATE_ATTEMPTS, disableThinking: true },
     );
     return this.parseChoicesResult(raw, ctx.choiceCount);
+  }
+
+  /**
+   * AI 튜터 채팅 스트리밍. 산문(평문)을 델타 단위로 흘려보낸다.
+   *
+   * generate/regenerateChoices와 달리:
+   * - responseMimeType을 빼서 JSON이 아니라 산문을 받는다.
+   * - streamGenerateContent?alt=sse 로 SSE 스트림을 받아 파싱한다.
+   * - thinkingBudget=0 으로 사고 토큰을 꺼 첫 델타 지연을 줄인다.
+   *
+   * 재시도 정책: **첫 바이트를 받기 전(요청 자체 실패)에만** 예외를 던진다.
+   * 스트림이 시작된 뒤의 중간 실패는 이미 델타를 보낸 상태라 재시도하면 중복이 되므로
+   * 조용히 스트림을 끊는다(예외 없이 종료).
+   */
+  async *streamChat(
+    system: string,
+    history: TutorTurn[],
+    userText: string,
+  ): AsyncIterable<string> {
+    if (!this.isConfigured) {
+      throw new ServiceUnavailableException('GEMINI_API_KEY가 설정되지 않았습니다.');
+    }
+
+    const url = `${this.baseUrl}/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
+
+    // 히스토리를 Gemini contents로 펼치고 이번 사용자 발화를 마지막에 붙인다.
+    const contents = [
+      ...history.map((t) => ({ role: t.role, parts: [{ text: t.text }] })),
+      { role: 'user', parts: [{ text: userText }] },
+    ];
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: system }] },
+          contents,
+          generationConfig: {
+            maxOutputTokens: this.maxTokens,
+            // 산문을 받는다 — responseMimeType(JSON 강제)을 켜지 않는다.
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        }),
+      });
+    } catch (err) {
+      // 첫 바이트 전 네트워크 실패 → 아직 아무것도 흘리지 않았으므로 던진다.
+      throw new ServiceUnavailableException(
+        `AI 튜터 응답 생성에 실패했습니다: ${(err as Error).message}`,
+      );
+    }
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      const message = `HTTP ${response.status} ${detail.slice(0, 300)}`;
+      this.logger.error(`튜터 스트림 시작 실패: ${message}`);
+      // 첫 바이트 전 실패. 기존 분류와 동일한 의미로 HTTP 예외에 매핑한다.
+      // 429(쿼터 초과) → 429, 그 외(5xx·4xx) → 503. 스트림 경로라 재시도는 하지 않는다.
+      if (response.status === 429) {
+        throw new HttpException(
+          'AI 요청이 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      throw new ServiceUnavailableException('AI 튜터 응답 생성에 실패했습니다.');
+    }
+
+    if (!response.body) {
+      throw new ServiceUnavailableException('AI 튜터 스트림 응답이 비어 있습니다.');
+    }
+
+    // SSE 프레임은 청크 경계에서 잘릴 수 있다. 버퍼에 모아 "\n\n" 단위로 끊어 파싱한다.
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let sep: number;
+        while ((sep = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          const text = this.extractSseText(frame);
+          if (text) yield text;
+        }
+      }
+      // 종료 시 남은 버퍼도 마지막 프레임으로 처리한다.
+      const tail = this.extractSseText(buffer);
+      if (tail) yield tail;
+    } catch (err) {
+      // 스트림 도중 실패 — 이미 델타를 보냈을 수 있으므로 재시도/예외 대신 조용히 종료한다.
+      this.logger.warn(`튜터 스트림 중단: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Gemini SSE 프레임 하나에서 텍스트 델타를 뽑는다.
+   * 프레임은 여러 줄일 수 있고, 텍스트는 "data:" 라인의 JSON에 담겨 온다.
+   */
+  private extractSseText(frame: string): string {
+    const payload = frame
+      .split('\n')
+      .filter((l) => l.startsWith('data:'))
+      .map((l) => l.slice(5).trim())
+      .join('');
+    if (!payload || payload === '[DONE]') return '';
+    try {
+      const json = JSON.parse(payload) as GeminiResponse;
+      return (json.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
+    } catch {
+      // 부분 JSON/키프레임이 아닌 라인은 조용히 무시한다.
+      return '';
+    }
   }
 
   /**
