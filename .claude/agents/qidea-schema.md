@@ -30,9 +30,10 @@ tools: Read, Grep, Glob, Bash
 
 ### MVP 분류 모델
 
-- **`units` 테이블은 없다.** 문항은 `subjects`(세부과목)로 직접 분류된다.
-- `subjects.examCategory` = 대분류 (예: 국어). `subjects.name` = 세부과목 (예: 문학, 언매).
-- `Question.subjectId`는 NOT NULL이다.
+- **`units` 테이블은 없다.** 문항은 `subjects`로 직접 분류된다. `Question.subjectId`는 NOT NULL이다.
+- **분류는 3단이다.** `subjects.examType`(시험 — 수능, 내신. 기본값 `"수능"`) → `subjects.examCategory`(대분류 — 국어, 수학) → `subjects.name`(소분류 — 문학, 미적분).
+- 유니크 키는 `@@unique([examType, examCategory, name])`다. **"수능 국어 문학"과 "내신 국어 문학"은 별개 행이다.** `(examCategory, name)`만으로는 행을 특정할 수 없다.
+- `examType`도 enum이 아니라 VARCHAR다.
 
 ### questionType
 

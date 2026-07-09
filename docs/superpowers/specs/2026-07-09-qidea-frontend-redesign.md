@@ -18,7 +18,7 @@
 
 | # | 요구서 표현 | 실제 백엔드 | 프론트 처리 |
 | --- | --- | --- | --- |
-| 1 | 단원 선택 콤보박스 | `units` 테이블 없음. `subjects.examCategory` = 대분류(국어/수학), `subjects.name` = 세부과목(문학/언매) | `GET /subjects` 1회 호출 → 클라에서 `examCategory` 그룹핑. **2단계 셀렉트**(대분류 → 세부과목). `UnitTreeSelect` 금지 |
+| 1 | 단원 선택 콤보박스 | `units` 테이블 없음. **3단 분류**: `subjects.examType`(수능/내신) → `examCategory`(국어/수학) → `name`(문학/미적분). `@@unique([examType, examCategory, name])` | `GET /subjects` 1회 호출 → 클라에서 `examType` → `examCategory` 그룹핑. **3단계 셀렉트**. `examType`을 빼면 "수능 국어 문학"과 "내신 국어 문학"이 뒤섞인다. `UnitTreeSelect` 금지 |
 | 2 | `questions.is_public: false` 임시저장 | 컬럼 없음. `QuestionStatus = DRAFT \| IN_REVIEW \| PUBLISHED \| ARCHIVED` | AI 초안 = `DRAFT`(생성 시 기본값). 발행 = `POST /questions/:id/publish` |
 | 3 | 1~8지선다 | `questions.choices`는 `Json?` — 개수 제약 없음. `questionType`은 `"객관식" \| "주관식"` 2종뿐 | 지선다 개수는 **유형이 아니라 배열 길이**. 프론트 zod로 2~8 검증 |
 | 4 | 선지별 오답 분포 차트 | `exam_session_answers.selectedChoiceIds`(Json)는 있으나 **집계 API 없음** | 백엔드 신규 필요 → §6 Task B1 |
@@ -165,15 +165,16 @@ web/app/
 
 **상단: 분류 선택 (요구서 이미지 기준)**
 
-3단 진행형 셀렉터. 대분류 선택 → 나머지 대분류가 사라지고 세부과목 칩 목록이 펼쳐짐 → 마지막 칩 뒤에 빨간 `카테고리 취소` 버튼.
+진행형 셀렉터. 시험(`examType`) 선택 → 대분류(`examCategory`) 선택 → 나머지 대분류가 사라지고 소분류(`name`) 칩 목록이 펼쳐짐 → 마지막 칩 뒤에 빨간 `카테고리 취소` 버튼.
 
 ```text
-[ 시험 카테고리 ▾ ]  →  [ 국어 ]  [문학] [언매] [화작] ... [ ✕ 취소 ]
-                          ↑선택된 대분류만 잔류
+[ 수능 ▾ ]  →  [ 국어 ]  [문학] [언매] [화작] ... [ ✕ 취소 ]
+                 ↑선택된 대분류만 잔류
 ```
 
-- 데이터: `GET /subjects` 단일 호출. 응답을 `groupBy(examCategory)`.
-- 상태: `useState<{ category?: string; subjectId?: string }>`. URL 동기화 불필요(폼 로컬).
+- 데이터: `GET /subjects` 단일 호출. 응답을 `examType` → `examCategory` 순으로 중첩 그룹핑.
+- 상태: `useState<{ examType?: string; category?: string; subjectId?: string }>`. URL 동기화 불필요(폼 로컬).
+- **`examType`을 빼먹지 마라.** 유니크 키가 `(examType, examCategory, name)`이라 "수능 국어 문학"과 "내신 국어 문학"은 다른 `subjectId`다.
 - 선택 완료 시에만 하단 2-Track 카드를 `opacity-100`으로 활성화. 미선택 시 `opacity-40 pointer-events-none`.
 
 **하단: 2-Track 대형 카드**

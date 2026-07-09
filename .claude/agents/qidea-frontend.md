@@ -110,8 +110,10 @@ AI 기능은 전부 백엔드 엔드포인트를 경유한다. 오답 선지 재
 
 ## 도메인 모델
 
-- **`units` 테이블은 없다.** 문항은 `subjects`(세부과목)로 직접 분류된다. `subjects.examCategory` = 대분류(국어/수학), `subjects.name` = 세부과목(문학/언매).
-  - `GET /subjects` 1회 호출 → 클라에서 `examCategory` 그룹핑 → **2단계 셀렉트.**
+- **`units` 테이블은 없다.** 문항은 `subjects`로 직접 분류된다.
+- **분류는 3단이다.** `subjects.examType`(시험 — 수능/내신) → `subjects.examCategory`(대분류 — 국어/수학) → `subjects.name`(소분류 — 문학/미적분).
+  - 유니크 키가 `(examType, examCategory, name)`이라 **"수능 국어 문학"과 "내신 국어 문학"은 다른 `subjectId`다.** `examType`을 빼먹으면 엉뚱한 과목이 잡힌다.
+  - `GET /subjects` 1회 호출 → 클라에서 `examType` → `examCategory` 순으로 그룹핑 → **3단계 셀렉트.**
   - `UnitTreeSelect`를 만들지 마라.
 - `questionType`은 `"객관식" | "주관식"` 2종뿐이다. **지선다 개수는 유형이 아니라 `choices` 배열 길이다.** 프론트 zod로 2~8 검증.
 - `questions.is_public` 컬럼은 없다. `QuestionStatus = DRAFT | IN_REVIEW | PUBLISHED | ARCHIVED`. AI 초안은 `DRAFT`가 기본값이므로 별도 임시저장 호출이 없다.

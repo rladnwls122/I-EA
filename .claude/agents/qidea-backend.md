@@ -84,7 +84,8 @@ npm run prisma:generate   # schema.prisma 수정 후 Prisma Client 재생성
 
 ### 분류 모델
 
-- **`units` 테이블은 없다.** 문항은 `subjects`(세부과목)로 직접 분류된다. `subjects.examCategory`가 대분류, `subjects.name`이 세부과목. `Question.subjectId`는 NOT NULL.
+- **`units` 테이블은 없다.** 문항은 `subjects`로 직접 분류된다. `Question.subjectId`는 NOT NULL.
+- **분류는 3단이다.** `subjects.examType`(시험 — 수능/내신, VARCHAR, 기본값 `"수능"`) → `subjects.examCategory`(대분류) → `subjects.name`(소분류). 유니크 키는 `@@unique([examType, examCategory, name])`다. `(examCategory, name)`만으로 과목을 조회하면 수능/내신이 뒤섞인다.
 - `questionType`은 enum이 아니라 **VARCHAR**다. `"객관식"` / `"주관식"` 둘뿐. 단일 진실 소스는 `src/common/constants/question.ts`(`QUESTION_KINDS`). DTO는 `@IsIn(QUESTION_KINDS)`로 검증한다.
 
 ## 코딩 컨벤션

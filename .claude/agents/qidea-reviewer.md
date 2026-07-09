@@ -76,7 +76,7 @@ F8. **LLM 생성 시각화.** `VizRenderer`, `sanitizeSvg`, `app/api/ai/visualiz
 
 F9. **사이드바 조건부 분기.** 통계 위젯은 `notes/[questionId]/@sidebar` Parallel Route로만 존재해야 한다. `if (pathname.startsWith('/notes'))` 같은 런타임 분기는 `questions/[id]`(풀이 전 탐색)나 `studio/editor`(출제 중)에서 정답 통계가 새는 경로다.
 
-F10. **`UnitTreeSelect` 또는 units 개념 부활.** units 테이블은 없다. `GET /subjects` 1회 호출 후 클라에서 `examCategory`로 그룹핑하는 2단계 셀렉트다.
+F10. **`UnitTreeSelect` 또는 units 개념 부활.** units 테이블은 없다. `GET /subjects` 1회 호출 후 클라에서 `examType` → `examCategory` 순으로 그룹핑하는 **3단계** 셀렉트다. 유니크 키가 `(examType, examCategory, name)`이므로 `examType`을 빼고 과목을 특정하면 "수능 국어 문학"과 "내신 국어 문학"이 뒤섞인다.
 
 F11. **`questions.is_public` 또는 지선다 개수를 유형으로 취급.** `is_public` 컬럼은 없다(`QuestionStatus = DRAFT | IN_REVIEW | PUBLISHED | ARCHIVED`). 지선다 개수는 유형이 아니라 `choices` 배열 길이다(zod로 2~8 검증).
 
