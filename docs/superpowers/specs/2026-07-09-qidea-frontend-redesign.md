@@ -24,7 +24,7 @@
 | 4 | 선지별 오답 분포 차트 | `exam_session_answers.selectedChoiceIds`(Json)는 있으나 **집계 API 없음** | 백엔드 신규 필요 → §6 Task B1 |
 | 5 | 평균 풀이 시간 대비 내 기록 | `exam_session_answers.timeSpentSec` 존재. 집계 API 없음 | 위와 동일 엔드포인트에 포함 |
 | 6 | `search_logs` 기반 인기 검색어 | **테이블 자체가 없음** | 신규 테이블+API. §6 Task B3. **컷라인 후보 1순위** |
-| 7 | "사용자들이 만든 문제집에서 문제를 집어감" | `workbooks` 엔티티 없음 | ⚠️ 미결. §2 참조 |
+| 7 | "사용자들이 만든 문제집에서 문제를 집어감" | `Workbook` + `WorkbookQuestion` 실재. `POST /workbooks/:id/fork`, `POST /workbooks/:id/questions` | ✅ 그대로 구현. `visibility`는 `"PRIVATE" \| "PUBLIC"` VARCHAR(boolean `is_public` 아님). §2 참조 |
 | 8 | AI 단계별 풀이 해설 `steps` 아코디언 | `questions.explanation`은 단일 ProseMirror JSON | LLM은 평문만 반환(`CLAUDE.md` 규칙). `buildRichBlocks`가 `\n` 기준 분리 → **최상위 `paragraph` 노드 = 1 step**으로 렌더 |
 | 9 | 인라인 AI 오답 선지 재생성 | 엔드포인트 없음. 기존 `POST /ai-generations`는 BullMQ **비동기 배치** | 동기 엔드포인트 신규 필요 → §6 Task B2 |
 | 10 | KaTeX 전면 제외 | `web/package.json`에 `katex@0.17` 존재 | 의존성 제거. `MathText` 컴포넌트 만들지 않음 |
@@ -41,23 +41,36 @@
 
 ---
 
-## 2. ⚠️ 결정 필요: 문제집(Workbook) 엔티티
+## 2. ✅ 해결됨: 문제집(Workbook) 엔티티 — (B) 채택, 구현 완료
 
-요구서는 `/workbook/create`와 "사용자들이 만든 문제집에서 문제를 집어 새 문제집 구성"을 요구하지만, **DB에 문제집 개념이 없다**. 현재 문항을 묶는 유일한 축은 `ai_generations`(생성 배치)와 `exam_sessions`(응시 세션)다.
+> 2026-07-09 갱신. 이 절은 원래 (A)/(B)/(C) 미결 상태였다. **(B)가 선택되어 이미 백엔드에 배포됐다.** 아래가 현재 사실이다.
 
-세 가지 선택지:
+`prisma/schema.prisma`에 두 모델이 실재한다.
 
-**(A) 라우트명만 차용 — 백엔드 변경 0** ← 권장
-`/workbook/create`는 실제로 "AI 생성 배치 하나"를 만든다. `POST /ai-generations` → `generationId`가 곧 문제집 ID. 문항 재조합은 기존 `POST /exam-sessions { questionIds }`(수동 플레이리스트, 이미 구현됨)로 처리.
-→ 요구서의 UI를 100% 그릴 수 있고, "문제집 발행"은 배치 내 문항 일괄 `publish`.
+- `Workbook` — `id`, `ownerId`, `title`, `description?`, `coverImageUrl?`, `visibility`(VARCHAR `"PRIVATE" | "PUBLIC"` — `questionType`과 같은 앱단 상수 패턴), `forkedFromId?`(통째 포크 출처, 원본이 지워져도 사본은 남는다).
+- 카드 메타 캐시: `viewCount`, `forkCount`, `questionCount`, `attemptCount`, `scoreSumPercent`(Decimal). 평균 점수 = `scoreSumPercent / attemptCount`, 표본 0이면 `null`로 노출. 목록마다 세션을 집계하면 N+1이라 제출 시점에 누적한다.
+- `WorkbookQuestion` — 복합 PK `(workbookId, questionId)`, `displayOrder`, `sourceWorkbookId?`(Pick 출처. 직접 출제한 문항이면 `null`), `addedAt`.
 
-**(B) 최소 `workbooks` 테이블 신설**
-`workbooks(id, ownerId, title, description, isPublic)` + `workbook_questions(workbookId, questionId, order)` M:N. 문제집 탐색/포크가 진짜로 동작. 백엔드 2~3일 추가.
+`src/modules/workbooks/`가 소유하는 엔드포인트:
 
-**(C) 이번 스코프에서 문제집 탐색 제외**
-`/workbook/create`는 출제 관문으로만 쓰고, "남의 문제집에서 문제 집어오기"는 다음 마일스톤.
+| 메서드 | 경로 | 용도 |
+| --- | --- | --- |
+| `GET` | `/workbooks` | 목록·탐색 |
+| `GET` | `/workbooks/:id` | 상세 |
+| `POST` | `/workbooks` | 생성 |
+| `PATCH` | `/workbooks/:id` | 수정 |
+| `DELETE` | `/workbooks/:id` | 삭제 |
+| `POST` | `/workbooks/:id/fork` | 통째 포크 |
+| `POST` | `/workbooks/:id/start` | 응시 세션 시작 |
+| `POST` | `/workbooks/:id/questions` | 문항 담기(Pick) |
+| `DELETE` | `/workbooks/:id/questions/:questionId` | 문항 빼기 |
 
-> **이 문서의 나머지는 (A)를 전제로 작성한다.** (B)를 택하면 §4.1의 데이터 흐름만 교체하면 되고 UI는 동일하다.
+**프론트 영향:**
+
+- `/workbook/create`는 `POST /workbooks`를 부른다. `POST /ai-generations`가 곧 문제집이라는 (A) 전제는 **폐기됐다.** AI 스마트 생성은 여전히 `POST /ai-generations`지만, 그 결과 문항을 `POST /workbooks/:id/questions`로 문제집에 담는 별도 단계가 있다.
+- "사용자들이 만든 문제집에서 문제를 집어 새 문제집 구성"이 진짜로 동작한다. `sourceWorkbookId`가 출처를 기록한다. 프론트는 Pick 출처를 표시할 수 있다.
+- 문제집 응시는 `POST /exam-sessions { questionIds }`를 직접 부르지 않고 `POST /workbooks/:id/start`를 쓴다.
+- `visibility`는 `"PRIVATE" | "PUBLIC"` VARCHAR다. boolean `isPublic`이 아니다.
 
 ---
 
@@ -147,6 +160,8 @@ web/app/
 ## 5. 화면별 설계
 
 ### 5.1 `/workbook/create` — 2-Track 관문
+
+> 2026-07-09 갱신 — 이 화면은 먼저 `POST /workbooks`로 실제 문제집을 만든다(§2). 그 뒤 두 트랙 중 하나로 문항을 채우고, `POST /workbooks/:id/questions`로 담는다. 아래 표의 `POST /ai-generations`는 **AI 트랙의 문항 생성 단계**일 뿐, 문제집 생성 자체가 아니다.
 
 **상단: 분류 선택 (요구서 이미지 기준)**
 
@@ -305,7 +320,9 @@ const spec: VisualizationSpec = {
 
 프론트 §5.3, §5.2를 구현하려면 아래가 먼저 있어야 한다.
 
-**Task B1 — `GET /questions/:id/stats` (`@Public`)**
+> 2026-07-09 갱신 — **B1과 B2는 구현 완료됐다.** `src/modules/questions/questions.controller.ts`에 `@Get(':id/stats')`, `@Post(':id/choices/regenerate')`가 있고 `GeminiLlmService.regenerateChoices`가 뒤를 받친다. 프론트는 지금 바로 호출하면 된다. **B3만 남았다.** 아래 계약은 그대로 유효하다.
+
+**Task B1 — `GET /questions/:id/stats` (`@Public`)** — ✅ 완료
 ```ts
 {
   totalSolved: number;
@@ -318,13 +335,13 @@ const spec: VisualizationSpec = {
 `selectedChoiceIds`는 `Json` 배열이므로 앱단에서 집계한다(MySQL JSON 함수 의존 금지 — TiDB 호환성).
 `avgTimeSpentSec`은 `timeSpentSec IS NOT NULL`인 행만 평균.
 
-**Task B2 — `POST /questions/:id/choices/regenerate` (`@Roles(CREATOR)`)**
+**Task B2 — `POST /questions/:id/choices/regenerate` (`@Roles(CREATOR)`)** — ✅ 완료
 기존 `POST /ai-generations`는 BullMQ 비동기라 인라인 UX에 못 쓴다. `GeminiLlmService`를 **동기 호출**하는 얇은 엔드포인트를 추가한다.
 body `{ stemText: string; correctChoiceText: string; choiceCount: 2~8 }` → `{ distractors: string[] }`.
 LLM은 **평문 배열만** 반환한다(`CLAUDE.md`의 "LLM은 노드 트리를 만들지 않는다" 규칙 준수). ProseMirror 조립은 프론트 저장 시점 또는 `PATCH /questions/:id`에서 `buildRichDoc`으로.
 타임아웃 10초, 실패 시 502.
 
-**Task B3 — `search_logs` + `GET /search/trending` (`@Public`)** — *컷라인 후보*
+**Task B3 — `search_logs` + `GET /search/trending` (`@Public`)** — ❌ 미구현. 유일하게 남은 블로커
 신규 테이블 `search_logs(id, userId?, keyword, createdAt)` + `GET /questions` 호출 시 `q` 파라미터 기록.
 `GET /search/trending?window=7d` → `{ keyword, count }[]` top 10.
 이게 없으면 §5.4의 인기 검색어 패널만 빠지고 나머지는 정상 동작한다.
@@ -356,18 +373,18 @@ LLM은 **평문 배열만** 반환한다(`CLAUDE.md`의 "LLM은 노드 트리를
 | 3 | `/workbook/create` 분류 셀렉터 + 2-Track 카드 | 2, `GET /subjects` |
 | 4 | 생성 폴링 + Skeleton/Shimmer + stagger 교체 | 3 |
 | 5 | `/studio/editor` 폼 바인딩 (`?questionId=`) + 발행 | 3 |
-| 6 | **[BE] Task B2** → 인라인 오답 선지 재생성 | 5 |
-| 7 | **[BE] Task B1** → `/notes/[questionId]` 채점 뷰 + Q&A 트리 | 2 |
+| 6 | 인라인 오답 선지 재생성 (Task B2 완료됨) | 5 |
+| 7 | `/notes/[questionId]` 채점 뷰 + Q&A 트리 (Task B1 완료됨) | 2 |
 | 8 | 통계 위젯 2종 (`@sidebar` parallel route) | 7 |
 | 9 | 🏠 홈 검색 (인기 검색어 슬롯 제외) | 2 |
 | 10 | **[BE] Task B3** → 인기 검색어 패널 | 9 |
 
-6·7의 백엔드 작업이 프론트를 블록한다. 병렬로 시작할 것.
+> 2026-07-09 갱신 — B1·B2가 이미 나갔으므로 6·7은 더 이상 백엔드에 블록되지 않는다. 순수 프론트 작업이다. 남은 백엔드 블로커는 10번(B3)뿐이고, 그것도 인기 검색어 패널만 막는다.
 
 ---
 
 ## 9. 미결 사항
 
-1. **§2 문제집 엔티티** — (A)/(B)/(C) 중 선택 필요. 현재 문서는 (A) 전제.
+1. ~~**§2 문제집 엔티티**~~ — 해결됨. (B) 채택, 백엔드 구현 완료. §2 참조.
 2. **표본 임계값 10** — `totalSolved < 10`에서 통계를 숨기는 기준은 §5.3에서 임의로 정했다. 제품 판단 필요.
 3. **오답 선지 재생성 시 정답 보존** — 요구서는 "오답 선지 배열만 부분 갱신"이라 했으나, 정답까지 바꿀지(=문항 전면 재구성) 여부가 불명확. 현재 문서는 정답 보존 전제.
