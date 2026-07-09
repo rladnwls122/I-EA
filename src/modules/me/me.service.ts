@@ -26,6 +26,7 @@ export class MeService {
       orderBy: { submittedAt: 'desc' },
       include: {
         subject: { select: { name: true } },
+        workbook: { select: { id: true, title: true } },
         sessionQuestions: { include: { answer: { select: { isCorrect: true } } } },
       },
     });
@@ -34,7 +35,10 @@ export class MeService {
       const correct = s.sessionQuestions.filter((q) => q.answer?.isCorrect === true).length;
       return {
         id: s.id,
-        subjectName: s.subject.name,
+        // 문제집 응시(Pick & Mix)는 교차 과목이라 소분류가 없다. 대신 문제집 제목을 노출한다.
+        subjectName: s.subject?.name ?? null,
+        workbookId: s.workbook?.id ?? null,
+        workbookTitle: s.workbook?.title ?? null,
         status: s.status,
         submittedAt: s.submittedAt,
         total,

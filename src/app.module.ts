@@ -7,6 +7,7 @@ import { JwtAuthGuard } from './modules/auth/jwt-auth.guard';
 import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { QuestionsModule } from './modules/questions/questions.module';
+import { WorkbooksModule } from './modules/workbooks/workbooks.module';
 import { CommentsModule } from './modules/comments/comments.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { MediaModule } from './modules/media/media.module';
@@ -39,6 +40,7 @@ import { MeModule } from './modules/me/me.module';
     AuthModule,
     CatalogModule,
     QuestionsModule,
+    WorkbooksModule,
     CommentsModule,
     ReviewsModule,
     MediaModule,

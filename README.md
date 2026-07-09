@@ -6,7 +6,7 @@ AI 문항 출제 · 모의고사 조립/응시 플랫폼의 백엔드 API. **Nes
 ## 실행
 
 ```bash
-cp .env.example .env      # DB/Redis/JWT/Anthropic 키 채우기
+cp .env.example .env      # DB/Redis/JWT/Gemini 키 채우기
 npm install
 npm run prisma:generate   # Prisma Client 생성
 npm run prisma:migrate    # 스키마 마이그레이션(개발)

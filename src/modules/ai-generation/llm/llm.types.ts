@@ -34,6 +34,26 @@ export interface LlmGenerationResult {
   questions: LlmQuestion[];
 }
 
+/**
+ * 선지 재생성 컨텍스트 (인라인 UX, 동기 호출).
+ * 에디터에 떠 있는 "현재" 지문 텍스트를 받는다 — 저장된 값이 아니다.
+ */
+export interface LlmRegenerateChoicesContext {
+  /** 에디터 상의 발문 평문 */
+  stemText: string;
+  /** 생성할 선지 개수 (2~8) */
+  choiceCount: number;
+  difficulty?: number;
+  subjectName?: string;
+  examCategory?: string;
+  examType?: string;
+}
+
+/** 선지 재생성 결과. 정답 포함 전체 선지 집합을 새로 만든다. */
+export interface LlmRegenerateChoicesResult {
+  choices: LlmChoice[];
+}
+
 /** 생성 파이프라인에 넘기는 컨텍스트 */
 export interface LlmGenerationContext {
   prompt: string;
@@ -41,8 +61,10 @@ export interface LlmGenerationContext {
   questionCount: number;
   includePassage: boolean;
   questionType?: QuestionKind;
-  /** 세부과목명 (예: 문학) */
+  /** 소분류명 (예: 문학) */
   subjectName?: string;
   /** 대분류 (예: 국어) */
   examCategory?: string;
+  /** 시험 (예: 수능, 내신). 누락 시 LLM이 수능 스타일로 치우친다. */
+  examType?: string;
 }

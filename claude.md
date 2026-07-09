@@ -72,7 +72,7 @@ Media/visuals are minimal in the MVP: images only. The client crops and uploads 
 - On failure it re-throws so BullMQ retries with backoff; only after retries are exhausted does it set `FAILED`.
 - Clients poll `GET /ai-generations/:id` for `PENDING → COMPLETED/FAILED` and the resulting IDs.
 
-**LLM provider caveat:** two services exist — `GeminiLlmService` and `AnthropicLlmService` — but `AiGenerationService` and the processor are both wired to **Gemini** (`GeminiLlmService`, calling the Gemini REST API via `fetch`). The `@anthropic-ai/sdk` dependency and the "Anthropic" mention in `README.md` are vestigial. To switch providers, change the injected class in both `ai-generation.service.ts` and `ai-generation.processor.ts`.
+**LLM provider:** Gemini only. `GeminiLlmService` calls the Gemini REST API via `fetch`, and is the single class injected into `AiGenerationService` and `AiGenerationProcessor`. The vestigial `AnthropicLlmService` and the `@anthropic-ai/sdk` dependency were removed — do not reintroduce a second provider without a concrete need.
 
 ### Exam sessions — snapshot, mask, grade
 

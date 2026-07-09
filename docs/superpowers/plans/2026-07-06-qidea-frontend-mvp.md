@@ -1,5 +1,10 @@
 # Q-Idea 프론트엔드 1주 E2E 데모 Implementation Plan
 
+> ⚠️ **부분 폐기 (2026-07-09)** — `specs/2026-07-09-qidea-frontend-redesign.md`가 우선한다.
+> **Task 8(VizRenderer + KaTeX)과 Task 9(AI 시각화 Route Handler)는 실행하지 말 것.** LLM 생성 시각화와 KaTeX는 제품에서 제외됐다.
+> Task 6의 `UnitTreeSelect`는 `SubjectSelect`(대분류→세부과목 2단계)로 대체한다 — `units` 테이블은 존재하지 않는다.
+> Task 0~5, 7은 유효하되 화면 구성은 새 스펙을 따른다.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 이미 배포된 NestJS 백엔드 위에, Next.js 프론트엔드로 출제자→응시자 골든패스 E2E 데모 + 수험생 생태계 기능(리뷰·댓글·메모·필기·오답노트·AI 시각화)을 1주 안에 완성한다.

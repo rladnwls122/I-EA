@@ -11,11 +11,13 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { Public } from '@/common/decorators/public.decorator';
 import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
 import { QuestionsService } from './questions.service';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QueryQuestionDto } from './dto/query-question.dto';
+import { RegenerateChoicesDto } from './dto/regenerate-choices.dto';
 
 @ApiTags('questions')
 @ApiBearerAuth()
@@ -33,6 +35,25 @@ export class QuestionsController {
   @ApiOperation({ summary: '문제 상세 조회 (콘텐츠·태그·정답률 포함)' })
   get(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.getById(id);
+  }
+
+  @Get(':id/stats')
+  @Public()
+  @ApiOperation({ summary: '문항 통계 — 선지별 분포 / 정답률 / 평균 풀이시간 (인증 불필요)' })
+  stats(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getStats(id);
+  }
+
+  @Post(':id/choices/regenerate')
+  @ApiOperation({
+    summary: 'AI 선지 재생성 (작성자 본인). 정답 포함 전체 재생성이며 저장하지 않는다',
+  })
+  regenerateChoices(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: RegenerateChoicesDto,
+  ) {
+    return this.service.regenerateChoices(id, user.id, dto);
   }
 
   @Post()

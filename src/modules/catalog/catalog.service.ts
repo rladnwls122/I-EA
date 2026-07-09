@@ -9,19 +9,23 @@ export class CatalogService {
 
   // --- subjects (세부과목) --------------------------------------------
 
-  /** 세부과목 목록. 대분류(examCategory) → 정렬순으로 정렬해 내려준다(프론트가 대분류로 그룹핑). */
+  /**
+   * 3단 분류 리프 목록. 시험(examType) → 대분류(examCategory) → 정렬순.
+   * 프론트가 이 순서 그대로 Cascading 필터(시험 → 대분류 → 소분류)를 그린다.
+   */
   listSubjects() {
     return this.prisma.subject.findMany({
       where: { isActive: true },
-      orderBy: [{ examCategory: 'asc' }, { sortOrder: 'asc' }],
+      orderBy: [{ examType: 'asc' }, { examCategory: 'asc' }, { sortOrder: 'asc' }],
     });
   }
 
   createSubject(dto: CreateSubjectDto) {
     return this.prisma.subject.create({
       data: {
-        name: dto.name,
+        examType: dto.examType,
         examCategory: dto.examCategory,
+        name: dto.name,
         sortOrder: dto.sortOrder ?? 0,
       },
     });

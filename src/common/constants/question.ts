@@ -23,3 +23,14 @@ export const REASON_LABELS: Record<ReasonCode, string> = {
   TIME: '시간부족',
   OTHER: '기타',
 };
+
+// 문제집 공개 범위. questionType과 같이 enum이 아니라 VARCHAR로 저장한다.
+export const WORKBOOK_VISIBILITIES = ['PRIVATE', 'PUBLIC'] as const;
+export type WorkbookVisibility = (typeof WORKBOOK_VISIBILITIES)[number];
+
+/**
+ * 문항 통계(정답률·평균 풀이시간) 노출 최소 표본.
+ * 표본이 이보다 적으면 null을 반환해 "3명 중 1명이 틀림 = 정답률 67%" 같은
+ * 오해를 막는다. 선지 분포는 개별 응답 수라 이 임계값을 적용하지 않는다.
+ */
+export const STATS_MIN_SAMPLE = 10;

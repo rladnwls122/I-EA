@@ -25,25 +25,35 @@ export class ExamSessionsService {
    * 원본 문제가 이후 수정/보관돼도 채점 근거가 흔들리지 않게 한다.
    */
   async create(userId: string, dto: CreateSessionDto) {
-    const subject = await this.prisma.subject.findUnique({
-      where: { id: dto.subjectId },
-      select: { id: true },
-    });
-    if (!subject) throw new NotFoundException('세부과목을 찾을 수 없습니다.');
+    // 필터 모드에서만 소분류가 필요하다(DTO의 @ValidateIf가 강제).
+    // 플레이리스트 모드는 문제집(Pick & Mix)이 여러 소분류를 섞으므로 subjectId를 받지 않는다.
+    if (dto.subjectId) {
+      const subject = await this.prisma.subject.findUnique({
+        where: { id: dto.subjectId },
+        select: { id: true },
+      });
+      if (!subject) throw new NotFoundException('소분류를 찾을 수 없습니다.');
+    }
 
     // 두 모드: (1) 플레이리스트 — 지정 문항, (2) 필터 — 조건 랜덤 추출.
     let picked: string[];
     if (dto.questionIds?.length) {
-      // 지정 문항 중 해당 세부과목의 PUBLISHED만, 지정 순서를 보존해 세트를 구성한다.
+      // 지정 문항 중 PUBLISHED만, 지정 순서를 보존해 세트를 구성한다.
+      // 과목은 강제하지 않는다 — 문제집은 교차 과목을 허용한다.
       const found = await this.prisma.question.findMany({
-        where: { id: { in: dto.questionIds }, status: 'PUBLISHED', subjectId: dto.subjectId },
+        where: { id: { in: dto.questionIds }, status: 'PUBLISHED' },
         select: { id: true },
       });
       const ok = new Set(found.map((q) => q.id));
-      picked = dto.questionIds.filter((id) => ok.has(id));
-      if (picked.length === 0) {
-        throw new BadRequestException('플레이리스트에 유효한(발행된) 문항이 없습니다.');
+      // 일부만 유효하면 조용히 버리지 않고 거부한다.
+      // (과거에는 걸러진 문항 없이 짧은 시험이 만들어져 사용자가 알아챌 수 없었다.)
+      const missing = [...new Set(dto.questionIds)].filter((id) => !ok.has(id));
+      if (missing.length) {
+        throw new BadRequestException(
+          `플레이리스트에 발행되지 않았거나 존재하지 않는 문항이 있습니다: ${missing.join(', ')}`,
+        );
       }
+      picked = dto.questionIds.filter((id) => ok.has(id));
     } else {
       if (!dto.questionCount) {
         throw new BadRequestException('questionCount 또는 questionIds 중 하나가 필요합니다.');
@@ -80,9 +90,10 @@ export class ExamSessionsService {
       const created = await tx.examSession.create({
         data: {
           userId,
-          subjectId: dto.subjectId,
+          subjectId: dto.subjectId ?? null,
+          workbookId: dto.workbookId ?? null,
           filterCriteria: (dto.questionIds?.length
-            ? { mode: 'playlist', questionIds: picked }
+            ? { mode: 'playlist', questionIds: picked, workbookId: dto.workbookId ?? null }
             : { mode: 'filter', questionCount: dto.questionCount, ...(dto.filter ?? {}) }) as JsonWritable,
           status: 'IN_PROGRESS',
           startedAt: new Date(),
@@ -260,7 +271,11 @@ export class ExamSessionsService {
       where: { id },
       include: {
         sessionQuestions: {
-          include: { answer: { select: { isCorrect: true } } },
+          include: {
+            answer: {
+              select: { isCorrect: true, selectedChoiceIds: true, timeSpentSec: true },
+            },
+          },
         },
       },
     });
@@ -272,6 +287,10 @@ export class ExamSessionsService {
     let correct = 0;
     let answered = 0;
     const gradedQuestionIds: { id: string; correct: boolean }[] = [];
+    // 평균 풀이시간 캐시: 채점 여부와 무관하게 시간이 기록된 답안만 집계한다.
+    const timed: { id: string; sec: number }[] = [];
+    // 선지별 오답 분포: 선택된 선지 id마다 +1.
+    const choicePicks: { questionId: string; choiceId: string }[] = [];
 
     for (const sq of session.sessionQuestions) {
       const isCorrect = sq.answer?.isCorrect;
@@ -281,18 +300,38 @@ export class ExamSessionsService {
       if (isCorrect === true || isCorrect === false) {
         gradedQuestionIds.push({ id: sq.questionId, correct: isCorrect });
       }
+
+      const sec = sq.answer?.timeSpentSec;
+      if (typeof sec === 'number' && sec >= 0) timed.push({ id: sq.questionId, sec });
+
+      for (const choiceId of this.readChoiceIds(sq.answer?.selectedChoiceIds)) {
+        choicePicks.push({ questionId: sq.questionId, choiceId });
+      }
     }
 
     const now = new Date();
     const durationSec = session.startedAt
       ? Math.max(0, Math.round((now.getTime() - session.startedAt.getTime()) / 1000))
       : null;
+    const scorePercent = total > 0 ? Math.round((correct / total) * 1000) / 10 : 0;
 
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.examSession.update({
         where: { id },
         data: { status: 'SUBMITTED', submittedAt: now, durationSec },
       });
+
+      // 문제집 응시면 평균 점수 캐시를 누적한다(avg = scoreSumPercent / attemptCount).
+      // 목록 카드마다 세션을 집계하면 N+1이 되므로 여기서 미리 더한다.
+      if (session.workbookId) {
+        await tx.workbook.update({
+          where: { id: session.workbookId },
+          data: {
+            attemptCount: { increment: 1 },
+            scoreSumPercent: { increment: scorePercent },
+          },
+        });
+      }
 
       // 문항별 정답률 캐시 갱신(같은 문항이 여러 번 나오는 경우는 없다고 가정).
       for (const g of gradedQuestionIds) {
@@ -304,6 +343,26 @@ export class ExamSessionsService {
           },
         });
       }
+
+      // 평균 풀이시간 캐시(avg = totalTimeSpentSec / timedSolvedCount).
+      for (const t of timed) {
+        await tx.question.update({
+          where: { id: t.id },
+          data: {
+            totalTimeSpentSec: { increment: t.sec },
+            timedSolvedCount: { increment: 1 },
+          },
+        });
+      }
+
+      // 선지별 선택 분포. 해당 (문항,선지) 행이 없으면 만들고 있으면 +1.
+      for (const p of choicePicks) {
+        await tx.questionChoiceStat.upsert({
+          where: { questionId_choiceId: { questionId: p.questionId, choiceId: p.choiceId } },
+          create: { questionId: p.questionId, choiceId: p.choiceId, count: 1 },
+          update: { count: { increment: 1 } },
+        });
+      }
     });
 
     return {
@@ -312,7 +371,7 @@ export class ExamSessionsService {
       total,
       answered,
       correct,
-      scorePercent: total > 0 ? Math.round((correct / total) * 1000) / 10 : 0,
+      scorePercent,
       durationSec,
     };
   }
@@ -372,6 +431,16 @@ export class ExamSessionsService {
 
   // --- 헬퍼 -----------------------------------------------------------
 
+  /**
+   * exam_session_answers.selected_choice_ids는 Json 컬럼이라 런타임 형태를 보장할 수 없다.
+   * 문자열 배열만 통과시키고 나머지(null/객체/숫자)는 빈 배열로 흘린다.
+   * 중복 선택은 한 번만 센다(같은 선지를 두 번 담아 분포를 부풀리지 못하도록).
+   */
+  private readChoiceIds(raw: unknown): string[] {
+    if (!Array.isArray(raw)) return [];
+    return [...new Set(raw.filter((v): v is string => typeof v === 'string' && v.length > 0))];
+  }
+
   private buildQuestionWhere(dto: CreateSessionDto): Prisma.QuestionWhereInput {
     const f = dto.filter ?? {};
     const difficulty =
@@ -381,8 +450,8 @@ export class ExamSessionsService {
 
     return {
       status: 'PUBLISHED',
-      // 세부과목 소속.
-      subjectId: dto.subjectId,
+      // 소분류 소속. 필터 모드에서만 호출되며 DTO의 @ValidateIf가 존재를 보장한다.
+      subjectId: dto.subjectId!,
       ...(f.questionTypes?.length ? { questionType: { in: f.questionTypes } } : {}),
       ...(difficulty ? { difficulty } : {}),
       ...(f.tagIds?.length ? { questionTags: { some: { tagId: { in: f.tagIds } } } } : {}),

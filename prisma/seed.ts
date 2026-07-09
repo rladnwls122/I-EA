@@ -29,16 +29,23 @@ async function main() {
     },
   });
 
-  // 세부과목 시드 (exam_category=대분류, name=세부과목)
+  // 3단 분류 시드 (exam_type=시험, exam_category=대분류, name=소분류)
+  // update에도 examType을 넣어, 컬럼 추가 이전에 생성된 기존 행을 재시드로 백필한다.
   const 문학 = await prisma.subject.upsert({
     where: { id: 'seed-subj-lit' },
-    update: {},
-    create: { id: 'seed-subj-lit', name: '문학', examCategory: '국어', sortOrder: 1 },
+    update: { examType: '수능' },
+    create: { id: 'seed-subj-lit', examType: '수능', examCategory: '국어', name: '문학', sortOrder: 1 },
   });
   const 언매 = await prisma.subject.upsert({
     where: { id: 'seed-subj-lang' },
-    update: {},
-    create: { id: 'seed-subj-lang', name: '언어와매체', examCategory: '국어', sortOrder: 2 },
+    update: { examType: '수능' },
+    create: { id: 'seed-subj-lang', examType: '수능', examCategory: '국어', name: '언어와매체', sortOrder: 2 },
+  });
+  // Cascading 필터(시험 → 대분류 → 소분류)를 프론트에서 검증하려면 대분류가 2개 이상 필요하다.
+  await prisma.subject.upsert({
+    where: { id: 'seed-subj-calc' },
+    update: { examType: '수능' },
+    create: { id: 'seed-subj-calc', examType: '수능', examCategory: '수학', name: '미적분', sortOrder: 1 },
   });
 
   // PUBLISHED 문항 (ProseMirror JSON 최소형)

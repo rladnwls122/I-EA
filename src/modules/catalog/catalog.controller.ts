@@ -7,8 +7,8 @@ import { CatalogService } from './catalog.service';
 import { CreateSubjectDto, CreateTagDto } from './dto/catalog.dto';
 
 /**
- * 세부과목/태그 마스터. 조회는 모든 인증 사용자, 생성은 ADMIN/CREATOR로 제한한다.
- * (단원 트리는 MVP에서 제거 — 문제는 세부과목[subjects]에 직접 분류된다.)
+ * 분류/태그 마스터. 조회는 모든 인증 사용자, 생성은 ADMIN/CREATOR로 제한한다.
+ * (단원 트리는 MVP에서 제거 — 문제는 3단 분류의 리프[subjects]에 직접 분류된다.)
  */
 @ApiTags('catalog')
 @ApiBearerAuth()
@@ -19,14 +19,14 @@ export class CatalogController {
 
   // subjects (세부과목)
   @Get('subjects')
-  @ApiOperation({ summary: '세부과목 목록 (대분류 examCategory 포함)' })
+  @ApiOperation({ summary: '소분류 목록 (시험 examType · 대분류 examCategory 포함)' })
   listSubjects() {
     return this.service.listSubjects();
   }
 
   @Post('subjects')
   @Roles(UserRoleType.ADMIN)
-  @ApiOperation({ summary: '세부과목 생성 (ADMIN)' })
+  @ApiOperation({ summary: '소분류 생성 (ADMIN)' })
   createSubject(@Body() dto: CreateSubjectDto) {
     return this.service.createSubject(dto);
   }

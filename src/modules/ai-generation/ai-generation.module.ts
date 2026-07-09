@@ -4,14 +4,13 @@ import { ConfigModule } from '@nestjs/config';
 import { AiGenerationController } from './ai-generation.controller';
 import { AiGenerationService } from './ai-generation.service';
 import { AiGenerationProcessor } from './ai-generation.processor';
-import { AnthropicLlmService } from './llm/anthropic-llm.service';
 import { GeminiLlmService } from './llm/gemini-llm.service';
 import { AI_GENERATION_QUEUE } from './ai-generation.constants';
 
 @Module({
   imports: [ConfigModule, BullModule.registerQueue({ name: AI_GENERATION_QUEUE })],
   controllers: [AiGenerationController],
-  providers: [AiGenerationService, AiGenerationProcessor, AnthropicLlmService, GeminiLlmService],
+  providers: [AiGenerationService, AiGenerationProcessor, GeminiLlmService],
   // GeminiLlmService를 export → 이 모듈을 import하는 다른 모듈의 클래스에서도 주입/참조 가능.
   exports: [AiGenerationService, GeminiLlmService],
 })

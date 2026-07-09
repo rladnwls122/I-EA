@@ -1,6 +1,16 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsIn, IsInt, IsOptional, IsUUID, Max, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsUUID,
+  Max,
+  Min,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator';
 import { QUESTION_KINDS, QuestionKind } from '@/common/constants/question';
 
 /** exam_sessions.filter_criteria에 스냅샷으로 저장되는 조립 조건(필터 모드). */
@@ -35,12 +45,22 @@ export class SessionFilterDto {
 /**
  * 모의고사 조립. 두 가지 모드:
  * - 플레이리스트 모드: questionIds로 특정 문항을 직접 지정(있으면 filter/questionCount 무시).
- * - 필터 모드: 세부과목(subjectId) + filter 조건으로 questionCount개 랜덤 추출.
+ *   문제집(Pick & Mix)이 여러 소분류를 섞을 수 있으므로 subjectId를 요구하지 않는다.
+ * - 필터 모드: 소분류(subjectId) + filter 조건으로 questionCount개 랜덤 추출.
+ *   buildQuestionWhere()가 subjectId로 후보를 좁히므로 여전히 필수다.
  */
 export class CreateSessionDto {
-  @ApiProperty({ description: '세부과목 ID' })
+  @ApiPropertyOptional({
+    description: '소분류 subject ID. 필터 모드에서만 필수(플레이리스트 모드는 교차 과목 허용)',
+  })
+  @ValidateIf((o: CreateSessionDto) => !o.questionIds?.length)
   @IsUUID()
-  subjectId!: string;
+  subjectId?: string;
+
+  @ApiPropertyOptional({ description: '이 세션이 응시한 문제집 ID(평균점수 집계원)' })
+  @IsOptional()
+  @IsUUID()
+  workbookId?: string;
 
   @ApiPropertyOptional({
     description: '수동 플레이리스트: 지정 문항 ID들로 세트 구성(있으면 filter/questionCount 무시)',

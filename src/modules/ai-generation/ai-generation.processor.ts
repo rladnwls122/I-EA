@@ -35,7 +35,7 @@ export class AiGenerationProcessor extends WorkerHost {
     const generation = await this.prisma.aiGeneration.findUnique({
       where: { id: generationId },
       include: {
-        subject: { select: { name: true, examCategory: true } },
+        subject: { select: { name: true, examCategory: true, examType: true } },
       },
     });
     if (!generation) {
@@ -57,6 +57,7 @@ export class AiGenerationProcessor extends WorkerHost {
       questionType: (params.questionType as QuestionKind) ?? undefined,
       subjectName: generation.subject?.name,
       examCategory: generation.subject?.examCategory,
+      examType: generation.subject?.examType,
     };
 
     try {
