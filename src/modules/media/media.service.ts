@@ -1,13 +1,26 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { CreateMediaDto } from './dto/create-media.dto';
+import { PresignMediaDto } from './dto/presign-media.dto';
+import { S3Service } from './s3.service';
 
-/** media_assets — 이미지(외부 스토리지 URL). 지문 또는 문제 중 하나에만 배타 귀속. */
+/** media_assets — 이미지(S3 스토리지 URL). 지문 또는 문제 중 하나에만 배타 귀속. */
 @Injectable()
 export class MediaService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly s3: S3Service,
+  ) {}
+
+  /** S3 presigned POST 발급. 흐름: presign → 클라가 S3에 multipart POST → POST /media-assets 등록. */
+  presign(dto: PresignMediaDto) {
+    return this.s3.createPresignedPost(dto.contentType, dto.contentLength);
+  }
 
   async create(uploaderId: string, dto: CreateMediaDto) {
+    // 임의 URL 등록 방지: 우리 버킷/공개 베이스 접두로 시작하지 않으면 400.
+    this.s3.assertOwnedPublicUrl(dto.storageUrl);
+
     // CHECK 제약(지문 XOR 문제) 사전 검증 — DB 에러 대신 명확한 400을 준다.
     const boundToPassage = !!dto.passageId;
     const boundToQuestion = !!dto.questionId;

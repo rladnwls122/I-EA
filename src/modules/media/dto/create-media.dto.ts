@@ -5,14 +5,15 @@ import { IsEnum, IsInt, IsOptional, IsPositive, IsUrl, IsUUID, MaxLength } from 
 /**
  * media_assets. DDL의 CHECK(지문 XOR 문제 배타적 매핑)을 애플리케이션에서도 보장한다:
  * passageId와 questionId 중 정확히 하나만 지정해야 한다.
- * 파일 업로드는 클라이언트가 Supabase Storage에 직접 수행하고, 여기엔 결과 public URL만 등록한다.
+ * 파일 업로드는 클라이언트가 presign(POST /media-assets/presign)으로 받은 url·fields로 S3에
+ * multipart POST 하고(PUT 아님), 여기엔 결과 public URL만 등록한다. storageUrl은 우리 버킷/공개 베이스 접두여야 한다(서버가 검증).
  */
 export class CreateMediaDto {
   @ApiProperty({ enum: MediaAssetType, description: 'IMAGE (MVP는 이미지 전용)' })
   @IsEnum(MediaAssetType)
   assetType!: MediaAssetType;
 
-  @ApiProperty({ description: 'Supabase Storage 등 외부 스토리지 public URL', maxLength: 500 })
+  @ApiProperty({ description: 'S3 등 외부 스토리지 public URL (우리 버킷 접두)', maxLength: 500 })
   @IsUrl({ require_tld: false })
   @MaxLength(500)
   storageUrl!: string;

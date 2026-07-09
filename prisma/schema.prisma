@@ -253,7 +253,7 @@ model MediaAsset {
   generationId String?        @map("generation_id") @db.Char(36)
   uploaderId   String         @map("uploader_id") @db.Char(36)
   assetType    MediaAssetType @map("asset_type")
-  // Supabase Storage 등 외부 스토리지 public URL (클라 직접 업로드 결과)
+  // S3 등 외부 스토리지 public URL (클라가 presign 받아 직접 업로드한 결과)
   storageUrl   String         @map("storage_url") @db.VarChar(500)
   widthPx      Int?           @map("width_px")
   heightPx     Int?           @map("height_px")

@@ -6,13 +6,14 @@
 
 ## 1. 설계 원칙
 
-* **단원 트리 대신 세부 과목으로 직접 분류한다.** 현재 MVP에는 `units` 테이블이 없다. `subjects.exam_category`가 대분류(예: 국어, 수학), `subjects.name`이 세부 과목(예: 문학, 독해)을 나타내고, `questions.subject_id`가 이를 직접 참조한다.
+* **단원 트리 대신 3단 분류의 세부 과목으로 직접 분류한다.** 현재 MVP에는 `units` 테이블이 없다. `subjects.exam_type`이 시험(예: 수능, 내신), `subjects.exam_category`가 대분류(예: 국어, 수학), `subjects.name`이 소분류(예: 문학, 독해)를 나타내고, `questions.subject_id`가 이를 직접 참조한다. (수능 국어 문학과 내신 국어 문학은 별개 행으로 관리)
 * **문항 본문은 ProseMirror/Tiptap JSON으로 저장한다.** `questions.stem`, `questions.choices`, `questions.explanation`, `passages.content`는 모두 `Json` 컬럼이다. LLM은 평문만 만들고, 서버의 ProseMirror 유틸이 JSON 문서로 조립한다.
 * **응시 시점의 문항은 스냅샷으로 고정한다.** `exam_session_questions.snapshot`에 출제 당시 문항 내용을 저장해, 이후 원본 문제가 수정되어도 이미 응시한 시험의 채점 기준은 바뀌지 않는다.
-* **출제자는 문항별 풀이 힌트를 등록할 수 있다.** `questions.hint_content`가 출제자 제공 힌트 원본이다. 시험 조립 시 스냅샷에도 함께 고정되어, 지난 풀이 세션과 오답노트에서 당시 힌트 내용을 재현할 수 있다.
+* **출제자는 문항별 풀이 힌트를 등록할 수 정할 수 있다.** `questions.hint_content`가 출제자 제공 힌트 원본이다. 시험 조립 시 스냅샷에도 함께 고정되어, 지난 풀이 세션과 오답노트에서 당시 힌트 내용을 재현할 수 있다.
 * **힌트 열람 이력은 풀이 세션 단위로 추적한다.** 사용자가 풀이 중 힌트를 열면 `exam_session_questions.is_hint_used`와 `hint_used_at`에 기록한다. 오답노트는 틀린 답안의 `exam_session_question_id`를 따라가 지난 세션의 힌트 사용 여부, 최초 열람 시각, 스냅샷 힌트를 표시한다.
 * **오답노트는 문항 주석과 오답 풀이 이력을 분리한다.** `user_question_annotations`는 드래그 기반 하이라이트/밑줄/메모를 저장하고, 오답 여부와 풀이 세션 정보는 `exam_session_answers` 및 `exam_session_questions`에서 가져온다.
 * **비밀번호는 해시만 저장한다.** `users.password_hash`에는 bcrypt 해시를 저장하며 평문 비밀번호는 저장하지 않는다.
+* **문제집(Pick & Mix) 기능을 통해 문항을 묶어 관리한다.** 사용자는 여러 소분류를 섞어 자신만의 문제집(`workbooks`)을 만들 수 있으며, 문항 복사가 아닌 참조(`workbook_questions.question_id`) 방식을 사용하여 원본 문항의 수정사항이 반영되도록 한다. 
 
 ## 2. ERD
 
@@ -27,6 +28,7 @@ erDiagram
     USERS ||--o{ QUESTION_REVIEWS : "reviews"
     USERS ||--o{ QUESTION_COMMENTS : "comments"
     USERS ||--o{ USER_QUESTION_ANNOTATIONS : "writes"
+    USERS ||--o{ WORKBOOKS : "owns"
 
     SUBJECTS ||--o{ AI_GENERATIONS : "scopes"
     SUBJECTS ||--o{ QUESTIONS : "classifies"
@@ -46,6 +48,11 @@ erDiagram
     QUESTIONS ||--o{ QUESTION_REVIEWS : "reviewed in"
     QUESTIONS ||--o{ QUESTION_COMMENTS : "commented on"
     QUESTIONS ||--o{ USER_QUESTION_ANNOTATIONS : "annotated in"
+    QUESTIONS ||--o{ QUESTION_CHOICE_STATS : "stats"
+    QUESTIONS ||--o{ WORKBOOK_QUESTIONS : "referenced by"
+
+    WORKBOOKS ||--o{ WORKBOOK_QUESTIONS : "contains"
+    WORKBOOKS ||--o{ EXAM_SESSIONS : "taken as"
 
     EXAM_SESSIONS ||--o{ EXAM_SESSION_QUESTIONS : "contains"
     EXAM_SESSION_QUESTIONS ||--o| EXAM_SESSION_ANSWERS : "answered by"
@@ -105,17 +112,18 @@ erDiagram
 | user_id | userId | CHAR(36), PK/FK | `users.id`, 삭제 시 cascade |
 | role | role | UserRoleType, PK | CREATOR, CONSUMER, ADMIN |
 
-### 4.3 `subjects` - 세부 과목 (Prisma: `Subject`)
+### 4.3 `subjects` - 3단 분류의 세부 과목 (Prisma: `Subject`)
 
 | DB 컬럼 | Prisma 필드 | 타입 | 설명 |
 | --- | --- | --- | --- |
 | id | id | CHAR(36) PK | UUID |
-| name | name | VARCHAR(100) | 세부 과목명 |
-| exam_category | examCategory | VARCHAR(50) | 대분류 |
+| exam_type | examType | VARCHAR(50) | 시험 (수능, 내신 등). 기본값 "수능" |
+| exam_category | examCategory | VARCHAR(50) | 대분류 (국어, 수학 등) |
+| name | name | VARCHAR(100) | 소분류 (문학, 미적분 등) |
 | sort_order | sortOrder | INT | 정렬 순서 |
 | is_active | isActive | BOOLEAN | 사용 여부 |
 
-인덱스: `(exam_category, sort_order)`
+인덱스: `(exam_type, exam_category, name)` (유니크), `(exam_type, exam_category, sort_order)`
 
 ### 4.4 `tags` - 문항 태그 (Prisma: `Tag`)
 
@@ -158,7 +166,7 @@ erDiagram
 | generation_id | generationId | CHAR(36), nullable FK | AI 생성 작업 |
 | subject_id | subjectId | CHAR(36), FK | 세부 과목, NOT NULL |
 | passage_id | passageId | CHAR(36), nullable FK | 연결 지문 |
-| question_type | questionType | VARCHAR(20) | 현재 DTO 상수 기준: 객관식/주관식 |
+| question_type | questionType | VARCHAR(20) | 앱단 상수 기준: 객관식/주관식 |
 | stem | stem | JSON | 발문 리치 문서 |
 | choices | choices | JSON, nullable | 객관식 보기 배열/문서 |
 | explanation | explanation | JSON, nullable | 해설 리치 문서 |
@@ -173,7 +181,9 @@ erDiagram
 | hint_content | hintContent | TEXT, nullable | 출제자가 문제 편집/풀이 설계 단계에서 등록하는 풀이 힌트 |
 | total_solved_count | totalSolvedCount | INT | 누적 풀이 수 캐시 |
 | correct_solved_count | correctSolvedCount | INT | 누적 정답 수 캐시 |
-| view_count | viewCount | INT | 누적 조회수 캐시 |
+| view_count | viewCount | INT | 누적 조회수 (인기순 정렬 최적화용) |
+| total_time_spent_sec | totalTimeSpentSec | INT | 풀이시간 합계 (평균 계산용) |
+| timed_solved_count | timedSolvedCount | INT | 시간 기록된 풀이 횟수 |
 | created_at | createdAt | DateTime | 생성 시각 |
 | updated_at | updatedAt | DateTime | 수정 시각 |
 
@@ -214,12 +224,15 @@ erDiagram
 | --- | --- | --- | --- |
 | id | id | CHAR(36) PK | UUID |
 | user_id | userId | CHAR(36), FK | 응시자 |
-| subject_id | subjectId | CHAR(36), FK | 세부 과목 |
+| subject_id | subjectId | CHAR(36), nullable FK | 세부 과목 (문제집 통째 응시 시 null 가능) |
+| workbook_id | workbookId | CHAR(36), nullable FK | 문제집 통째 응시 출처 |
 | filter_criteria | filterCriteria | JSON | 수동 선택 또는 필터 조건 스냅샷 |
 | status | status | ExamSessionStatus | IN_PROGRESS, SUBMITTED, EXPIRED |
 | started_at | startedAt | DateTime, nullable | 시작 시각 |
 | submitted_at | submittedAt | DateTime, nullable | 제출 시각 |
 | duration_sec | durationSec | INT, nullable | 제한/풀이 시간 |
+
+인덱스: `(workbook_id, status)`
 
 ### 4.11 `exam_session_questions` - 세션별 문항 스냅샷 (Prisma: `ExamSessionQuestion`)
 
@@ -232,6 +245,8 @@ erDiagram
 | snapshot | snapshot | JSON | 출제 당시 문항 전체 스냅샷 |
 | is_hint_used | isHintUsed | BOOLEAN | 해당 풀이에서 힌트를 열람했는지 여부, 기본값 false |
 | hint_used_at | hintUsedAt | DateTime, nullable | 힌트를 최초로 연 시각 |
+
+인덱스: `question_id`, `exam_session_id`
 
 오답노트 표시 흐름:
 
@@ -302,11 +317,50 @@ erDiagram
 
 인덱스: `(user_id, question_id)`, `(user_id, updated_at)`, `(user_id, reason_code)`
 
-오답노트 API 구성:
+### 4.16 `question_choice_stats` - 선지별 선택 횟수 (Prisma: `QuestionChoiceStat`)
 
-* 주석 자체는 문제 단위로 여러 개 저장된다.
-* 틀린 문제 목록은 `exam_session_answers.is_correct = false`를 기준으로 만든다.
-* 화면에서는 틀린 풀이 이력, 세션 문항 스냅샷, 힌트 사용 이력, 사용자 주석을 합쳐 보여준다.
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| question_id | questionId | CHAR(36), PK/FK | 대상 문제 |
+| choice_id | choiceId | VARCHAR(36), PK | 문항 내 선지 로컬 문자열 (예: "c1") |
+| count | count | INT | 누적 선택 횟수 |
+
+* 출제자가 선지를 교체/재배열할 경우 기존 카운트를 초기화(삭제)한다.
+* 오답 분포 차트를 위해 제출 시점에 갱신한다.
+
+### 4.17 `workbooks` - 문제집 (Prisma: `Workbook`)
+
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| id | id | CHAR(36) PK | UUID |
+| owner_id | ownerId | CHAR(36), FK | 소유자 |
+| title | title | VARCHAR(200) | 제목 |
+| description | description | TEXT, nullable | 설명 |
+| cover_image_url | coverImageUrl | VARCHAR(500), nullable | 표지 이미지 URL |
+| visibility | visibility | VARCHAR(20) | PUBLIC, PRIVATE 등 |
+| forked_from_id | forkedFromId | CHAR(36), nullable FK | 통째 포크된 출처 |
+| view_count | viewCount | INT | 누적 조회수 |
+| fork_count | forkCount | INT | 누적 포크 수 |
+| question_count | questionCount | INT | 담긴 문항 수 |
+| attempt_count | attemptCount | INT | 누적 응시 횟수 |
+| score_sum_percent | scoreSumPercent | DECIMAL(12,2) | 세션별 점수(%)의 합산 (평균점수 계산용) |
+| published_at | publishedAt | DateTime, nullable | 공개 시각 |
+| created_at | createdAt | DateTime | 생성 시각 |
+| updated_at | updatedAt | DateTime | 수정 시각 |
+
+인덱스: `(visibility, view_count)`, `(owner_id, updated_at)`
+
+### 4.18 `workbook_questions` - 문제집 ↔ 문항 매핑 (Prisma: `WorkbookQuestion`)
+
+| DB 컬럼 | Prisma 필드 | 타입 | 설명 |
+| --- | --- | --- | --- |
+| workbook_id | workbookId | CHAR(36), PK/FK | 문제집 |
+| question_id | questionId | CHAR(36), PK/FK | 포함된 문제 (원본 참조) |
+| display_order | displayOrder | INT | 노출 순서 |
+| source_workbook_id | sourceWorkbookId | CHAR(36), nullable FK | 특정 문제집에서 담아온 경우의 출처 |
+| added_at | addedAt | DateTime | 추가 시각 |
+
+인덱스: `question_id`
 
 ## 5. 현재 Prisma 기준에서 제거된/없는 테이블
 
@@ -314,7 +368,7 @@ erDiagram
 
 | 이전 항목 | 현재 상태 |
 | --- | --- |
-| `units` | 제거. `subjects`가 세부 과목을 직접 표현한다. |
+| `units` | 제거. `subjects`가 세부 과목을 3단(examType, examCategory, name)으로 직접 표현한다. |
 | `question_choices` | 제거. `questions.choices` JSON에 저장한다. |
 | `question_revisions` | 현재 없음. 자동 저장 시각은 `questions.autosaved_at`만 유지한다. |
 | `exam_session_tag_stats` | 현재 없음. 취약점 통계는 API/쿼리 레벨 집계로 처리한다. |
