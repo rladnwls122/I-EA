@@ -1,0 +1,85 @@
+{
+  "name": "qidea-api",
+  "version": "0.1.0",
+  "description": "Q-Idea — AI 문항 출제/모의고사 플랫폼 API (NestJS + Prisma)",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:seed": "ts-node prisma/seed.ts",
+    "lint": "eslint \"src/**/*.ts\" --fix",
+    "test": "jest",
+    "postinstall": "prisma generate",
+    "start:railway": "prisma db push --skip-generate --accept-data-loss && node dist/main.js"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/$1"
+    }
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1083.0",
+    "@aws-sdk/s3-presigned-post": "^3.1083.0",
+    "@nestjs/bullmq": "^10.2.0",
+    "@nestjs/common": "^10.4.0",
+    "@nestjs/config": "^3.2.0",
+    "@nestjs/core": "^10.4.0",
+    "@nestjs/jwt": "^10.2.0",
+    "@nestjs/passport": "^10.0.3",
+    "@nestjs/platform-express": "^10.4.0",
+    "@nestjs/swagger": "^7.4.0",
+    "@prisma/client": "^5.18.0",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.12.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "ioredis": "^5.10.1",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "prisma": "^5.18.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.0",
+    "@nestjs/testing": "^10.4.22",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "@types/passport-jwt": "^4.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.63.0",
+    "@typescript-eslint/parser": "^8.63.0",
+    "eslint": "^8.57.1",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.0"
+  }
+}

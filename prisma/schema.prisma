@@ -1,0 +1,520 @@
+// =====================================================================
+// Q-Idea — Prisma Schema (MVP 리팩터링)
+//   - 단원(units) 트리 제거 → subjects를 3단 분류의 리프로 직접 사용
+//     (exam_type = 시험[수능/내신...], exam_category = 대분류[국어/수학...],
+//      name = 소분류[문학/미적분...])
+//   - question_type: enum 제거 → VARCHAR("객관식" | "주관식")
+//   - 주관식 정답: questions.correct_answer_text (단답 자동채점 / 서술형은 null → 자기채점)
+//   - 변형문제(question_variants)·댓글 핀(is_pinned)·미디어 GRAPH_CODE/SVG 제거
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------
+
+enum UserRoleType {
+  CREATOR
+  CONSUMER
+  ADMIN
+}
+
+enum GenerationStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum PassageStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum QuestionStatus {
+  DRAFT
+  IN_REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+// 미디어는 MVP에서 이미지 업로드(+크롭)만 지원한다. GRAPH_CODE/SVG는 제거.
+enum MediaAssetType {
+  IMAGE
+}
+
+enum ExamSessionStatus {
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
+}
+
+// ---------------------------------------------------------------------
+// 1. users
+// ---------------------------------------------------------------------
+model User {
+  id           String   @id @default(uuid()) @db.Char(36)
+  email        String   @unique @db.VarChar(255)
+  // 이메일+비밀번호 가입: Bcrypt 해시만 저장(평문 금지)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  nickname     String   @db.VarChar(100)
+  creatorBio   String?  @map("creator_bio") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  roles            UserRole[]
+  aiGenerations    AiGeneration[]
+  passages         Passage[]
+  questionsCreated Question[]               @relation("QuestionCreator")
+  mediaUploaded    MediaAsset[]
+  examSessions     ExamSession[]
+  questionReviews  QuestionReview[]
+  questionComments QuestionComment[]
+  annotations      UserQuestionAnnotation[]
+  workbooks        Workbook[]
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------
+// 2. subjects — 3단 분류의 리프.
+//   exam_type     = 시험   (수능, 내신 ...)
+//   exam_category = 대분류 (국어, 수학 ...)
+//   name          = 소분류 (문학, 미적분 ...)
+//
+//   리프는 "경로당 한 행"이다: (수능,국어,문학)과 (내신,국어,문학)은 별개 행.
+//   따라서 한 문항(questions.subject_id)은 정확히 하나의 삼중항에 묶인다.
+//   수능 문학과 내신 문학은 서로 다른 문항 풀이므로 의도된 설계다.
+//
+//   ⚠️ exam_type은 마이그레이션 1단계라 @default("수능")을 달고 있다.
+//      기존 행 백필 후 2단계에서 @default를 제거한다.
+// ---------------------------------------------------------------------
+model Subject {
+  id           String  @id @default(uuid()) @db.Char(36)
+  examType     String  @default("수능") @map("exam_type") @db.VarChar(50) // 시험 (수능, 내신 ...)
+  examCategory String  @map("exam_category") @db.VarChar(50) // 대분류 (국어, 수학 ...)
+  name         String  @db.VarChar(100) // 소분류 (문학, 미적분 ...)
+  sortOrder    Int     @default(0) @map("sort_order")
+  isActive     Boolean @default(true) @map("is_active")
+
+  aiGenerations AiGeneration[]
+  examSessions  ExamSession[]
+  questions     Question[]
+
+  @@unique([examType, examCategory, name])
+  @@index([examType, examCategory, sortOrder])
+  @@map("subjects")
+}
+
+// ---------------------------------------------------------------------
+// 3. tags
+// ---------------------------------------------------------------------
+model Tag {
+  id       String @id @default(uuid()) @db.Char(36)
+  name     String @db.VarChar(100)
+  category String @db.VarChar(50)
+
+  questionTags QuestionTag[]
+
+  @@map("tags")
+}
+
+// ---------------------------------------------------------------------
+// 4. user_roles (M:N — 복합 PK)
+// ---------------------------------------------------------------------
+model UserRole {
+  userId String       @map("user_id") @db.Char(36)
+  role   UserRoleType
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, role])
+  @@map("user_roles")
+}
+
+// ---------------------------------------------------------------------
+// 5. ai_generations
+// ---------------------------------------------------------------------
+model AiGeneration {
+  id          String           @id @default(uuid()) @db.Char(36)
+  creatorId   String           @map("creator_id") @db.Char(36)
+  subjectId   String           @map("subject_id") @db.Char(36) // 세부과목 (NOT NULL)
+  inputParams Json             @map("input_params")
+  model       String           @db.VarChar(100)
+  status      GenerationStatus @default(PENDING)
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  creator     User         @relation(fields: [creatorId], references: [id])
+  subject     Subject      @relation(fields: [subjectId], references: [id])
+  passages    Passage[]
+  questions   Question[]
+  mediaAssets MediaAsset[]
+
+  @@map("ai_generations")
+}
+
+// ---------------------------------------------------------------------
+// 6. passages
+// ---------------------------------------------------------------------
+model Passage {
+  id           String        @id @default(uuid()) @db.Char(36)
+  creatorId    String        @map("creator_id") @db.Char(36)
+  generationId String?       @map("generation_id") @db.Char(36)
+  content      Json
+  status       PassageStatus @default(DRAFT)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  creator     User          @relation(fields: [creatorId], references: [id])
+  generation  AiGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  questions   Question[]
+  mediaAssets MediaAsset[]
+
+  @@map("passages")
+}
+
+// ---------------------------------------------------------------------
+// 7. questions (세부과목 직결 + 주관식 정답 + 정답률 캐시)
+// ---------------------------------------------------------------------
+model Question {
+  id                String         @id @default(uuid()) @db.Char(36)
+  creatorId         String         @map("creator_id") @db.Char(36)
+  generationId      String?        @map("generation_id") @db.Char(36)
+  subjectId         String         @map("subject_id") @db.Char(36) // 세부과목 (NOT NULL)
+  passageId         String?        @map("passage_id") @db.Char(36)
+  // "객관식" | "주관식" (앱단 상수/DTO로 제약)
+  questionType      String         @map("question_type") @db.VarChar(20)
+  stem              Json
+  choices           Json?
+  explanation       Json?
+  // 주관식 정답: 값이 있으면 단답 자동채점, 없으면 서술형(자기채점)
+  correctAnswerText String?        @map("correct_answer_text") @db.Text
+  difficulty        Int            @default(3) @db.TinyInt
+  points            Decimal        @default(1.00) @db.Decimal(6, 2)
+  status            QuestionStatus @default(DRAFT)
+  metadata          Json?
+  autosavedAt       DateTime?      @map("autosaved_at")
+  publishedAt       DateTime?      @map("published_at")
+  searchText        String?        @map("search_text") @db.Text
+
+  // 출제자가 제공하는 풀이 힌트
+  hintContent String? @map("hint_content") @db.Text
+
+  // --- 정답률 캐시 컬럼 ---
+  totalSolvedCount   Int @default(0) @map("total_solved_count")
+  correctSolvedCount Int @default(0) @map("correct_solved_count")
+  // 인기순 정렬 성능 최적화용 누적 조회수 캐시
+  viewCount          Int @default(0) @map("view_count")
+
+  // --- 평균 풀이시간 캐시 (avg = total/timed, 표본 0이면 null) ---
+  // exam_session_answers.time_spent_sec를 매번 평균내지 않기 위한 누적 카운터.
+  totalTimeSpentSec Int @default(0) @map("total_time_spent_sec")
+  timedSolvedCount  Int @default(0) @map("timed_solved_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  creator    User          @relation("QuestionCreator", fields: [creatorId], references: [id])
+  generation AiGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  subject    Subject       @relation(fields: [subjectId], references: [id])
+  passage    Passage?      @relation(fields: [passageId], references: [id], onDelete: SetNull)
+
+  mediaAssets          MediaAsset[]
+  questionTags         QuestionTag[]
+  examSessionQuestions ExamSessionQuestion[]
+  reviews              QuestionReview[]
+  comments             QuestionComment[]
+  annotations          UserQuestionAnnotation[]
+  workbookQuestions    WorkbookQuestion[]
+  choiceStats          QuestionChoiceStat[]
+
+  @@index([status])
+  @@index([subjectId, status])
+  @@index([totalSolvedCount])
+  @@index([viewCount])
+  @@map("questions")
+}
+
+// ---------------------------------------------------------------------
+// 8. media_assets (이미지 전용)
+// ---------------------------------------------------------------------
+model MediaAsset {
+  id           String         @id @default(uuid()) @db.Char(36)
+  passageId    String?        @map("passage_id") @db.Char(36)
+  questionId   String?        @map("question_id") @db.Char(36)
+  generationId String?        @map("generation_id") @db.Char(36)
+  uploaderId   String         @map("uploader_id") @db.Char(36)
+  assetType    MediaAssetType @map("asset_type")
+  // S3 등 외부 스토리지 public URL (클라가 presign 받아 직접 업로드한 결과)
+  storageUrl   String         @map("storage_url") @db.VarChar(500)
+  widthPx      Int?           @map("width_px")
+  heightPx     Int?           @map("height_px")
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  passage    Passage?      @relation(fields: [passageId], references: [id], onDelete: Cascade)
+  question   Question?     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  generation AiGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  uploader   User          @relation(fields: [uploaderId], references: [id])
+
+  @@map("media_assets")
+}
+
+// ---------------------------------------------------------------------
+// 9. question_tags (M:N)
+// ---------------------------------------------------------------------
+model QuestionTag {
+  questionId String @map("question_id") @db.Char(36)
+  tagId      String @map("tag_id") @db.Char(36)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, tagId])
+  @@map("question_tags")
+}
+
+// ---------------------------------------------------------------------
+// 10. exam_sessions
+//   subject_id는 nullable — 문제집(Pick & Mix)이 여러 소분류를 섞을 수 있어
+//   세션을 단일 과목에 묶을 수 없다. 필터 모드에서는 여전히 필수(DTO가 강제).
+// ---------------------------------------------------------------------
+model ExamSession {
+  id             String            @id @default(uuid()) @db.Char(36)
+  userId         String            @map("user_id") @db.Char(36)
+  subjectId      String?           @map("subject_id") @db.Char(36)
+  // 문제집을 통째로 응시한 경우의 출처. 평균점수 집계원.
+  workbookId     String?           @map("workbook_id") @db.Char(36)
+  filterCriteria Json              @map("filter_criteria")
+  status         ExamSessionStatus @default(IN_PROGRESS)
+  startedAt      DateTime?         @map("started_at")
+  submittedAt    DateTime?         @map("submitted_at")
+  durationSec    Int?              @map("duration_sec")
+
+  user     User      @relation(fields: [userId], references: [id])
+  subject  Subject?  @relation(fields: [subjectId], references: [id])
+  workbook Workbook? @relation(fields: [workbookId], references: [id], onDelete: SetNull)
+
+  sessionQuestions ExamSessionQuestion[]
+
+  @@index([workbookId, status])
+  @@map("exam_sessions")
+}
+
+// ---------------------------------------------------------------------
+// 11. exam_session_questions
+// ---------------------------------------------------------------------
+model ExamSessionQuestion {
+  id            String    @id @default(uuid()) @db.Char(36)
+  examSessionId String    @map("exam_session_id") @db.Char(36)
+  questionId    String    @map("question_id") @db.Char(36)
+  displayOrder  Int       @map("display_order")
+  snapshot      Json
+  // 힌트 트래킹: 힌트 열람 여부 + 최초 열람 시각
+  isHintUsed    Boolean   @default(false) @map("is_hint_used")
+  hintUsedAt    DateTime? @map("hint_used_at")
+
+  examSession ExamSession        @relation(fields: [examSessionId], references: [id], onDelete: Cascade)
+  question    Question           @relation(fields: [questionId], references: [id])
+  answer      ExamSessionAnswer?
+
+  // 문항 통계 집계 경로:
+  //   exam_session_answers → exam_session_questions(question_id) → exam_sessions(status)
+  // questionId 인덱스가 없으면 문항 상세를 열 때마다 풀스캔이 걸린다.
+  @@index([questionId])
+  @@index([examSessionId])
+  @@map("exam_session_questions")
+}
+
+// ---------------------------------------------------------------------
+// 12. exam_session_answers
+// ---------------------------------------------------------------------
+model ExamSessionAnswer {
+  id                    String    @id @default(uuid()) @db.Char(36)
+  examSessionQuestionId String    @unique @map("exam_session_question_id") @db.Char(36)
+  selectedChoiceIds     Json?     @map("selected_choice_ids")
+  answerText            String?   @map("answer_text") @db.Text
+  // 객관식/단답=자동채점, 서술형=자기채점 전까지 null
+  isCorrect             Boolean?  @map("is_correct")
+  annotations           Json?
+  timeSpentSec          Int?      @map("time_spent_sec")
+  answeredAt            DateTime? @map("answered_at")
+
+  examSessionQuestion ExamSessionQuestion @relation(fields: [examSessionQuestionId], references: [id], onDelete: Cascade)
+
+  @@map("exam_session_answers")
+}
+
+// ---------------------------------------------------------------------
+// 13. question_reviews (별점 + 체감 난이도 이원화)
+// ---------------------------------------------------------------------
+model QuestionReview {
+  id                  String   @id @default(uuid()) @db.Char(36)
+  questionId          String   @map("question_id") @db.Char(36)
+  reviewerId          String   @map("reviewer_id") @db.Char(36)
+  // 문제 품질 추천도(1~5)
+  rating              Int      @db.TinyInt
+  // 수험생이 직접 느낀 주관적 난이도(1~5). 기존 리뷰 호환 위해 nullable
+  perceivedDifficulty Int?     @map("perceived_difficulty") @db.TinyInt
+  reviewText          String?  @map("review_text") @db.Text
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  reviewer User     @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, reviewerId])
+  @@map("question_reviews")
+}
+
+// ---------------------------------------------------------------------
+// 14. question_comments (자기참조 트리 — 대댓글)
+// ---------------------------------------------------------------------
+model QuestionComment {
+  id              String   @id @default(uuid()) @db.Char(36)
+  questionId      String   @map("question_id") @db.Char(36)
+  authorId        String   @map("author_id") @db.Char(36)
+  parentCommentId String?  @map("parent_comment_id") @db.Char(36)
+  content         String   @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  question Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  author   User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent   QuestionComment?  @relation("CommentTree", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies  QuestionComment[] @relation("CommentTree")
+
+  @@index([questionId, createdAt])
+  @@map("question_comments")
+}
+
+// ---------------------------------------------------------------------
+// 15. user_question_annotations — 오답노트 2.0
+//   텍스트 범위에 앵커된 하이라이트/밑줄 + 오답원인 태그 + 플로팅 메모.
+//   문제당 여러 개 가능(하이라이트 1개 = 1행) → UNIQUE(user,question) 없음.
+//   selected_text/selection_range가 null이면 문항 전체 대상 일반 메모.
+// ---------------------------------------------------------------------
+model UserQuestionAnnotation {
+  id             String   @id @default(uuid()) @db.Char(36)
+  userId         String   @map("user_id") @db.Char(36)
+  questionId     String   @map("question_id") @db.Char(36)
+  // 드래그 대상 구역: GENERAL | PASSAGE | STEM | CHOICES | EXPLANATION
+  target         String   @default("STEM") @db.VarChar(20)
+  // 지문/선지 등 앵커 ID (예: passages.id, choice id). 없으면 null
+  targetId       String?  @map("target_id") @db.VarChar(36)
+  // 시각 표기: HIGHLIGHT | UNDERLINE
+  markStyle      String   @default("HIGHLIGHT") @map("mark_style") @db.VarChar(20)
+  color          String   @default("yellow") @db.VarChar(20)
+  // 하이라이트된 원본 문구 + 정밀 오프셋(재앵커용). 일반 메모는 null
+  selectedText   String?  @map("selected_text") @db.Text
+  selectionRange Json?    @map("selection_range")
+  // 오답 원인 태그(통계용): CONCEPT | MISTAKE | TIME | OTHER
+  reasonCode     String?  @map("reason_code") @db.VarChar(20)
+  // 플로팅 메모 내용(호버 시 표시, 확장 시 편집)
+  memoText       String?  @map("memo_text") @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, questionId])
+  @@index([userId, updatedAt])
+  @@index([userId, reasonCode])
+  @@map("user_question_annotations")
+}
+
+// ---------------------------------------------------------------------
+// 16. question_choice_stats — 선지별 선택 횟수 (오답 분포 차트)
+//   exam_session_answers.selected_choice_ids는 Json 배열이고, TiDB 호환을 위해
+//   MySQL JSON 함수를 쓰지 않기로 했다. 실시간 집계는 전체 답안 풀스캔이 되므로
+//   questions.total_solved_count 선례를 따라 제출 시점에 카운터를 갱신한다.
+//
+//   choice_id는 문항 로컬 문자열("c1".."c8"). 출제자가 선지를 재배열/교체하면
+//   누적 카운트가 오염되므로, choices를 수정하는 PATCH는 이 행들을 전부 지운다.
+// ---------------------------------------------------------------------
+model QuestionChoiceStat {
+  questionId String @map("question_id") @db.Char(36)
+  choiceId   String @map("choice_id") @db.VarChar(36)
+  count      Int    @default(0)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, choiceId])
+  @@map("question_choice_stats")
+}
+
+// ---------------------------------------------------------------------
+// 17. workbooks — 문제집. 탐색·포킹·Pick & Mix의 단위.
+//   포킹은 2종이다:
+//     - 통째 복제 : workbooks.forked_from_id
+//     - 문항 단위 : workbook_questions.source_workbook_id
+//   문제집은 여러 소분류를 섞을 수 있다(교차 과목 허용).
+// ---------------------------------------------------------------------
+model Workbook {
+  id            String  @id @default(uuid()) @db.Char(36)
+  ownerId       String  @map("owner_id") @db.Char(36)
+  title         String  @db.VarChar(200)
+  description   String? @db.Text
+  coverImageUrl String? @map("cover_image_url") @db.VarChar(500)
+  // "PRIVATE" | "PUBLIC" (앱단 상수/DTO로 제약 — questionType과 같은 VARCHAR 패턴)
+  visibility    String  @default("PRIVATE") @db.VarChar(20)
+  // 통째 포크 출처. 원본이 지워져도 사본은 남는다.
+  forkedFromId  String? @map("forked_from_id") @db.Char(36)
+
+  // --- 카드 메타데이터 캐시 (questions.viewCount 선례) ---
+  viewCount     Int @default(0) @map("view_count")
+  forkCount     Int @default(0) @map("fork_count")
+  questionCount Int @default(0) @map("question_count")
+
+  // --- 평균 점수 캐시 (avg = scoreSumPercent / attemptCount) ---
+  // 목록 카드마다 세션을 집계하면 N+1이 되므로 제출 시점에 누적한다.
+  // 세션별 점수(%)의 평균(macro). 표본 0이면 null로 노출한다.
+  attemptCount    Int     @default(0) @map("attempt_count")
+  scoreSumPercent Decimal @default(0.00) @map("score_sum_percent") @db.Decimal(12, 2)
+
+  publishedAt DateTime? @map("published_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  owner      User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  forkedFrom Workbook?          @relation("WorkbookFork", fields: [forkedFromId], references: [id], onDelete: SetNull)
+  forks      Workbook[]         @relation("WorkbookFork")
+  questions  WorkbookQuestion[]
+  // 문항 단위 Pick의 출처로 참조된 기록
+  pickedFrom WorkbookQuestion[] @relation("WorkbookPickSource")
+  sessions   ExamSession[]
+
+  @@index([visibility, viewCount])
+  @@index([ownerId, updatedAt])
+  @@map("workbooks")
+}
+
+// ---------------------------------------------------------------------
+// 18. workbook_questions — 문제집 ↔ 문항 (M:N, 순서 보존)
+//   questionId는 "참조"다(복사 아님). 원저자 수정이 전파된다.
+//   응시는 exam_session_questions.snapshot이 조립 시점에 복사하므로 안전하다.
+// ---------------------------------------------------------------------
+model WorkbookQuestion {
+  workbookId       String   @map("workbook_id") @db.Char(36)
+  questionId       String   @map("question_id") @db.Char(36)
+  displayOrder     Int      @map("display_order")
+  // 어느 문제집에서 담아왔는가(Pick 출처). 직접 출제한 문항이면 null.
+  sourceWorkbookId String?  @map("source_workbook_id") @db.Char(36)
+  addedAt          DateTime @default(now()) @map("added_at")
+
+  workbook       Workbook  @relation(fields: [workbookId], references: [id], onDelete: Cascade)
+  question       Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  sourceWorkbook Workbook? @relation("WorkbookPickSource", fields: [sourceWorkbookId], references: [id], onDelete: SetNull)
+
+  @@id([workbookId, questionId])
+  @@index([questionId])
+  @@map("workbook_questions")
+}
