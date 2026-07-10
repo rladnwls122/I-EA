@@ -61,11 +61,30 @@ const config: Config = {
           border: "var(--sidebar-border)",
           ring: "var(--sidebar-ring)",
         },
+        purple: "var(--purple)",
+        correct: "var(--correct)",
+        wrong: "var(--wrong)",
+        "surface-raised": "var(--surface-raised)",
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      fontFamily: {
+        sans: ["var(--font-nunito)", "sans-serif"],
+        display: ["var(--font-nunito)", "sans-serif"],
+      },
+      boxShadow: {
+        neo: "0 6px 0 0 rgba(0,0,0,0.4)",
+        "neo-primary": "0 6px 0 0 var(--primary-shadow)",
+        "neo-sm": "0 4px 0 0 rgba(0,0,0,0.4)",
+      },
+      keyframes: {
+        shimmer: { "100%": { transform: "translateX(100%)" } },
+      },
+      animation: {
+        shimmer: "shimmer 1.8s infinite",
       },
     },
   },
