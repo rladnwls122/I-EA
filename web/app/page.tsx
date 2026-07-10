@@ -120,7 +120,7 @@ export default function Home() {
                   {item.title}
                 </h3>
                 <span className="text-xs font-bold text-muted-foreground mt-5 block">
-                  {new Date(item.viewedAt).toLocaleDateString()} 확인
+                  {item.viewedAt ? new Date(item.viewedAt).toLocaleDateString() : '최근'} 확인
                 </span>
               </Link>
             ))}
