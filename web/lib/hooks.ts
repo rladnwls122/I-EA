@@ -352,7 +352,7 @@ interface RecentQuestionItem {
   id: string;
   title: string;
   subject: string;
-  viewedAt: string;
+  created_at: string | Date;
 }
 
 const RECENT_QUESTIONS_KEY = 'recentQuestions';
@@ -383,7 +383,7 @@ export function useRecentQuestions() {
     (item: Omit<RecentQuestionItem, 'viewedAt'>) => {
       const newItem: RecentQuestionItem = {
         ...item,
-        viewedAt: new Date().toISOString(),
+        created_at: new Date().toISOString(),
       };
       const updated = [
         newItem,

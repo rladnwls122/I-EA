@@ -2,24 +2,24 @@
   "compilerOptions": {
     "module": "commonjs",
     "target": "ES2021",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
+    "rootDir": "./src",
     "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,
+    "ignoreDeprecations": "6.0",
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": true,
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src/**/*"],
