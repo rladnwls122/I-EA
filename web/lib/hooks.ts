@@ -352,6 +352,7 @@ interface RecentQuestionItem {
   id: string;
   title: string;
   subject: string;
+  viewedAt: string;
 }
 
 const RECENT_QUESTIONS_KEY = 'recentQuestions';
@@ -379,9 +380,13 @@ export function useRecentQuestions() {
 
   /** 최근 본 문제 추가 */
   const addRecent = useCallback(
-    (item: RecentQuestionItem) => {
+    (item: Omit<RecentQuestionItem, 'viewedAt'>) => {
+      const newItem: RecentQuestionItem = {
+        ...item,
+        viewedAt: new Date().toISOString(),
+      };
       const updated = [
-        item,
+        newItem,
         ...recent.filter((r) => r.id !== item.id),
       ].slice(0, MAX_RECENT);
       setRecent(updated);

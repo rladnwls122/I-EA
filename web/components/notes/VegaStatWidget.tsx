@@ -3,7 +3,10 @@ import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 
 // react-vega는 SSR에서 문제가 될 수 있으므로 dynamic import로 로드
-const VegaLite = dynamic(() => import('react-vega').then(mod => mod.VegaLite), { ssr: false });
+const VegaLite = dynamic(() => import('react-vega').then(mod => mod.VegaLite), { 
+  ssr: false,
+  loading: () => <div className="h-[180px] w-full animate-pulse bg-surface-raised rounded-lg" />
+});
 
 export function VegaStatWidget() {
   const [mounted, setMounted] = useState(false);
@@ -51,9 +54,10 @@ export function VegaStatWidget() {
     return <div className="h-[180px] w-full animate-pulse bg-surface-raised rounded-lg" />;
   }
 
+  // 브라우저 환경에서만 렌더링되도록 한 번 더 보장
   return (
     <div className="w-full">
-      <VegaLite spec={spec} actions={false} />
+      {typeof window !== 'undefined' && <VegaLite spec={spec} actions={false} />}
     </div>
   );
 }
