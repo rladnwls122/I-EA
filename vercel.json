@@ -1,15 +1,5 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "dist/main.js",
-      "use": "@vercel/node",
-      "config": {
-        "maxDuration": 30,
-        "memory": 1024
-      }
-    }
-  ],
   "routes": [
     {
       "src": "/health",
@@ -26,6 +16,7 @@
   },
   "functions": {
     "dist/main.js": {
+      "runtime": "@vercel/node",
       "maxDuration": 30,
       "memory": 1024
     }
