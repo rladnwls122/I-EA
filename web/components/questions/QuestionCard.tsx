@@ -1,3 +1,0 @@
-import type { Question } from "@/lib/mock-data";
-import { ChevronRight } from "lucide-react";
-export function QuestionCard({ question, onClick }: { question: Question; onClick: () => void }) { return <button className="question-card" onClick={onClick}><div className="card-top"><span className="subject-pill">{question.subject}</span><span className={`level level-${question.difficulty}`}>난이도 {question.difficulty}</span></div><h3>{question.title}</h3><p>{question.body}</p><div className="card-footer"><span>{question.type}</span><span>{question.tags.map((tag) => `#${tag}`).join(" ")}</span><ChevronRight size={17}/></div></button>; }

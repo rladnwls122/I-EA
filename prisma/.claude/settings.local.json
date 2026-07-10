@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//c/Users/user/Downloads/I-EA-main/I-EA-main/**)",
-      "Bash(cat railway.json)",
-      "Bash(head -40 README.md)"
-    ]
-  }
-}
