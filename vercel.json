@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "dist/main.js",
+      "use": "@vercel/node",
+      "config": {
+        "maxDuration": 30,
+        "memory": 1024
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/health",
+      "dest": "dist/main.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "dist/main.js"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production",
+    "PORT": "3000"
+  },
+  "functions": {
+    "dist/main.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    }
+  }
+}
