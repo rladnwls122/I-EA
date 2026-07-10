@@ -348,11 +348,11 @@ export function useMyExamSessions(params?: {
 
 // ─── 클라이언트 유틸 ────────────────────────────────────────────────
 
-interface RecentQuestionItem {
+export interface RecentQuestionItem {
   id: string;
   title: string;
   subject: string;
-  created_at: string | Date;
+  viewedAt: string;
 }
 
 const RECENT_QUESTIONS_KEY = 'recentQuestions';
@@ -383,7 +383,7 @@ export function useRecentQuestions() {
     (item: Omit<RecentQuestionItem, 'viewedAt'>) => {
       const newItem: RecentQuestionItem = {
         ...item,
-        created_at: new Date().toISOString(),
+        viewedAt: new Date().toISOString(),
       };
       const updated = [
         newItem,

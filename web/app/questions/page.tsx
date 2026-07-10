@@ -5,11 +5,28 @@ import { Filter, Search, SlidersHorizontal } from "lucide-react";
 // AppFrame은 더 이상 사용되지 않으므로 제거합니다.
 import { QuestionCard } from "@/components/questions/QuestionCard";
 import { QuestionPreview } from "@/components/questions/QuestionPreview";
-import { questions, type Question } from "@/lib/mock-data";
+import { useQuestions } from "@/lib/hooks";
+import type { Question } from "@/lib/types";
 
 export default function QuestionsPage() {
-  const [keyword, setKeyword] = useState(""); const [subject, setSubject] = useState("전체"); const [selected, setSelected] = useState<Question | null>(null);
-  const filtered = useMemo(() => questions.filter((q) => (subject === "전체" || q.subject === subject) && `${q.title} ${q.body}`.includes(keyword)), [keyword, subject]);
+  const [keyword, setKeyword] = useState(""); 
+  const [subject, setSubject] = useState("전체"); 
+  const [selected, setSelected] = useState<Question | null>(null);
+
+  const { data, isLoading } = useQuestions({
+    search: keyword,
+    // subjectId 필터링은 API 연동 시 실제 subjectId를 넘겨야 하지만, 
+    // 현재 UI상 텍스트로 되어 있으므로 전체 목록을 가져와 클라이언트에서 필터링하거나 
+    // API 명세에 맞춰 subjectId를 매핑해야 합니다.
+  });
+
+  const filtered = useMemo(() => {
+    const list = data?.data || [];
+    return list.filter((q) => 
+      (subject === "전체" || q.subject?.name === subject)
+    );
+  }, [data, subject]);
+
   return (
     <>
       <main className="p-8 max-w-7xl mx-auto">
@@ -59,11 +76,23 @@ export default function QuestionsPage() {
           <button className="text-sm font-black text-muted-foreground hover:text-foreground">최신순</button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map((q) => (
-            <QuestionCard key={q.id} question={q} onClick={() => setSelected(q)} />
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="h-[200px] bg-surface-raised animate-pulse rounded-2xl border-2 border-border" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-20 bg-card border-4 border-border rounded-3xl">
+            <p className="text-lg font-bold text-muted-foreground">검색 결과가 없습니다.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filtered.map((q) => (
+              <QuestionCard key={q.id} question={q} onClick={() => setSelected(q)} />
+            ))}
+          </div>
+        )}
       </main>
       <QuestionPreview question={selected} onClose={() => setSelected(null)} />
     </>

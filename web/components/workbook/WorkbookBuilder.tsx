@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Bot, Check, PencilLine, Sparkles, Loader2 } from "lucide-react";
@@ -93,9 +93,11 @@ export function WorkbookBuilder() {
   };
 
   /* ── 초기 로딩: examType 자동 선택 ── */
-  if (subjectTree && !examType && examTypes.length > 0) {
-    setExamType(examTypes[0]);
-  }
+  useEffect(() => {
+    if (subjectTree && !examType && examTypes.length > 0) {
+      setExamType(examTypes[0]);
+    }
+  }, [subjectTree, examType, examTypes]);
 
   return (
     <div className="max-w-[980px] mx-auto px-8 py-8">

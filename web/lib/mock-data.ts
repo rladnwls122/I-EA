@@ -1,4 +1,13 @@
-export type Question = { id: number; title: string; body: string; subject: string; type: "객관식" | "주관식"; difficulty: "상" | "중" | "하"; tags: string[]; wrong?: boolean };
+export type Question = { 
+  id: any; 
+  title: string; 
+  body: string; 
+  subject: string; 
+  type: string; 
+  difficulty: any; 
+  tags: string[]; 
+  wrong?: boolean 
+};
 
 export const questions: Question[] = [
   { id: 1, title: "현대시의 화자와 태도", body: "다음 시에서 화자의 정서와 태도를 가장 적절하게 설명한 것은?", subject: "문학", type: "객관식", difficulty: "중", tags: ["현대시", "화자"], wrong: true },
