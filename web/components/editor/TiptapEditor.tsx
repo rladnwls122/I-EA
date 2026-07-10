@@ -26,14 +26,15 @@ export function TiptapEditor({ value, onChange, placeholder, minHeight = "80px",
   });
 
   // 외부에서 value가 변경되었을 때 (초기화 등) 에디터 내용 동기화
-  useEffect(() => {
-    if (editor && value && JSON.stringify(editor.getJSON()) !== JSON.stringify(value)) {
-      // setTimeout을 주어 커서 튐 방지
-      setTimeout(() => {
-        editor.commands.setContent(value, false);
-      }, 0);
-    }
-  }, [value, editor]);
+ useEffect(() => {
+  if (editor && value !== undefined) {
+    // setTimeout을 주어 커서 튐 방지
+    setTimeout(() => {
+      // ✅ 빈 객체를 두 번째 인자로 전달
+      editor.commands.setContent(value, {});
+    }, 0);
+  }
+}, [value, editor]);
 
   if (!editor) {
     return <div className="animate-pulse bg-surface-raised rounded-lg w-full" style={{ minHeight }} />;
