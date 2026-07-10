@@ -10,7 +10,7 @@ export function NotesDashboard() {
   const [search, setSearch] = useState("");
   const { data, isLoading } = useMyNotes();
 
-  const subjects = ["전체", ...(data?.summary?.bySubject?.map(s => s.subjectName) || [])];
+  const subjects = ["전체", ...Object.keys(data?.summary?.bySubject || {})];
   
   const filteredQuestions = (data?.wrongQuestions || []).filter(q => {
     if (filter !== "전체" && q.subject?.name !== filter) return false;
@@ -63,7 +63,7 @@ export function NotesDashboard() {
           <Lightbulb className="text-black mb-4" size={32} strokeWidth={2.5} />
           <span className="text-[13px] font-black opacity-80 mb-1">가장 많이 틀린 영역</span>
           <div className="mt-auto">
-            <b className="text-2xl font-black tracking-tight">{data?.summary?.bySubject?.[0]?.subjectName || "-"}</b>
+            <b className="text-2xl font-black tracking-tight">{Object.keys(data?.summary?.bySubject || {})[0] || "-"}</b>
           </div>
         </div>
       </div>
