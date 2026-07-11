@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Check, GripVertical, Plus, Send, Sparkles,
-  Trash2, ChevronDown, ChevronUp, RotateCcw, Loader2,
+  Trash2, ChevronDown, ChevronUp, RotateCcw, Loader2, Settings2,
 } from "lucide-react";
 import { TiptapEditor } from "@/components/editor/TiptapEditor";
 import { buildRichDoc, extractPlainText } from "@/lib/prosemirror";
@@ -184,6 +184,8 @@ export function QuestionEditor() {
   const [count, setCount] = useState(1);
   const [includePassage, setIncludePassage] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  // 생성옵션(과목/유형/난이도/문항수) 접이식 — 기본 접힘, 톱니로 펼침.
+  const [optionsOpen, setOptionsOpen] = useState(false);
   // 생성 직후 바로 초안에 꽂지 않고, 검토(정답/해설 확인) 후 명시적으로 적용할 대기열.
   const [pendingPreview, setPendingPreview] = useState<Draft[]>([]);
 
@@ -285,6 +287,7 @@ export function QuestionEditor() {
     if (!currentPrompt || isGenerating) return;
     if (!subjectId) {
       toast.error("먼저 세부과목을 선택하세요.");
+      setOptionsOpen(true);
       return;
     }
     setMessages((prev) => [...prev, { role: "user", text: currentPrompt }]);
@@ -396,7 +399,7 @@ export function QuestionEditor() {
             </Link>
             <div>
               <span className="mb-1 block font-mono text-[11px] uppercase tracking-widest text-muted-foreground">문제집 편집</span>
-              <h1 className="text-lg font-semibold tracking-tight">2026 수능 국어 · 문학</h1>
+              <h1 className="text-lg font-semibold tracking-tight">새 문항 초안</h1>
             </div>
           </div>
           <Button size="sm" className="gap-2">
@@ -607,8 +610,37 @@ export function QuestionEditor() {
             <Sparkles size={18} strokeWidth={2} className="text-primary" />
             AI 출제 도우미
           </div>
-          <Badge variant="secondary" className="font-mono text-[10px] font-medium text-muted-foreground">beta</Badge>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setOptionsOpen((v) => !v)}
+              aria-pressed={optionsOpen}
+              aria-label="AI 생성 설정"
+              title="AI 생성 설정"
+              className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-all duration-300 ${
+                optionsOpen
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              }`}
+            >
+              <Settings2 size={14} strokeWidth={2} />
+            </button>
+            <Badge variant="secondary" className="font-mono text-[10px] font-medium text-muted-foreground">beta</Badge>
+          </div>
         </div>
+        {/* 접힘 상태에서도 현재 선택 요약을 노출해 컨텍스트 유지 */}
+        {!optionsOpen && (
+          <div className="border-b border-border px-5 py-2">
+            <button
+              type="button"
+              onClick={() => setOptionsOpen(true)}
+              className="w-full truncate text-left text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              ⚙ {subjects.find((s) => s.id === subjectId)?.name ?? "과목 미선택"} · 난이도{" "}
+              {difficulty} · {count}문항{includePassage ? " · 지문" : ""}
+            </button>
+          </div>
+        )}
 
         {/* 메시지 영역 */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
@@ -625,36 +657,12 @@ export function QuestionEditor() {
             </div>
           ))}
 
-          {/* 라이브 데모 카드 — 아직 아무 요청도 없을 때만. 어떤 결과물이 나오는지 미리 보여준다. */}
-          {messages.length <= 1 && pendingPreview.length === 0 && !isGenerating && (
-            <div className="space-y-2 opacity-80">
-              <div className="px-4 py-3 rounded-xl text-sm leading-relaxed max-w-[90%] border bg-primary/10 text-foreground border-primary/20 self-end ml-auto">
-                “화자의 정서 변화를 묻는 고난도 문항 1개”
-              </div>
-              <div className="glass-chip border border-dashed rounded-xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <Badge variant="secondary" className="text-[10px] font-medium">객관식</Badge>
-                  <span className="text-[10px] text-muted-foreground">이렇게 만들어드려요</span>
-                </div>
-                <p className="text-sm text-foreground leading-relaxed">
-                  (가)의 화자에 대한 설명으로 가장 적절한 것은?
-                </p>
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-primary bg-primary/10 text-foreground text-xs">
-                    <Check size={13} strokeWidth={2.5} className="text-primary flex-shrink-0" />
-                    <span>상실의 슬픔을 절제된 어조로 드러내고 있다.</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-muted-foreground text-xs">
-                    <span>미래에 대한 낙관적 기대를 표출하고 있다.</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-muted-foreground text-xs">
-                    <span>대상을 향한 원망을 직설적으로 토로하고 있다.</span>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed border-t border-border pt-2">
-                  반복되는 시어와 차분한 종결 어미에서 감정을 억누르는 화자의 태도가 드러납니다.
-                </p>
-              </div>
+
+          {/* 생성 중 로딩 버블 — 화면이 멈춘 느낌 제거 */}
+          {isGenerating && (
+            <div className="glass-chip flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm text-muted-foreground">
+              <Loader2 size={15} className="animate-spin text-primary" />
+              문항을 만들고 있어요…
             </div>
           )}
 
@@ -736,6 +744,8 @@ export function QuestionEditor() {
           ))}
         </div>
 
+        {optionsOpen && (
+        <>
         {/* 생성 옵션 — 과목(필수): 대분류 칩 → 세부과목 칩 2단 선택 */}
         <div className="px-4 pb-2">
           <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">과목</label>
@@ -870,6 +880,8 @@ export function QuestionEditor() {
             </button>
           </div>
         </div>
+        </>
+        )}
 
         {/* 입력 바 */}
         <div className="glass-bar border-t px-4 py-3 flex items-end gap-2">
