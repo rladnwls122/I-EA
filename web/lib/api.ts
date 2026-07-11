@@ -23,6 +23,12 @@ import type {
   MyNotesResponse,
   MyExamSession,
   PaginatedResponse,
+  SessionDetail,
+  SubmitAnswerInput,
+  SubmitAnswerResult,
+  RevealHintResult,
+  SubmitSessionResult,
+  SelfGradeResult,
 } from './types';
 
 // ─── 기본 설정 ──────────────────────────────────────────────────────
@@ -462,5 +468,55 @@ export function fetchMyExamSessions(params?: {
   const qs = query.toString();
   return apiFetch<PaginatedResponse<MyExamSession>>(
     `/me/exam-sessions${qs ? `?${qs}` : ''}`,
+  );
+}
+
+// ─── 시험 세션 응시 ─────────────────────────────────────────────────
+
+/** 세션 응시 데이터 조회 (진행 중이면 정답 마스킹, 제출 완료면 공개) */
+export function fetchSession(id: string) {
+  return apiFetch<SessionDetail>(`/exam-sessions/${id}`);
+}
+
+/** 문항 답안 저장(OMR) — autosave용. upsert라 여러 번 호출해도 안전 */
+export function submitSessionAnswer(
+  sessionQuestionId: string,
+  data: SubmitAnswerInput,
+) {
+  return apiFetch<SubmitAnswerResult>(
+    `/exam-sessions/questions/${sessionQuestionId}/answer`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    },
+  );
+}
+
+/** 힌트 열람 (힌트 없는 문항이면 404) */
+export function revealSessionHint(sessionQuestionId: string) {
+  return apiFetch<RevealHintResult>(
+    `/exam-sessions/questions/${sessionQuestionId}/hint`,
+    { method: 'POST' },
+  );
+}
+
+/** 세션 최종 제출 — 채점 집계 + XP 적립 */
+export function submitSession(id: string) {
+  return apiFetch<SubmitSessionResult>(`/exam-sessions/${id}/submit`, {
+    method: 'POST',
+  });
+}
+
+/** 서술형 자기채점 확정(SUBMITTED 세션에서만 호출 가능) */
+export function selfGradeSessionQuestion(
+  sessionQuestionId: string,
+  isCorrect: boolean,
+) {
+  return apiFetch<SelfGradeResult>(
+    `/exam-sessions/questions/${sessionQuestionId}/self-grade`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ isCorrect }),
+    },
   );
 }
