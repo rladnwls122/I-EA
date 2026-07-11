@@ -458,3 +458,35 @@ export interface ReviewsResponse {
   };
   items: QuestionReview[];
 }
+
+// ─── Pick & Mix 장바구니 / 세션 조립 ────────────────────────────────
+
+/** 장바구니 항목 — 표시에 필요한 최소만 담는다(전체는 필요 시 재조회). */
+export interface CartItem {
+  id: string;
+  stemText: string;
+  subjectName?: string;
+  questionType: string;
+}
+
+/** POST /exam-sessions 입력 — 플레이리스트(questionIds) 또는 필터 모드. */
+export interface CreateSessionInput {
+  questionIds?: string[];
+  isReview?: boolean;
+  subjectId?: string;
+  workbookId?: string;
+  questionCount?: number;
+  filter?: {
+    tagIds?: string[];
+    questionTypes?: string[];
+    minDifficulty?: number;
+    maxDifficulty?: number;
+  };
+}
+
+/** POST /exam-sessions 응답 */
+export interface CreateSessionResult {
+  id: string;
+  questionCount: number;
+  status: 'IN_PROGRESS';
+}

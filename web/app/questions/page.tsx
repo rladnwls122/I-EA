@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { QuestionCard } from "@/components/questions/QuestionCard";
 import { QuestionPreview } from "@/components/questions/QuestionPreview";
+import { CartButton } from "@/components/cart/CartButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useQuestions } from "@/lib/hooks";
@@ -125,6 +126,7 @@ export default function QuestionsPage() {
         )}
       </main>
       <QuestionPreview question={selected} onClose={() => setSelected(null)} />
+      <CartButton />
     </>
   );
 }

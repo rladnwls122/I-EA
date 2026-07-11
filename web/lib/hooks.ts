@@ -38,6 +38,7 @@ import {
   selfGradeSessionQuestion,
   fetchReviews,
   upsertReview,
+  createSession,
 } from './api';
 import type {
   Subject,
@@ -547,4 +548,12 @@ export function useUpsertReview() {
       queryClient.invalidateQueries({ queryKey: ['reviews', variables.questionId] });
     },
   });
+}
+
+
+// ─── 세션 조립 ─────────────────────────────────────────────────────
+
+/** 세션 조립(플레이리스트/필터/복습). 성공 시 /exam-sessions/[id]로 이동은 호출부 몫 */
+export function useCreateSession() {
+  return useMutation({ mutationFn: createSession });
 }

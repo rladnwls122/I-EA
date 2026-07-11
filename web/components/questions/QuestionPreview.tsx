@@ -1,11 +1,13 @@
 "use client";
-import { useState } from "react";
-import { Check, ChevronRight, FolderPlus, Lock, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, Loader2, Lock, Play, ShoppingBasket, X } from "lucide-react";
+import { toast } from "sonner";
 import type { Question } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { extractPlainText } from "@/lib/prosemirror";
+import { useCartStore } from "@/lib/cart-store";
+import { useCreateSession } from "@/lib/hooks";
 
 export function QuestionPreview({
   question,
@@ -14,18 +16,41 @@ export function QuestionPreview({
   question: Question | null;
   onClose: () => void;
 }) {
-  const [saved, setSaved] = useState(false);
-  const [newBook, setNewBook] = useState(false);
-  const [title, setTitle] = useState("");
+  const router = useRouter();
+  const { add, remove, has } = useCartStore();
+  const createSession = useCreateSession();
 
   if (!question) return null;
 
-  const add = () => {
-    if (newBook && !title.trim()) return;
-    setSaved(true);
+  // choices는 실 API에선 배열([{id,content,isCorrect}]), 레거시 목업에선 {content:[]} — 양쪽 방어.
+  const choices: any[] = Array.isArray(question.choices)
+    ? question.choices
+    : question.choices?.content || [];
+
+  const inCart = has(question.id);
+
+  const toggleCart = () => {
+    if (inCart) {
+      remove(question.id);
+      return;
+    }
+    add({
+      id: question.id,
+      stemText: extractPlainText(question.stem),
+      subjectName: question.subject?.name,
+      questionType: question.questionType,
+    });
   };
 
-  const choices = question.choices?.content || [];
+  const solveNow = () => {
+    createSession.mutate(
+      { questionIds: [question.id] },
+      {
+        onSuccess: (res) => router.push(`/exam-sessions/${res.id}`),
+        onError: () => toast.error("세션 생성에 실패했습니다."),
+      },
+    );
+  };
 
   return (
     <div
@@ -85,13 +110,13 @@ export function QuestionPreview({
               {choices.map((c: any, i: number) => (
                 <div
                   className="flex items-start gap-3 rounded-lg border border-border bg-surface-raised p-3.5"
-                  key={i}
+                  key={c?.id ?? i}
                 >
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border font-mono text-[11px] text-muted-foreground">
                     {i + 1}
                   </span>
                   <span className="text-sm leading-relaxed text-foreground/90">
-                    {extractPlainText(c)}
+                    {extractPlainText(c?.content ?? c)}
                   </span>
                 </div>
               ))}
@@ -112,64 +137,37 @@ export function QuestionPreview({
           </div>
         </div>
 
-        {/* 담기 */}
-        <div className="space-y-3 border-t border-border p-6">
-          <div className="flex gap-1 rounded-lg border border-border p-1">
-            <button
-              className={`flex-1 rounded-md py-2 text-[13px] font-medium transition-colors ${
-                !newBook
-                  ? "bg-secondary text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setNewBook(false)}
-            >
-              기존 문제집
-            </button>
-            <button
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-[13px] font-medium transition-colors ${
-                newBook
-                  ? "bg-secondary text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setNewBook(true)}
-            >
-              <FolderPlus size={14} /> 새 문제집
-            </button>
-          </div>
-
-          {newBook ? (
-            <Input
-              autoFocus
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="새 문제집 이름"
-              className="h-11"
-            />
-          ) : (
-            <select className="h-11 w-full cursor-pointer appearance-none rounded-md border border-input bg-transparent px-3 text-sm text-foreground outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring">
-              <option value="" disabled>
-                문제집을 선택하세요
-              </option>
-              <option>2026 수능 국어 실전 문제집</option>
-              <option>문학 오답 다시보기</option>
-            </select>
-          )}
-
+        {/* 액션: 장바구니 담기 / 바로 풀기 */}
+        <div className="space-y-2.5 border-t border-border p-6">
           <Button
-            onClick={add}
+            onClick={toggleCart}
             size="lg"
             className="w-full"
-            variant={saved ? "secondary" : "default"}
+            variant={inCart ? "secondary" : "default"}
           >
-            {saved ? (
+            {inCart ? (
               <>
-                <Check size={18} /> 문제를 담았습니다
+                <Check size={18} /> 담김 — 빼려면 클릭
               </>
             ) : (
               <>
-                문제 담기 <ChevronRight size={18} />
+                <ShoppingBasket size={18} /> 문제 담기
               </>
             )}
+          </Button>
+          <Button
+            onClick={solveNow}
+            size="lg"
+            variant="outline"
+            className="w-full"
+            disabled={createSession.isPending}
+          >
+            {createSession.isPending ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Play size={18} />
+            )}
+            이 문제 바로 풀기
           </Button>
         </div>
       </aside>

@@ -31,6 +31,8 @@ import type {
   SelfGradeResult,
   QuestionReview,
   ReviewsResponse,
+  CreateSessionInput,
+  CreateSessionResult,
 } from './types';
 
 // ─── 기본 설정 ──────────────────────────────────────────────────────
@@ -255,6 +257,8 @@ export function createWorkbook(data: {
   description?: string;
   coverImageUrl?: string;
   visibility?: string;
+  /** 장바구니 일괄 담기 — 백엔드 CreateWorkbookDto가 벌크 지원 */
+  questionIds?: string[];
 }) {
   return apiFetch<Workbook>('/workbooks', {
     method: 'POST',
@@ -537,6 +541,16 @@ export function upsertReview(
 ) {
   return apiFetch<QuestionReview>(`/questions/${questionId}/reviews`, {
     method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+// ─── 세션 조립 (Pick & Mix / 복습) ──────────────────────────────────
+
+/** 세션 조립 — questionIds(플레이리스트) 또는 필터 모드 */
+export function createSession(data: CreateSessionInput) {
+  return apiFetch<CreateSessionResult>('/exam-sessions', {
+    method: 'POST',
     body: JSON.stringify(data),
   });
 }
