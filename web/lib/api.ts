@@ -29,6 +29,8 @@ import type {
   RevealHintResult,
   SubmitSessionResult,
   SelfGradeResult,
+  QuestionReview,
+  ReviewsResponse,
 } from './types';
 
 // ─── 기본 설정 ──────────────────────────────────────────────────────
@@ -519,4 +521,22 @@ export function selfGradeSessionQuestion(
       body: JSON.stringify({ isCorrect }),
     },
   );
+}
+
+// ─── 문항 리뷰 ─────────────────────────────────────────────────────
+
+/** 문제별 리뷰 목록 + 평점 요약 */
+export function fetchReviews(questionId: string) {
+  return apiFetch<ReviewsResponse>(`/questions/${questionId}/reviews`);
+}
+
+/** 내 리뷰 등록/수정 (사용자당 1건 upsert) */
+export function upsertReview(
+  questionId: string,
+  data: { rating: number; perceivedDifficulty?: number; reviewText?: string },
+) {
+  return apiFetch<QuestionReview>(`/questions/${questionId}/reviews`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 }

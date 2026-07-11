@@ -433,3 +433,28 @@ export interface SelfGradeResult {
   isCorrect: boolean;
   reward: SelfGradeReward | null;
 }
+
+// ─── 문항 리뷰 (별점 + 체감 난이도) ─────────────────────────────────
+
+export interface QuestionReview {
+  id: string;
+  questionId: string;
+  reviewerId: string;
+  /** 문제 품질 추천도 1~5 */
+  rating: number;
+  /** 체감 난이도 1~5 (선택) */
+  perceivedDifficulty?: number | null;
+  reviewText?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  reviewer?: { id: string; nickname: string };
+}
+
+/** GET /questions/:id/reviews 응답 */
+export interface ReviewsResponse {
+  summary: {
+    averageRating: number | null;
+    averagePerceivedDifficulty: number | null;
+  };
+  items: QuestionReview[];
+}

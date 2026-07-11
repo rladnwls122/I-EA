@@ -36,6 +36,8 @@ import {
   revealSessionHint,
   submitSession,
   selfGradeSessionQuestion,
+  fetchReviews,
+  upsertReview,
 } from './api';
 import type {
   Subject,
@@ -515,5 +517,34 @@ export function useSelfGrade() {
       sessionQuestionId: string;
       isCorrect: boolean;
     }) => selfGradeSessionQuestion(sessionQuestionId, isCorrect),
+  });
+}
+
+
+// ─── 문항 리뷰 ─────────────────────────────────────────────────────
+
+/** 문제별 리뷰 목록 + 평점 요약 */
+export function useReviews(questionId: string | null) {
+  return useQuery({
+    queryKey: ['reviews', questionId],
+    queryFn: () => fetchReviews(questionId!),
+    enabled: !!questionId,
+  });
+}
+
+/** 내 리뷰 등록/수정(upsert). 성공 시 해당 문항 리뷰 목록 갱신 */
+export function useUpsertReview() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      questionId,
+      data,
+    }: {
+      questionId: string;
+      data: { rating: number; perceivedDifficulty?: number; reviewText?: string };
+    }) => upsertReview(questionId, data),
+    onSuccess: (_r, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['reviews', variables.questionId] });
+    },
   });
 }
