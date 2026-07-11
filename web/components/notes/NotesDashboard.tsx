@@ -13,8 +13,8 @@ export function NotesDashboard() {
   const subjects = ["전체", ...Object.keys(data?.summary?.bySubject || {})];
   
   const filteredQuestions = (data?.wrongQuestions || []).filter(q => {
-    if (filter !== "전체" && q.subject?.name !== filter) return false;
-    if (search && !q.searchText?.includes(search)) return false;
+    if (filter !== "전체" && q.question.subject?.name !== filter) return false;
+    if (search && !q.question.searchText?.includes(search)) return false;
     return true;
   });
 
@@ -108,9 +108,9 @@ export function NotesDashboard() {
       ) : (
         <div className="space-y-5">
           {filteredQuestions.map((q, i) => (
-            <Link 
-              href={`/notes/${q.id}`} 
-              key={q.id}
+            <Link
+              href={`/notes/${q.question.id}`}
+              key={q.question.id}
               className="flex items-start gap-5 p-6 bg-card border-2 border-border rounded-2xl transition-all shadow-neo-sm hover:border-primary hover:-translate-y-1 hover:shadow-neo active:translate-y-1 active:shadow-none group"
             >
               <div className="text-sm font-black text-muted-foreground group-hover:text-primary transition-colors w-8 pt-1">
@@ -118,10 +118,10 @@ export function NotesDashboard() {
               </div>
               <div className="flex-1 min-w-0">
                 <span className="inline-block bg-surface-raised border-2 border-border text-[10px] font-black text-foreground px-2 py-1 rounded-md mb-3 tracking-widest uppercase">
-                  {q.subject?.name} · {q.questionType} · 난이도 {q.difficulty}
+                  {q.question.subject?.name} · {q.question.questionType} · 난이도 {q.question.difficulty}
                 </span>
                 <h3 className="text-lg font-bold text-foreground leading-snug mb-4 line-clamp-2">
-                  {extractPlainText(q.stem)}
+                  {extractPlainText(q.question.stem)}
                 </h3>
                 {q.annotations && q.annotations.length > 0 && (
                   <div className="bg-primary/10 rounded-xl p-4 border-2 border-primary/20">

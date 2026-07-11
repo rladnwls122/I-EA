@@ -28,8 +28,8 @@ export default function NoteDetailPage() {
   // 객관식 선지 파싱 시뮬레이션
   let choicesList: string[] = [];
   try {
-    if (question.choices && Array.isArray(question.choices)) {
-      choicesList = question.choices.map(c => typeof c === 'string' ? c : (c.content || ''));
+    if (question.choices?.content && Array.isArray(question.choices.content)) {
+      choicesList = question.choices.content.map((c: any) => extractPlainText(c));
     }
   } catch(e) {}
 
