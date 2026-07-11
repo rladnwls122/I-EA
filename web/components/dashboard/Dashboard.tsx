@@ -5,6 +5,7 @@ import { ArrowRight, Flame, Play, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMilestones, useActiveSession } from "@/lib/hooks";
 import { WrongNotesSummary, RecentSessions } from "./DashboardMain";
+import { SpotlightSearch } from "./SpotlightSearch";
 import { MilestoneProgress, PopularContent } from "./DashboardSide";
 
 /** 인사말 + 스트릭/레벨/XP 진행바 헤어로. */
@@ -129,6 +130,11 @@ export function Dashboard() {
 
   return (
     <main className="mx-auto max-w-7xl p-6">
+      {/* 스포트라이트 검색 — 로그인 여부 무관 공개 */}
+      <div className="mb-4">
+        <SpotlightSearch />
+      </div>
+
       {/* 개인화 영역 — 비로그인이면 블러 게이트 */}
       <div className="relative">
         <div
