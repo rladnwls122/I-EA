@@ -26,15 +26,16 @@ export class QuestionsController {
   constructor(private readonly service: QuestionsService) {}
 
   @Get()
-  @ApiOperation({ summary: '문제 은행 목록/검색 (단원·상태·태그·난이도·키워드 필터)' })
+  @Public()
+  @ApiOperation({ summary: '문제 은행 목록/검색 (단원·상태·태그·난이도·키워드 필터, 인증 불필요)' })
   list(@Query() query: QueryQuestionDto) {
     return this.service.list(query);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: '문제 상세 조회 (콘텐츠·태그·정답률 포함)' })
-  get(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getById(id);
+  @ApiOperation({ summary: '문제 상세 조회 (콘텐츠·태그·정답률·내 풀이 여부 포함)' })
+  get(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.service.getById(id, user.id);
   }
 
   @Get(':id/stats')

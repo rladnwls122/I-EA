@@ -57,11 +57,11 @@ export class WorkbooksService {
    * 3단 분류 필터는 "그 분류의 문항을 하나라도 포함하는 문제집"으로 해석한다
    * (문제집은 여러 소분류를 섞을 수 있으므로 문제집 자체에는 분류가 없다).
    */
-  async list(dto: QueryWorkbookDto, userId: string): Promise<PaginatedResult<unknown>> {
+  async list(dto: QueryWorkbookDto, userId: string | null): Promise<PaginatedResult<unknown>> {
     const subjectFilter = this.buildSubjectFilter(dto);
 
     const where: Prisma.WorkbookWhereInput = {
-      OR: [{ visibility: 'PUBLIC' }, { ownerId: userId }],
+      OR: userId ? [{ visibility: 'PUBLIC' }, { ownerId: userId }] : [{ visibility: 'PUBLIC' }],
       ...(dto.q ? { title: { contains: dto.q } } : {}),
       ...(subjectFilter
         ? { questions: { some: { question: { subject: subjectFilter } } } }

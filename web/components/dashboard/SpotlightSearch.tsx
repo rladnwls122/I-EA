@@ -19,12 +19,24 @@ const chip = (active: boolean) =>
  * 다단계 필터: 시험(examType) → 대분류(examCategory) → 소분류(subject).
  * 대분류 확정 시 나머지는 페이드아웃, 선택은 왼쪽 고정 + 우측에 소분류 전개.
  */
-export function SpotlightSearch() {
-  const [open, setOpen] = useState(false);
+export function SpotlightSearch({
+  open: openProp,
+  onOpenChange,
+}: {
+  /** 외부(예: "문제집 둘러보기" 버튼)에서 열도록 제어하고 싶을 때만 전달 — 없으면 내부 상태로 자체 관리. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+} = {}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
+  const setOpen = (v: boolean) => {
+    setInternalOpen(v);
+    onOpenChange?.(v);
+  };
   const [keyword, setKeyword] = useState("");
   const [examType, setExamType] = useState("");
   const [category, setCategory] = useState(""); // 확정된 대분류 (Step 3 진입)
-  const [subjectId, setSubjectId] = useState("");
+  const [subjectIds, setSubjectIds] = useState<string[]>([]); // 소분류 다중 선택
   const [selected, setSelected] = useState<Question | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -48,9 +60,9 @@ export function SpotlightSearch() {
   );
 
   // 검색/필터 결과 — 열려 있고 조건이 하나라도 있어야 조회
-  const hasCriteria = open && (keyword.trim().length > 0 || !!subjectId);
+  const hasCriteria = open && (keyword.trim().length > 0 || subjectIds.length > 0);
   const { data: results, isLoading } = useQuestions(
-    { search: keyword.trim() || undefined, subjectId: subjectId || undefined, limit: 12 },
+    { search: keyword.trim() || undefined, subjectIds: subjectIds.length ? subjectIds : undefined, limit: 12 },
     hasCriteria,
   );
   const questions = hasCriteria ? results?.items || [] : [];
@@ -69,7 +81,11 @@ export function SpotlightSearch() {
   const resetFilter = () => {
     setExamType("");
     setCategory("");
-    setSubjectId("");
+    setSubjectIds([]);
+  };
+
+  const toggleSubject = (id: string) => {
+    setSubjectIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
   };
 
   return (
@@ -127,7 +143,7 @@ export function SpotlightSearch() {
                   onClick={() => {
                     setExamType(t === examType ? "" : t);
                     setCategory("");
-                    setSubjectId("");
+                    setSubjectIds([]);
                   }}
                   className={chip(examType === t)}
                 >
@@ -152,13 +168,8 @@ export function SpotlightSearch() {
                       key={c}
                       type="button"
                       onClick={() => {
-                        if (category === c) {
-                          setCategory("");
-                          setSubjectId("");
-                        } else {
-                          setCategory(c);
-                          setSubjectId("");
-                        }
+                        setCategory(category === c ? "" : c);
+                        setSubjectIds([]);
                       }}
                       className={`${chip(category === c)} ${
                         category === c ? "order-first" : ""
@@ -168,14 +179,15 @@ export function SpotlightSearch() {
                     </button>
                   ),
                 )}
-                {/* 확정된 대분류 우측에 소분류 전개 */}
+                {/* 확정된 대분류 우측에 소분류 전개 — 다중 선택 */}
                 {category &&
                   leafSubjects.map((s) => (
                     <button
                       key={s.id}
                       type="button"
-                      onClick={() => setSubjectId(subjectId === s.id ? "" : s.id)}
-                      className={`${chip(subjectId === s.id)} animate-in fade-in slide-in-from-left-2 duration-300`}
+                      onClick={() => toggleSubject(s.id)}
+                      aria-pressed={subjectIds.includes(s.id)}
+                      className={`${chip(subjectIds.includes(s.id))} animate-in fade-in slide-in-from-left-2 duration-300`}
                     >
                       {s.name}
                     </button>

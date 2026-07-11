@@ -28,7 +28,11 @@ export class QuestionsService {
   /** 문제 은행 목록 — 단원/상태/유형/난이도/태그/검색어 필터 + 페이지네이션. */
   async list(query: QueryQuestionDto): Promise<PaginatedResult<unknown>> {
     const where: Prisma.QuestionWhereInput = {
-      ...(query.subjectId ? { subjectId: query.subjectId } : {}),
+      ...(query.subjectIds?.length
+        ? { subjectId: { in: query.subjectIds } }
+        : query.subjectId
+          ? { subjectId: query.subjectId }
+          : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.questionType ? { questionType: query.questionType } : {}),
       ...(query.difficulty ? { difficulty: query.difficulty } : {}),
@@ -70,7 +74,7 @@ export class QuestionsService {
   }
 
   /** 단건 상세 — 콘텐츠 전체 + 태그 + 지문 + 평점 요약. 조회 시 view_count를 1 증가시킨다. */
-  async getById(id: string) {
+  async getById(id: string, userId: string) {
     // 조회수 캐시를 증가시키면서 증가된 레코드를 그대로 받아온다(단일 쿼리).
     const question = await this.prisma.question
       .update({
@@ -96,10 +100,21 @@ export class QuestionsService {
         ? Math.round((question.correctSolvedCount / question.totalSolvedCount) * 1000) / 10
         : null;
 
+    // 채점결과(정답/해설) 탭 게이팅용 — 이 유저가 이 문항을 제출된 세션에서 실제로 풀었는지.
+    const solvedCount = await this.prisma.examSessionAnswer.count({
+      where: {
+        examSessionQuestion: {
+          questionId: id,
+          examSession: { userId, status: 'SUBMITTED' },
+        },
+      },
+    });
+
     return {
       ...question,
       tags: question.questionTags.map((qt) => qt.tag),
       correctRatePercent: correctRate,
+      solvedByMe: solvedCount > 0,
     };
   }
 

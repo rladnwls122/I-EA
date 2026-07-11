@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRoleType } from '@prisma/client';
+import { Public } from '@/common/decorators/public.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { RolesGuard } from '@/modules/auth/roles.guard';
 import { CatalogService } from './catalog.service';
@@ -19,7 +20,8 @@ export class CatalogController {
 
   // subjects (세부과목)
   @Get('subjects')
-  @ApiOperation({ summary: '소분류 목록 (시험 examType · 대분류 examCategory 포함)' })
+  @Public()
+  @ApiOperation({ summary: '소분류 목록 (시험 examType · 대분류 examCategory 포함, 인증 불필요)' })
   listSubjects() {
     return this.service.listSubjects();
   }
@@ -33,7 +35,8 @@ export class CatalogController {
 
   // tags
   @Get('tags')
-  @ApiOperation({ summary: '태그 목록 (category로 필터)' })
+  @Public()
+  @ApiOperation({ summary: '태그 목록 (category로 필터, 인증 불필요)' })
   listTags(@Query('category') category?: string) {
     return this.service.listTags(category);
   }

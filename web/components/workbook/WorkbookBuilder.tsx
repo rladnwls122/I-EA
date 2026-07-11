@@ -30,7 +30,7 @@ export function WorkbookBuilder() {
   const [step, setStep] = useState<1 | 2>(1);
   const [examType, setExamType] = useState<string>("");
   const [category, setCategory] = useState<string>("");
-  const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
+  const [selectedSubjects, setSelectedSubjects] = useState<Subject[]>([]);
 
   /* ── Step 2: Options ── */
   const [title, setTitle] = useState("");
@@ -57,18 +57,24 @@ export function WorkbookBuilder() {
   const examTypes = subjectTree ? Object.keys(subjectTree) : [];
   const categories = (examType && subjectTree) ? Object.keys(subjectTree[examType] ?? {}) : [];
   const subjects = (examType && category && subjectTree) ? subjectTree[examType]?.[category] ?? [] : [];
-  const canProceed = !!selectedSubject;
+  const canProceed = selectedSubjects.length > 0;
 
   /* ── 이벤트 핸들러 ── */
   const handleExamTypeChange = useCallback((type: string) => {
     setExamType(type);
     setCategory("");
-    setSelectedSubject(null);
+    setSelectedSubjects([]);
   }, []);
 
   const handleCategoryChange = useCallback((cat: string) => {
     setCategory(cat);
-    setSelectedSubject(null);
+    setSelectedSubjects([]);
+  }, []);
+
+  const toggleSubject = useCallback((s: Subject) => {
+    setSelectedSubjects((prev) =>
+      prev.some((p) => p.id === s.id) ? prev.filter((p) => p.id !== s.id) : [...prev, s],
+    );
   }, []);
 
   const handleCreateAndShowTracks = async () => {
@@ -86,10 +92,11 @@ export function WorkbookBuilder() {
   };
 
   const handleAiGenerate = async () => {
-    if (!selectedSubject || !createdWorkbookId) return;
+    if (!selectedSubjects.length || !createdWorkbookId) return;
     try {
+      // AI 생성은 문항당 세부과목 하나만 받는다 — 다중 선택 시 첫 과목 기준으로 요청.
       const gen = await createAiGen.mutateAsync({
-        subjectId: selectedSubject.id,
+        subjectId: selectedSubjects[0].id,
         prompt: aiTopic,
         difficulty,
         questionCount: aiCount,
@@ -216,8 +223,9 @@ export function WorkbookBuilder() {
                   <label className="text-sm font-medium text-foreground/80">소과목</label>
                   <div className="flex flex-wrap gap-2">
                     {subjects.map((s) => (
-                      <button key={s.id} onClick={() => setSelectedSubject(s)}
-                        className={`${pillBase} ${selectedSubject?.id === s.id ? pillOn : pillOff}`}>
+                      <button key={s.id} onClick={() => toggleSubject(s)}
+                        aria-pressed={selectedSubjects.some((p) => p.id === s.id)}
+                        className={`${pillBase} ${selectedSubjects.some((p) => p.id === s.id) ? pillOn : pillOff}`}>
                         {s.name}
                       </button>
                     ))}
@@ -241,7 +249,7 @@ export function WorkbookBuilder() {
           <span className="mb-2 block font-mono text-xs uppercase tracking-widest text-primary">Step 2</span>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight">문항의 결을 맞춰볼까요?</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {examType} · {category} · {selectedSubject?.name} 기준으로 생성됩니다.
+            {examType} · {category} · {selectedSubjects.map((s) => s.name).join(", ")} 기준으로 생성됩니다.
           </p>
 
           {/* 제목 */}

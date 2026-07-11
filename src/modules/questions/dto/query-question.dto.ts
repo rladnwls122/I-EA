@@ -7,10 +7,20 @@ import { QUESTION_KINDS, QuestionKind } from '@/common/constants/question';
 
 /** 문제 은행 목록/검색 필터. */
 export class QueryQuestionDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ description: '세부과목 ID' })
+  @ApiPropertyOptional({ description: '세부과목 ID(단일, 레거시)' })
   @IsOptional()
   @IsUUID()
   subjectId?: string;
+
+  @ApiPropertyOptional({
+    description: '세부과목 ID(콤마 구분 또는 반복 파라미터). 여러 개면 OR 매칭',
+    type: [String],
+  })
+  @IsOptional()
+  @Transform(({ value }) => (Array.isArray(value) ? value : String(value).split(',').filter(Boolean)))
+  @IsArray()
+  @IsUUID('4', { each: true })
+  subjectIds?: string[];
 
   @ApiPropertyOptional({ enum: QuestionStatus })
   @IsOptional()

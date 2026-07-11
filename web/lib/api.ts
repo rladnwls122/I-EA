@@ -20,6 +20,7 @@ import type {
   QuestionComment,
   UserQuestionAnnotation,
   AuthResponse,
+  MeProfile,
   MyNotesResponse,
   MyExamSession,
   PaginatedResponse,
@@ -94,6 +95,11 @@ export function register(
   });
 }
 
+/** 현재 로그인 사용자 정보(xp/level/스트릭 포함) */
+export function fetchMe() {
+  return apiFetch<MeProfile>('/auth/me');
+}
+
 // ─── 과목 ───────────────────────────────────────────────────────────
 
 /** 전체 과목 목록 조회 */
@@ -113,6 +119,7 @@ export function fetchQuestions(params?: {
   page?: number;
   limit?: number;
   subjectId?: string;
+  subjectIds?: string[];
   status?: QuestionStatus;
   questionType?: string;
   difficulty?: number;
@@ -122,7 +129,8 @@ export function fetchQuestions(params?: {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
-  if (params?.subjectId) query.set('subjectId', params.subjectId);
+  if (params?.subjectIds?.length) query.set('subjectIds', params.subjectIds.join(','));
+  else if (params?.subjectId) query.set('subjectId', params.subjectId);
   if (params?.status) query.set('status', params.status);
   if (params?.questionType)
     query.set('questionType', params.questionType);

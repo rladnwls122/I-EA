@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useQuestion } from "@/lib/hooks";
@@ -11,7 +11,7 @@ import { CommentSidebar } from "./CommentSidebar";
 
 /**
  * 문항 상세 셸 — 헤더([채점결과↔문제탐색] 토글) + 좌 본문 / 우 댓글 2열.
- * reveal 게이팅은 표시상 처리(스펙 명시): 문제탐색이면 정답/해설/통계 미표시.
+ * "채점 결과" 탭은 solvedByMe(백엔드가 판정)일 때만 활성화 — 안 풀었으면 토글 자체를 막는다.
  */
 export function QuestionDetail({
   id,
@@ -22,7 +22,12 @@ export function QuestionDetail({
 }) {
   const router = useRouter();
   const { data: question, isLoading, isError } = useQuestion(id);
-  const [reveal, setReveal] = useState(initialReveal);
+  const [reveal, setReveal] = useState(false);
+  const solved = !!question?.solvedByMe;
+
+  useEffect(() => {
+    if (initialReveal && solved) setReveal(true);
+  }, [initialReveal, solved]);
 
   if (isLoading) {
     return (
@@ -66,10 +71,16 @@ export function QuestionDetail({
         <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
           <button
             type="button"
-            onClick={() => setReveal(true)}
+            onClick={() => solved && setReveal(true)}
+            disabled={!solved}
             aria-pressed={reveal}
+            title={solved ? undefined : "문제를 풀어야 채점 결과를 볼 수 있어요"}
             className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-              reveal ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+              reveal
+                ? "bg-primary/10 text-primary"
+                : solved
+                  ? "text-muted-foreground hover:text-foreground"
+                  : "cursor-not-allowed text-muted-foreground/40"
             }`}
           >
             채점 결과

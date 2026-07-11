@@ -42,6 +42,7 @@ import {
   startWorkbook,
   fetchMilestones,
   fetchActiveSession,
+  fetchMe,
 } from './api';
 import type {
   Subject,
@@ -91,6 +92,7 @@ export function useQuestions(params?: {
   page?: number;
   limit?: number;
   subjectId?: string;
+  subjectIds?: string[];
   status?: QuestionStatus;
   questionType?: string;
   difficulty?: number;
@@ -577,4 +579,9 @@ export function useMilestones(enabled = true) {
 /** 진행 중 세션(이어하기 배너) */
 export function useActiveSession(enabled = true) {
   return useQuery({ queryKey: ['active-session'], queryFn: fetchActiveSession, enabled });
+}
+
+/** 현재 로그인 사용자 정보 (/me 페이지) */
+export function useMe(enabled = true) {
+  return useQuery({ queryKey: ['me'], queryFn: fetchMe, enabled });
 }

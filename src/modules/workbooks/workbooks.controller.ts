@@ -9,10 +9,13 @@ import {
   Post,
   Put,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { Public } from '@/common/decorators/public.decorator';
 import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
+import { OptionalJwtAuthGuard } from '@/modules/auth/optional-jwt-auth.guard';
 import { WorkbooksService } from './workbooks.service';
 import {
   AddQuestionDto,
@@ -33,9 +36,11 @@ export class WorkbooksController {
   constructor(private readonly service: WorkbooksService) {}
 
   @Get()
-  @ApiOperation({ summary: '문제집 탐색 (PUBLIC + 내 문제집, 3단 분류 필터)' })
-  list(@Query() dto: QueryWorkbookDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.service.list(dto, user.id);
+  @Public()
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: '문제집 탐색 (PUBLIC + 내 문제집, 3단 분류 필터, 인증 불필요)' })
+  list(@Query() dto: QueryWorkbookDto, @CurrentUser() user: CurrentUserPayload | null) {
+    return this.service.list(dto, user?.id ?? null);
   }
 
   @Get(':id')

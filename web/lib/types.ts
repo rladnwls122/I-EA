@@ -80,6 +80,10 @@ export interface Question {
   // ── 관계 (선택적 포함) ──
   subject?: Subject;
   tags?: Tag[];
+
+  /** 상세 조회(GET /questions/:id)에서만 내려옴 — 이 유저가 제출된 세션에서 실제로 풀었는지. */
+  solvedByMe?: boolean;
+  correctRatePercent?: number | null;
 }
 
 // ─── 문제집 ─────────────────────────────────────────────────────────
@@ -253,6 +257,24 @@ export interface User {
   email: string;
   nickname: string;
   role: string;
+}
+
+/** GET /auth/me 응답 */
+export interface MeProfile {
+  id: string;
+  email: string;
+  nickname: string;
+  xp: number;
+  level: number;
+  title: string;
+  xpToNextTier: number | null;
+  streak: {
+    current: number;
+    longest: number;
+    boostActive: boolean;
+    boostUntil: string | null;
+  };
+  roles: string[];
 }
 
 // ─── 오답노트 / 내 정보 ────────────────────────────────────────────

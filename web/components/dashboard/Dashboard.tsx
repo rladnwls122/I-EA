@@ -9,7 +9,7 @@ import { SpotlightSearch } from "./SpotlightSearch";
 import { MilestoneProgress, PopularContent } from "./DashboardSide";
 
 /** 인사말 + 스트릭/레벨/XP 진행바 헤어로. */
-function StreakHero({ enabled }: { enabled: boolean }) {
+function StreakHero({ enabled, onBrowse }: { enabled: boolean; onBrowse: () => void }) {
   const { data } = useMilestones(enabled);
   const s = data?.summary;
 
@@ -65,13 +65,7 @@ function StreakHero({ enabled }: { enabled: boolean }) {
               나만의 문제집 생성 <ArrowRight size={14} />
             </Link>
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              document.getElementById("popular")?.scrollIntoView({ behavior: "smooth" })
-            }
-          >
+          <Button size="sm" variant="outline" onClick={onBrowse}>
             문제집 둘러보기
           </Button>
         </div>
@@ -113,6 +107,7 @@ function ResumeBanner({ enabled }: { enabled: boolean }) {
 export function Dashboard() {
   // localStorage 판정은 마운트 후에만(SSR/하이드레이션 불일치 방지) — 초기엔 스켈레톤.
   const [auth, setAuth] = useState<"pending" | "in" | "out">("pending");
+  const [searchOpen, setSearchOpen] = useState(false);
   useEffect(() => {
     setAuth(localStorage.getItem("token") ? "in" : "out");
   }, []);
@@ -132,7 +127,7 @@ export function Dashboard() {
     <main className="mx-auto max-w-7xl p-6">
       {/* 스포트라이트 검색 — 로그인 여부 무관 공개 */}
       <div className="mb-4">
-        <SpotlightSearch />
+        <SpotlightSearch open={searchOpen} onOpenChange={setSearchOpen} />
       </div>
 
       {/* 개인화 영역 — 비로그인이면 블러 게이트 */}
@@ -143,7 +138,7 @@ export function Dashboard() {
           }
           aria-hidden={!loggedIn}
         >
-          <StreakHero enabled={loggedIn} />
+          <StreakHero enabled={loggedIn} onBrowse={() => setSearchOpen(true)} />
           <ResumeBanner enabled={loggedIn} />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
