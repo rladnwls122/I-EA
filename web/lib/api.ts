@@ -8,6 +8,7 @@
 import type {
   Subject,
   Question,
+  Passage,
   QuestionStatus,
   Workbook,
   WorkbookQuestion,
@@ -125,6 +126,11 @@ export function fetchQuestion(id: string) {
   return apiFetch<Question>(`/questions/${id}`);
 }
 
+/** 지문(본문) 상세 — content(ProseMirror) 포함 */
+export function fetchPassage(id: string) {
+  return apiFetch<Passage>(`/passages/${id}`);
+}
+
 /** 문제 생성 */
 export function createQuestion(
   data: Partial<
@@ -190,18 +196,22 @@ export function fetchQuestionStats(id: string) {
   return apiFetch<QuestionStats>(`/questions/${id}/stats`);
 }
 
-/** 선택지 재생성 (AI) — 동기 호출, 10초 타임아웃 */
+/**
+ * 선택지 재생성 (AI) — 동기 호출.
+ * 요청은 RegenerateChoicesDto와 1:1 (stemText, choiceCount=정답 포함 전체 선지 수, difficulty?).
+ * 응답은 정답 1개를 포함한 선지 전체 집합(각 {content, isCorrect}).
+ */
 export function regenerateChoices(
   id: string,
-  data: { stemText: string; correctChoiceText: string; choiceCount: number },
+  data: { stemText: string; choiceCount: number; difficulty?: number },
 ) {
-  return apiFetch<{ distractors: string[] }>(
-    `/questions/${id}/choices/regenerate`,
-    {
-      method: 'POST',
-      body: JSON.stringify(data),
-    },
-  );
+  return apiFetch<{
+    choices: { content: string; isCorrect: boolean; explanation?: string }[];
+    persisted: boolean;
+  }>(`/questions/${id}/choices/regenerate`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 // ─── 문제집 ─────────────────────────────────────────────────────────

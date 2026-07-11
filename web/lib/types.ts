@@ -163,6 +163,17 @@ export interface AiGeneration {
   questions: Pick<Question, 'id' | 'questionType' | 'status'>[];
 }
 
+// ─── 지문(본문) ─────────────────────────────────────────────────────
+
+/** GET /passages/:id 응답 */
+export interface Passage {
+  id: string;
+  title?: string | null;
+  /** 지문 본문 — ProseMirror JSON */
+  content: any;
+  status: QuestionStatus;
+}
+
 // ─── 문제 통계 ──────────────────────────────────────────────────────
 
 export interface ChoiceDistributionItem {
