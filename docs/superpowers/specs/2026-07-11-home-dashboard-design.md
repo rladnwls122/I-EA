@@ -19,9 +19,10 @@
 
 ## 비목표 (YAGNI)
 
-- 실제 검색어 로깅/인기검색어 (백엔드 없음 → 조회수 기준 인기 콘텐츠로 대체)
+- 실제 **검색어 로깅**/인기검색어 순위 (백엔드 없음 → 조회수 기준 인기 콘텐츠로 대체). 스포트라이트 검색 자체는 포함(기존 `useQuestions({search})` 사용).
 - 구글/소셜 로그인 (백엔드에 OAuth 없음)
-- IN_PROGRESS 세션 이어풀기 화면 자체 (배너에서 기존 세션 상세로 링크만; 풀이 화면은 범위 밖)
+- 상세페이지 4종 신규 구현 — `/workbook/[id]`, `/workbook/[id]/edit`, `/exam-sessions/[id]`, `/questions/[id]`. 모두 **deferred**(F절 참고). 카드는 없는 라우트로 링크 걸지 않음.
+- IN_PROGRESS 세션 이어풀기 **풀이 화면**. 이어하기 배너는 넣되, 대상 풀이 화면이 없으므로 배너 클릭 라우팅도 deferred(배너는 표시·요약까지).
 
 ## 레이아웃 (2단: 본문 + 사이드바)
 
@@ -115,7 +116,56 @@
 - **Vega 미사용**: 도넛은 기존 SVG 구현(`ReasonDonut`)이라 Vega SSR 이슈 없음.
 - **하이드레이션**: 로그인 게이트가 `localStorage` 기반이라 서버/클라 초기 렌더 불일치 가능 → 마운트 후 판정(`useState` + `useEffect`)으로 처리, 초기엔 스켈레톤.
 
+## 인터랙션 명세 (추가 요구사항)
+
+### A. 상단 글로벌 내비게이션 숏컷
+
+대시보드 최상단(헤어로 위 또는 nav 바)에 숏컷 배치:
+- `[문제집 둘러보기]` — 라우트 이동 아님. 같은 페이지의 인기 콘텐츠 섹션으로 스크롤(anchor `#popular`, `scrollIntoView({behavior:'smooth'})`).
+- `[나만의 문제집 생성]` — `/workbook/create`로 이동(**기존 라우트, 단수**). 프롬프트의 `/workbooks/new`는 오타 — 실제 컨벤션은 단수 `/workbook/*`.
+
+### B. 스포트라이트 검색 게이트
+
+대시보드 상단 검색바 포커스/클릭 시:
+- 배경: `fixed inset-0 bg-black/40 backdrop-blur-sm z-40`로 주변 UI 차단.
+- 검색/필터 패널: 화면 중앙 레이어(`z-50`)로 띄워 시선 집중.
+- ESC 또는 배경 클릭 시 닫힘. 열릴 때 검색 input 자동 포커스.
+- 상태는 로컬(`useState`), 전역 스토어 불필요.
+
+### C. 다단계 카테고리 필터 (스포트라이트 내부)
+
+`GET /subjects`(3단 분류 리프 배열)를 클라에서 `examType → examCategory → name`으로 그룹핑해 구동:
+- **Step 1**: 시험 유형(examType) 버튼 그룹 최상단. 선택 시 하단에 관련 대분류 노출.
+- **Step 2**: 선택한 시험의 대분류(examCategory) 버튼 그룹.
+- **Step 3**: 대분류 클릭 시 — 선택 안 된 대분류는 페이드아웃(`opacity-0 transition-opacity duration-300` 후 언마운트), 선택된 대분류는 `flex-start`(맨 왼쪽)로 이동, 우측에 소분류(name) 항목 동적 렌더.
+- **필터 취소**: 소분류 리스트 마지막에 빨강 배경/텍스트 `[카테고리 취소]` 버튼 상시 배치 → 필터 전체 초기화(Step 1로 복귀).
+- 선택 결과(subjectId)로 `useQuestions({ subjectId, search })` 호출, 결과를 문제 카드로 렌더.
+
+### D. 문제 카드 (Question Card)
+
+- 필터/검색 결과 리스트를 카드로 렌더. 기존 `components/questions/QuestionCard`가 있으면 재사용, 미리보기 정책만 조정.
+- **미리보기 정책**: stem을 생략 없이 **전체 노출**(ellipsis/line-clamp 미적용). 단 `lib/prosemirror.ts`의 `extractPlainText`를 반드시 통과(ProseMirror JSON → 평문). raw 렌더 금지.
+- **클릭**: 상세 라우트(`/questions/[id]`)가 **없으므로** 기존 `QuestionPreview` 슬라이드오버를 연다(`/questions` 페이지 패턴 동일). 라우팅 아님 → 404 없음.
+
+### E. 호버 마이크로 인터랙션 (전역 정책)
+
+- **필터/일반 버튼**: `transition-all duration-300` + 호버 시 테두리 하이라이트 + 배경/텍스트 반전.
+- **문제 카드 / 콘텐츠 카드**: 호버 시 `-translate-y-1` + `shadow-lg` + `hover:border-primary/40`. `motion-reduce:` 가드로 접근성 대응(기존 홈 카드 패턴 따름).
+
+### F. 카드 라우팅 (있는 곳만 — 나머지 defer)
+
+| 카드 | 대상 | 이번 범위 |
+|---|---|---|
+| 문제 카드 | `QuestionPreview` 슬라이드오버 | ✅ 동작 (라우트 아님) |
+| 나만의 문제집 생성 | `/workbook/create` | ✅ 기존 라우트 |
+| 문제집 둘러보기 | `#popular` 스크롤 | ✅ anchor |
+| 최근 풀이 기록 카드 | `/exam-sessions/[id]` | ⏸ **페이지 없음 → 링크 안 검**. 카드는 비클릭(요약만). 상세는 별도 작업. |
+| 인기/내 문제집 카드 | `/workbook/[id]` | ⏸ **페이지 없음 → 링크 안 검**. 카드는 비클릭. |
+| 문제집 수정 | `/workbook/[id]/edit` | ⏸ **페이지 없음 → 수정 버튼 이번엔 미배치**. |
+
+**중요**: 없는 상세페이지로 링크 걸면 아까 고친 것과 같은 404. 그래서 존재하는 라우트/슬라이드오버/anchor로만 연결하고, 상세페이지 4종(`/workbook/[id]`, `/workbook/[id]/edit`, `/exam-sessions/[id]`, `/questions/[id]`)은 **명시적으로 이번 범위 밖(deferred)**으로 남긴다. 후속 스펙에서 다룸.
+
 ## 테스트 관점
 
 - 백엔드: `me.service.spec.ts`에 `activeSession` 케이스 추가(IN_PROGRESS 있음/없음, 다른 유저 격리).
-- 프론트: 타입체크(`tsc --noEmit`) + 실제 Railway API로 로그인 후 `/` 렌더 확인.
+- 프론트: 타입체크(`tsc --noEmit`) + 실제 Railway API로 로그인 후 `/` 렌더 확인. 스포트라이트 게이트 열림/닫힘·필터 단계 전환·문제 카드 전체 stem 노출 육안 확인.

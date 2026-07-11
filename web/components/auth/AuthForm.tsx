@@ -1,14 +1,39 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { login, register } from "@/lib/api";
 
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
-  const [show, setShow] = useState(false);
-  const [done, setDone] = useState(false);
+  const router = useRouter();
   const signup = mode === "signup";
+
+  const [show, setShow] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setIsPending(true);
+    try {
+      const res = signup
+        ? await register(email, password, name)
+        : await login(email, password);
+      localStorage.setItem("token", res.accessToken);
+      router.push("/");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "요청에 실패했습니다.");
+    } finally {
+      setIsPending(false);
+    }
+  }
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
@@ -61,13 +86,20 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
               : "나만의 학습 흐름을 이어가세요."}
           </p>
 
-          <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+          <form className="space-y-4" onSubmit={handleSubmit}>
             {signup && (
               <div className="flex flex-col gap-2">
                 <label htmlFor="name" className="text-sm font-medium">
                   이름
                 </label>
-                <Input id="name" placeholder="이름을 입력하세요" className="h-11" />
+                <Input
+                  id="name"
+                  placeholder="이름을 입력하세요"
+                  className="h-11"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
               </div>
             )}
             <div className="flex flex-col gap-2">
@@ -79,6 +111,9 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
                 type="email"
                 placeholder="name@example.com"
                 className="h-11"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
               />
             </div>
             <div className="flex flex-col gap-2">
@@ -91,6 +126,10 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
                   type={show ? "text" : "password"}
                   placeholder="8자 이상 입력하세요"
                   className="h-11 pr-11"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  minLength={8}
+                  required
                 />
                 <button
                   type="button"
@@ -118,13 +157,14 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
               </div>
             )}
 
-            <Button
-              type="submit"
-              size="lg"
-              className="w-full"
-              onClick={() => setDone(true)}
-            >
-              {done ? "완료되었습니다" : signup ? "계정 만들기" : "로그인"}
+            {error && (
+              <p className="text-sm text-destructive" role="alert">
+                {error}
+              </p>
+            )}
+
+            <Button type="submit" size="lg" className="w-full" disabled={isPending}>
+              {isPending ? "처리 중..." : signup ? "계정 만들기" : "로그인"}
               <ArrowRight size={17} />
             </Button>
           </form>
@@ -135,8 +175,14 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
             <span className="h-px flex-1 bg-border" />
           </div>
 
-          <Button variant="outline" size="lg" className="w-full">
-            Google로 계속하기
+          <Button
+            variant="outline"
+            size="lg"
+            className="w-full"
+            disabled
+            title="이메일/비밀번호 로그인만 지원합니다"
+          >
+            Google로 계속하기 (준비 중)
           </Button>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
