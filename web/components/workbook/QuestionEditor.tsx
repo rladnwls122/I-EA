@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, Check, GripVertical, Plus, Send, Sparkles,
@@ -16,6 +17,10 @@ import {
   fetchTags,
   regenerateChoices,
   updateQuestion,
+  createQuestion,
+  publishQuestion,
+  createWorkbook,
+  startWorkbook,
 } from "@/lib/api";
 import type { Question, Subject, Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -165,6 +170,8 @@ export function QuestionEditor() {
     },
   ]);
 
+  const router = useRouter();
+
   /* ── AI Chat ── */
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<{ role: "ai" | "user"; text: string }[]>([
@@ -184,6 +191,7 @@ export function QuestionEditor() {
   const [count, setCount] = useState(1);
   const [includePassage, setIncludePassage] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   // 생성옵션(과목/유형/난이도/문항수) 접이식 — 기본 접힘, 톱니로 펼침.
   const [optionsOpen, setOptionsOpen] = useState(false);
   // 생성 직후 바로 초안에 꽂지 않고, 검토(정답/해설 확인) 후 명시적으로 적용할 대기열.
@@ -353,6 +361,80 @@ export function QuestionEditor() {
     }
   };
 
+
+  /* ── 저장: drafts를 실제 문항으로 영속화 → 발행 → 문제집 생성 (+선택: 바로 풀기) ── */
+  const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(id);
+
+  const handleSave = async (solveAfter: boolean) => {
+    if (drafts.length === 0) {
+      toast.error("저장할 문항이 없습니다.");
+      return;
+    }
+    if (!subjectId) {
+      toast.error("먼저 세부과목을 선택하세요.");
+      setOptionsOpen(true);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      // 1) 수기 draft(임시 id)는 createQuestion으로 영속화, AI 생성분(UUID)은 그대로.
+      const questionIds: string[] = [];
+      for (const d of drafts) {
+        if (isUuid(d.id)) {
+          questionIds.push(d.id);
+          continue;
+        }
+        if (!extractPlainText(d.stem).trim()) continue; // 빈 발문은 건너뜀
+        const created = await createQuestion({
+          subjectId,
+          questionType: d.type,
+          stem: d.stem,
+          choices:
+            d.type === "객관식"
+              ? d.choices.map((text, i) => ({
+                  id: `c${i + 1}`,
+                  content: buildRichDoc(text),
+                  isCorrect: i === d.correct,
+                }))
+              : undefined,
+          correctAnswerText:
+            d.type === "주관식" && d.answerText.trim() ? d.answerText.trim() : undefined,
+          // 백엔드는 해설을 블록 노드 배열로 받는다(doc 래퍼 아님).
+          explanation: extractPlainText(d.explanation).trim()
+            ? d.explanation?.content
+            : undefined,
+        } as any);
+        questionIds.push(created.id);
+      }
+      if (questionIds.length === 0) {
+        toast.error("발문이 있는 문항이 없습니다.");
+        return;
+      }
+
+      // 2) 발행(멱등 — 이미 발행이면 서버가 그대로 통과). 세션 조립은 발행 문항만 가능.
+      await Promise.all(questionIds.map((id) => publishQuestion(id).catch(() => null)));
+
+      // 3) 문제집 생성(벌크 questionIds)
+      const wb = await createWorkbook({
+        title: `문항 모음 ${new Date().toLocaleDateString()}`,
+        visibility: "PRIVATE",
+        questionIds,
+      });
+      toast.success(`문제집으로 저장했습니다 (${questionIds.length}문항).`);
+
+      // 4) 바로 풀기 — 세션 시작 후 이동
+      if (solveAfter) {
+        const res = await startWorkbook(wb.id);
+        router.push(`/exam-sessions/${res.id}`);
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("저장에 실패했습니다. 다시 시도해 주세요.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleRegenerateChoices = async (draft: Draft) => {
     // 실제 API 연동 (ID가 임시 ID면 실제로는 생성 후 호출해야 하나, 여기서는 시연용으로 처리)
     setIsRegenerating(draft.id);
@@ -402,9 +484,22 @@ export function QuestionEditor() {
               <h1 className="text-lg font-semibold tracking-tight">새 문항 초안</h1>
             </div>
           </div>
-          <Button size="sm" className="gap-2">
-            <Check size={16} strokeWidth={2} /> 저장하기
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              disabled={isSaving}
+              onClick={() => handleSave(false)}
+            >
+              {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} strokeWidth={2} />}
+              저장하기
+            </Button>
+            <Button size="sm" className="gap-2" disabled={isSaving} onClick={() => handleSave(true)}>
+              {isSaving ? <Loader2 size={16} className="animate-spin" /> : null}
+              저장하고 바로 풀기
+            </Button>
+          </div>
         </header>
 
         {/* 문항 리스트 (스크롤) */}
