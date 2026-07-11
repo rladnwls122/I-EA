@@ -302,13 +302,16 @@ export interface MyNotesResponse {
 /** GET /me/exam-sessions 응답 항목 */
 export interface MyExamSession {
   id: string;
-  subjectId: string;
+  /** 문제집 응시(교차 과목)면 null — 대신 workbookTitle 사용 */
+  subjectName: string | null;
+  workbookId: string | null;
+  workbookTitle: string | null;
   status: string;
-  totalQuestions: number;
-  correctCount: number;
-  score: number;
-  startedAt: string;
-  submittedAt?: string | null;
+  submittedAt: string | null;
+  total: number;
+  correct: number;
+  scorePercent: number;
+  durationSec: number | null;
 }
 
 // ─── 페이지네이션 ───────────────────────────────────────────────────
@@ -494,4 +497,41 @@ export interface CreateSessionResult {
 /** POST /workbooks/:id/start 응답 — 발행 문항만 담고 제외분은 skippedQuestionIds */
 export interface StartWorkbookResult extends CreateSessionResult {
   skippedQuestionIds: string[];
+}
+
+// ─── 대시보드 (마일스톤/이어하기) ───────────────────────────────────
+
+/** GET /me/milestones 응답 */
+export interface MilestonesResponse {
+  summary: {
+    xp: number;
+    level: number;
+    title: string;
+    currentStreak: number;
+    longestStreak: number;
+    xpToNextTier: number | null;
+    achievedCount: number;
+    totalCount: number;
+  };
+  milestones: Array<{
+    key: string;
+    kind: 'LEVEL' | 'STREAK';
+    label: string;
+    target: number;
+    dependsOn: string | null;
+    achieved: boolean;
+    achievedAt: string | null;
+    progress: { current: number; target: number; ratio: number };
+    locked: boolean;
+  }>;
+}
+
+/** GET /me/exam-sessions/active 응답 — 진행 중 세션 없으면 null */
+export interface ActiveSession {
+  id: string;
+  subjectName: string | null;
+  workbookTitle: string | null;
+  total: number;
+  answered: number;
+  startedAt: string | null;
 }

@@ -40,6 +40,8 @@ import {
   upsertReview,
   createSession,
   startWorkbook,
+  fetchMilestones,
+  fetchActiveSession,
 } from './api';
 import type {
   Subject,
@@ -93,6 +95,7 @@ export function useQuestions(params?: {
   questionType?: string;
   difficulty?: number;
   search?: string;
+  sort?: 'latest' | 'popular';
 }) {
   return useQuery({
     queryKey: ['questions', params],
@@ -182,6 +185,7 @@ export function useWorkbooks(params?: {
   limit?: number;
   visibility?: string;
   search?: string;
+  sort?: 'popular' | 'recent';
 }) {
   return useQuery({
     queryKey: ['workbooks', params],
@@ -369,13 +373,11 @@ export function useMyNotes(params?: {
 }
 
 /** 내 시험 세션 이력 */
-export function useMyExamSessions(params?: {
-  page?: number;
-  limit?: number;
-}) {
+export function useMyExamSessions(enabled = true) {
   return useQuery({
-    queryKey: ['my-exam-sessions', params],
-    queryFn: () => fetchMyExamSessions(params),
+    queryKey: ['my-exam-sessions'],
+    queryFn: fetchMyExamSessions,
+    enabled,
   });
 }
 
@@ -562,4 +564,16 @@ export function useCreateSession() {
 /** 문제집 바로 풀기 — 세션 생성. 라우팅/토스트는 호출부 몫 */
 export function useStartWorkbook() {
   return useMutation({ mutationFn: (workbookId: string) => startWorkbook(workbookId) });
+}
+
+// ─── 대시보드 ──────────────────────────────────────────────────────
+
+/** 마일스톤/게이미피케이션 요약. 비로그인(enabled=false)일 땐 호출 안 함 */
+export function useMilestones(enabled = true) {
+  return useQuery({ queryKey: ['milestones'], queryFn: fetchMilestones, enabled });
+}
+
+/** 진행 중 세션(이어하기 배너) */
+export function useActiveSession(enabled = true) {
+  return useQuery({ queryKey: ['active-session'], queryFn: fetchActiveSession, enabled });
 }

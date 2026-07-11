@@ -9,21 +9,7 @@ import { useMyNotes, useSubjects } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
 import type { ReasonStat } from "@/lib/types";
 
-/**
- * 오답원인 코드별 의미색 — emerald(행동)와 red(오답 수치)는 여기 쓰지 않는다.
- * 개념부족=보라(깊은 재학습), 실수=호박(주의), 시간부족=파랑(페이스), 기타=중립.
- */
-const REASON_COLORS: Record<string, string> = {
-  CONCEPT: "#a78bfa",
-  MISTAKE: "#fbbf24",
-  TIME: "#60a5fa",
-  OTHER: "#888e95",
-};
-const FALLBACK_COLORS = ["#a78bfa", "#fbbf24", "#60a5fa", "#888e95", "#f472b6"];
-
-function reasonColor(code: string, index: number): string {
-  return REASON_COLORS[code] ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length];
-}
+import { REASON_COLORS, FALLBACK_COLORS, reasonColor } from "./reason-colors";
 
 /** 도넛 차트 — 원인별 세그먼트 + 중앙 최다 원인. SVG stroke-dasharray로 그린다. */
 function ReasonDonut({ stats }: { stats: ReasonStat[] }) {

@@ -34,6 +34,8 @@ import type {
   CreateSessionInput,
   CreateSessionResult,
   StartWorkbookResult,
+  MilestonesResponse,
+  ActiveSession,
 } from './types';
 
 // ─── 기본 설정 ──────────────────────────────────────────────────────
@@ -115,6 +117,7 @@ export function fetchQuestions(params?: {
   questionType?: string;
   difficulty?: number;
   search?: string;
+  sort?: 'latest' | 'popular';
 }) {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
@@ -126,6 +129,7 @@ export function fetchQuestions(params?: {
   if (params?.difficulty)
     query.set('difficulty', String(params.difficulty));
   if (params?.search) query.set('search', params.search);
+  if (params?.sort) query.set('sort', params.sort);
 
   const qs = query.toString();
   return apiFetch<PaginatedResponse<Question>>(
@@ -234,12 +238,14 @@ export function fetchWorkbooks(params?: {
   limit?: number;
   visibility?: string;
   search?: string;
+  sort?: 'popular' | 'recent';
 }) {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.visibility) query.set('visibility', params.visibility);
   if (params?.search) query.set('search', params.search);
+  if (params?.sort) query.set('sort', params.sort);
 
   const qs = query.toString();
   return apiFetch<PaginatedResponse<Workbook>>(
@@ -461,18 +467,8 @@ export function fetchTags(category?: string) {
 }
 
 /** 내 시험 세션 이력 조회 */
-export function fetchMyExamSessions(params?: {
-  page?: number;
-  limit?: number;
-}) {
-  const query = new URLSearchParams();
-  if (params?.page) query.set('page', String(params.page));
-  if (params?.limit) query.set('limit', String(params.limit));
-
-  const qs = query.toString();
-  return apiFetch<PaginatedResponse<MyExamSession>>(
-    `/me/exam-sessions${qs ? `?${qs}` : ''}`,
-  );
+export function fetchMyExamSessions() {
+  return apiFetch<MyExamSession[]>('/me/exam-sessions');
 }
 
 // ─── 시험 세션 응시 ─────────────────────────────────────────────────
@@ -551,4 +547,16 @@ export function createSession(data: CreateSessionInput) {
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+// ─── 대시보드 ──────────────────────────────────────────────────────
+
+/** 마일스톤 대시보드 (xp/레벨/스트릭 요약 + 진행률) */
+export function fetchMilestones() {
+  return apiFetch<MilestonesResponse>('/me/milestones');
+}
+
+/** 진행 중 세션(이어하기 배너). 없으면 null */
+export function fetchActiveSession() {
+  return apiFetch<ActiveSession | null>('/me/exam-sessions/active');
 }
