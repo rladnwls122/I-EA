@@ -6,7 +6,6 @@ import { ArrowRight, Bot, Check, PencilLine, Sparkles, Loader2 } from "lucide-re
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { useSubjectTree, useGenerationPolling, useCreateWorkbook, useCreateAiGeneration, useAddQuestionToWorkbook } from "@/lib/hooks";
 import type { Subject } from "@/lib/types";
 
@@ -26,22 +25,19 @@ export function WorkbookBuilder() {
   const createAiGen = useCreateAiGeneration();
   const addQuestionToWorkbook = useAddQuestionToWorkbook();
 
-  /* ── Step & Selection State ── */
-  const [step, setStep] = useState<1 | 2>(1);
+  /* ── 과목 선택 (다중) ── */
   const [examType, setExamType] = useState<string>("");
   const [category, setCategory] = useState<string>("");
   const [selectedSubjects, setSelectedSubjects] = useState<Subject[]>([]);
 
-  /* ── Step 2: Options ── */
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [visibility, setVisibility] = useState<"PRIVATE" | "PUBLIC">("PRIVATE");
+  /* ── AI 트랙 조건(문항별로 지정 — 상세조건 스텝을 없애고 여기로 옮김) ── */
   const [questionType, setQuestionType] = useState<"객관식" | "주관식">("객관식");
   const [difficulty, setDifficulty] = useState(3);
+  const [includePassage, setIncludePassage] = useState(false);
 
-  /* ── Track Selection & AI ── */
-  const [showTracks, setShowTracks] = useState(false);
+  /* ── 문제집 자동 생성 + 2-트랙 ── */
   const [createdWorkbookId, setCreatedWorkbookId] = useState<string | null>(null);
+  const [creatingWorkbook, setCreatingWorkbook] = useState(false);
   const [aiTopic, setAiTopic] = useState("");
   const [aiCount, setAiCount] = useState(5);
   const [generationId, setGenerationId] = useState<string | null>(null);
@@ -77,17 +73,18 @@ export function WorkbookBuilder() {
     );
   }, []);
 
-  const handleCreateAndShowTracks = async () => {
+  /** 과목 선택 즉시 문제집을 조용히 만들고 바로 AI/에디터 선택 화면으로 넘어간다 — 제목/설명/공개 여부를 먼저 채우게 하지 않는다. */
+  const handleProceed = async () => {
+    if (!canProceed || creatingWorkbook) return;
+    setCreatingWorkbook(true);
     try {
-      const wb = await createWorkbook.mutateAsync({
-        title,
-        description: description || undefined,
-        visibility,
-      });
+      const title = `${examType} ${category} ${selectedSubjects.map((s) => s.name).join("·")} 문제집`;
+      const wb = await createWorkbook.mutateAsync({ title, visibility: "PRIVATE" });
       setCreatedWorkbookId(wb.id);
-      setShowTracks(true);
     } catch (e) {
       console.error("문제집 생성 실패:", e);
+    } finally {
+      setCreatingWorkbook(false);
     }
   };
 
@@ -101,6 +98,7 @@ export function WorkbookBuilder() {
         difficulty,
         questionCount: aiCount,
         questionType,
+        includePassage,
       });
       setGenerationId(gen.id);
     } catch (e) {
@@ -144,42 +142,33 @@ export function WorkbookBuilder() {
         </span>
         <h1 className="text-3xl font-semibold tracking-tight">문제집 만들기</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          과목을 선택하고, 조건을 설정한 뒤 문제집을 생성하세요.
+          과목을 고르면 바로 AI 생성이나 직접 출제로 넘어갑니다.
         </p>
       </div>
 
-      {/* ── 스테퍼 ── */}
+      {/* ── 스테퍼(2단계로 축소 — 제목/설명 폼은 없앴다) ── */}
       <div className="mb-10 flex items-center justify-center gap-3 text-sm">
-        <span className={`flex items-center gap-2 ${step === 1 ? "font-medium text-foreground" : "text-primary"}`}>
-          {step > 1 ? (
+        <span className={`flex items-center gap-2 ${!createdWorkbookId ? "font-medium text-foreground" : "text-primary"}`}>
+          {createdWorkbookId ? (
             <Check size={16} strokeWidth={2} className="text-primary" />
           ) : (
             <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-primary font-mono text-xs text-primary-foreground">1</span>
           )}
-          기본 정보
+          과목 선택
         </span>
         <div className="h-px w-10 bg-border" />
-        <span className={`flex items-center gap-2 ${step === 2 ? "font-medium text-foreground" : "text-muted-foreground"}`}>
-          {showTracks ? (
-            <Check size={16} strokeWidth={2} className="text-primary" />
-          ) : (
-            <span className={`flex h-7 w-7 items-center justify-center rounded-lg border font-mono text-xs ${step === 2 ? "border-border bg-primary text-primary-foreground" : "border-border bg-surface-raised text-muted-foreground"}`}>2</span>
-          )}
-          상세 조건
-        </span>
-        <div className="h-px w-10 bg-border" />
-        <span className="flex items-center gap-2 text-muted-foreground">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-surface-raised font-mono text-xs text-muted-foreground">3</span>
-          문제집 생성
+        <span className={`flex items-center gap-2 ${createdWorkbookId ? "font-medium text-foreground" : "text-muted-foreground"}`}>
+          <span className={`flex h-7 w-7 items-center justify-center rounded-lg border font-mono text-xs ${createdWorkbookId ? "border-border bg-primary text-primary-foreground" : "border-border bg-surface-raised text-muted-foreground"}`}>2</span>
+          생성 방식
         </span>
       </div>
 
-      {/* ── Step 1: 과목 선택 (GET /subjects 연동) ── */}
-      {step === 1 && (
+      {/* ── Step 1: 과목 선택 (다중) → 선택 즉시 문제집 생성 후 2단계로 ── */}
+      {!createdWorkbookId && (
         <section className="rounded-xl border border-border bg-card p-8">
           <span className="mb-2 block font-mono text-xs uppercase tracking-widest text-primary">Step 1</span>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight">어떤 시험을 준비하고 있나요?</h2>
-          <p className="mt-1 text-sm text-muted-foreground">문제집에 맞는 과목 범위를 먼저 정해주세요.</p>
+          <p className="mt-1 text-sm text-muted-foreground">소과목은 여러 개 고를 수 있어요.</p>
 
           {subjectsLoading ? (
             <div className="mt-6 space-y-4">
@@ -217,10 +206,10 @@ export function WorkbookBuilder() {
                 </div>
               )}
 
-              {/* 소과목 */}
+              {/* 소과목 — 다중 선택 */}
               {category && (
                 <div className="mt-5 flex flex-col gap-2">
-                  <label className="text-sm font-medium text-foreground/80">소과목</label>
+                  <label className="text-sm font-medium text-foreground/80">소과목 (여러 개 선택 가능)</label>
                   <div className="flex flex-wrap gap-2">
                     {subjects.map((s) => (
                       <button key={s.id} onClick={() => toggleSubject(s)}
@@ -236,107 +225,27 @@ export function WorkbookBuilder() {
           )}
 
           <div className="mt-8 flex justify-end">
-            <Button size="lg" disabled={!canProceed} onClick={() => setStep(2)}>
-              상세 조건 설정 <ArrowRight size={18} strokeWidth={2} />
+            <Button size="lg" disabled={!canProceed || creatingWorkbook} onClick={handleProceed}>
+              {creatingWorkbook ? <Loader2 size={16} className="animate-spin" /> : null}
+              다음 <ArrowRight size={18} strokeWidth={2} />
             </Button>
           </div>
         </section>
       )}
 
-      {/* ── Step 2: 상세 조건 (POST /workbooks 연동) ── */}
-      {step === 2 && !showTracks && (
-        <section className="rounded-xl border border-border bg-card p-8">
-          <span className="mb-2 block font-mono text-xs uppercase tracking-widest text-primary">Step 2</span>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight">문항의 결을 맞춰볼까요?</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {examType} · {category} · {selectedSubjects.map((s) => s.name).join(", ")} 기준으로 생성됩니다.
-          </p>
-
-          {/* 제목 */}
-          <div className="mt-6 flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground/80">문제집 제목</label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)}
-              placeholder="예: 2026 수능 국어 문학 실전 모의"
-              className="h-11" />
-          </div>
-
-          {/* 설명 */}
-          <div className="mt-4 flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground/80">설명 (선택)</label>
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3}
-              placeholder="문제집에 대한 간단한 설명을 입력하세요."
-              className="w-full resize-none rounded-md border border-input bg-transparent px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring" />
-          </div>
-
-          {/* 공개 설정 */}
-          <div className="mt-4 flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground/80">공개 설정</label>
-            <div className="flex gap-2">
-              {(["PRIVATE", "PUBLIC"] as const).map((v) => (
-                <button key={v} onClick={() => setVisibility(v)}
-                  className={`${pillBase} ${visibility === v ? pillOn : pillOff}`}>
-                  {v === "PRIVATE" ? "비공개" : "공개"}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 문항 유형 */}
-          <div className="mt-4 flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground/80">문항 유형</label>
-            <div className="flex gap-2">
-              {(["객관식", "주관식"] as const).map((t) => (
-                <button key={t} onClick={() => setQuestionType(t)}
-                  className={`${pillBase} ${questionType === t ? pillOn : pillOff}`}>
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 난이도 */}
-          <div className="mt-4 flex flex-col gap-2">
-            <label className="text-sm font-medium text-foreground/80">난이도</label>
-            <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map((d) => (
-                <button key={d} onClick={() => setDifficulty(d)}
-                  className={`flex h-11 w-11 items-center justify-center rounded-lg border font-mono text-sm tabular-nums transition-colors duration-150 motion-reduce:transition-none ${difficulty === d ? pillOn : pillOff}`}>
-                  {d}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-8 flex justify-between">
-            <Button variant="outline" size="lg" onClick={() => setStep(1)}>
-              이전
-            </Button>
-            <Button size="lg" disabled={!title.trim() || createWorkbook.isPending} onClick={handleCreateAndShowTracks}>
-              {createWorkbook.isPending ? <Loader2 size={16} className="animate-spin" /> : null}
-              문제집 생성 <ArrowRight size={18} strokeWidth={2} />
-            </Button>
-          </div>
-        </section>
-      )}
-
-      {/* ── 2-Track 선택 (POST /ai-generations 연동) ── */}
-      {showTracks && (
+      {/* ── Step 2: 2-Track 선택 (POST /ai-generations 연동) ── */}
+      {createdWorkbookId && (
         <section className="mt-2">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <Badge variant="secondary" className="font-mono text-[11px] uppercase tracking-widest text-primary">
-                Ready
-              </Badge>
-              <h2 className="mt-2 text-xl font-semibold tracking-tight">문제집을 만들 준비가 됐어요.</h2>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => setShowTracks(false)}>
-              조건 수정
-            </Button>
+          <div className="mb-5">
+            <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              {examType} · {category} · {selectedSubjects.map((s) => s.name).join(", ")}
+            </span>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight">어떻게 문제집을 채울까요?</h2>
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {/* AI 트랙 */}
-            <div className="flex min-h-[260px] flex-col items-start rounded-xl border border-primary/30 bg-card p-7">
+            <div className="flex min-h-[320px] flex-col items-start rounded-xl border border-primary/30 bg-card p-7">
               <Sparkles className="text-primary" size={28} strokeWidth={2} />
               <h3 className="mb-2 mt-6 text-xl font-semibold">AI와 대화하며 만들기</h3>
               <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
@@ -346,12 +255,43 @@ export function WorkbookBuilder() {
                 <textarea value={aiTopic} onChange={(e) => setAiTopic(e.target.value)}
                   placeholder="예: 현대시 화자의 태도를 묻는 상 난이도 문항" rows={2}
                   className="w-full resize-none rounded-md border border-input bg-transparent px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring" />
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs font-medium text-muted-foreground">유형</label>
+                  {(["객관식", "주관식"] as const).map((t) => (
+                    <button key={t} type="button" onClick={() => setQuestionType(t)}
+                      className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${questionType === t ? pillOn : pillOff}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs font-medium text-muted-foreground">난이도</label>
+                  {[1, 2, 3, 4, 5].map((d) => (
+                    <button key={d} type="button" onClick={() => setDifficulty(d)}
+                      className={`flex h-8 w-8 items-center justify-center rounded-md border font-mono text-xs tabular-nums transition-colors ${difficulty === d ? pillOn : pillOff}`}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="flex items-center gap-2">
                   <label className="text-xs font-medium text-muted-foreground">문항 수</label>
                   <Input type="number" min={1} max={20} value={aiCount}
                     onChange={(e) => setAiCount(Number(e.target.value))}
                     className="h-9 w-20 font-mono tabular-nums" />
                 </div>
+
+                <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={includePassage}
+                    onChange={(e) => setIncludePassage(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-border accent-primary"
+                  />
+                  지문(본문)도 함께 생성
+                </label>
               </div>
               <Button onClick={handleAiGenerate} disabled={isGenerating || !aiTopic.trim() || createAiGen.isPending}
                 className="mt-auto">
@@ -361,12 +301,12 @@ export function WorkbookBuilder() {
             </div>
 
             {/* 직접 출제 트랙 */}
-            <div className="flex min-h-[260px] flex-col items-start rounded-xl border border-border bg-card p-7">
+            <div className="flex min-h-[320px] flex-col items-start rounded-xl border border-border bg-card p-7">
               <PencilLine className="text-primary" size={28} strokeWidth={2} />
               <h3 className="mb-2 mt-6 text-xl font-semibold">직접 문항 만들기</h3>
               <p className="text-sm leading-relaxed text-muted-foreground">빈 문항부터 시작해 지문, 선지, 해설을 자유롭게 작성합니다.</p>
               <Button asChild variant="outline" className="mt-auto">
-                <Link href={`/studio/editor${createdWorkbookId ? `?workbookId=${createdWorkbookId}` : ""}`}>
+                <Link href={`/studio/editor?workbookId=${createdWorkbookId}`}>
                   에디터 열기 <ArrowRight size={18} strokeWidth={2} />
                 </Link>
               </Button>
@@ -420,13 +360,18 @@ export function WorkbookBuilder() {
                   </div>
                 ))}
               </div>
+              <Button className="mt-5" onClick={() => router.push(`/workbook`)}>
+                문제집으로 이동 <ArrowRight size={18} strokeWidth={2} />
+              </Button>
             </div>
           )}
 
           {/* AI 생성 실패 */}
           {isFailed && (
             <div className="mt-6 rounded-xl border border-wrong/30 bg-wrong/10 p-4">
-              <p className="text-sm font-medium text-wrong">문항 생성에 실패했습니다. 다시 시도해주세요.</p>
+              <p className="text-sm font-medium text-wrong">
+                문항 생성에 실패했습니다. 모델이 유효한 문항을 반환하지 못했어요 — 출제 지시를 조금 더 구체적으로 써보거나 다시 시도해주세요.
+              </p>
             </div>
           )}
         </section>

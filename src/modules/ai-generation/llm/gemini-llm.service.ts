@@ -408,6 +408,27 @@ export class GeminiLlmService {
     if (!parsed.questions || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
       throw new ServiceUnavailableException('모델이 유효한 문항을 반환하지 않았습니다.');
     }
+    // 배열이 비지 않아도 개별 문항이 비어있으면(발문 없음/객관식인데 선지 없음/정답 0·2개 이상)
+    // 그대로 저장하면 빈 문제가 만들어진다 — 여기서 막아 프로세서가 FAILED 처리하게 한다.
+    for (const q of parsed.questions) {
+      if (typeof q.stemText !== 'string' || !q.stemText.trim()) {
+        throw new ServiceUnavailableException('모델이 발문이 빈 문항을 반환했습니다.');
+      }
+      if (q.questionType === '객관식') {
+        if (!Array.isArray(q.choices) || q.choices.length < 2) {
+          throw new ServiceUnavailableException('모델이 선지가 부족한 객관식 문항을 반환했습니다.');
+        }
+        if (q.choices.some((c) => typeof c?.content !== 'string' || !c.content.trim())) {
+          throw new ServiceUnavailableException('모델이 빈 선지를 포함한 문항을 반환했습니다.');
+        }
+        const correctCount = q.choices.filter((c) => c.isCorrect === true).length;
+        if (correctCount !== 1) {
+          throw new ServiceUnavailableException(
+            `모델이 정답 선지 개수가 잘못된 문항을 반환했습니다(받은 값: ${correctCount}개).`,
+          );
+        }
+      }
+    }
     return parsed;
   }
 

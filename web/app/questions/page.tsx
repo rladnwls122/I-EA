@@ -1,30 +1,49 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Search } from "lucide-react";
 import { QuestionCard } from "@/components/questions/QuestionCard";
 import { QuestionPreview } from "@/components/questions/QuestionPreview";
 import { CartButton } from "@/components/cart/CartButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useQuestions } from "@/lib/hooks";
-import type { Question } from "@/lib/types";
+import { useQuestions, useSubjects } from "@/lib/hooks";
+import type { Question, Subject } from "@/lib/types";
 
-const SUBJECTS = ["전체", "문학", "언어와 매체", "미적분", "확률과 통계"];
+const chip = (active: boolean) =>
+  `whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+    active
+      ? "border-transparent bg-primary font-medium text-primary-foreground"
+      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+  }`;
 
 export default function QuestionsPage() {
   const [keyword, setKeyword] = useState("");
-  const [subject, setSubject] = useState("전체");
+  const [examType, setExamType] = useState("");
+  const [subjectIds, setSubjectIds] = useState<string[]>([]);
   const [selected, setSelected] = useState<Question | null>(null);
 
-  const { data, isLoading } = useQuestions({ search: keyword });
+  const { data: subjectsData } = useSubjects();
+  const allSubjects: Subject[] = subjectsData || [];
+  const examTypes = useMemo(
+    () => Array.from(new Set(allSubjects.map((s) => s.examType))),
+    [allSubjects],
+  );
+  // 시험을 고르면 그 시험의 세부과목만, 안 고르면 전체 세부과목을 보여준다.
+  const visibleSubjects = useMemo(
+    () => (examType ? allSubjects.filter((s) => s.examType === examType) : allSubjects),
+    [allSubjects, examType],
+  );
 
-  const filtered = useMemo(() => {
-    const list = data?.items || [];
-    return list.filter(
-      (q) => subject === "전체" || q.subject?.name === subject,
-    );
-  }, [data, subject]);
+  const { data, isLoading } = useQuestions({
+    search: keyword || undefined,
+    subjectIds: subjectIds.length ? subjectIds : undefined,
+  });
+  const filtered = data?.items || [];
+
+  const toggleSubject = (id: string) => {
+    setSubjectIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  };
 
   return (
     <>
@@ -57,29 +76,39 @@ export default function QuestionsPage() {
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="문제 제목, 개념, 키워드로 검색"
-            className="h-11 pl-10 pr-11"
+            className="h-11 pl-10"
           />
-          <button
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground"
-            aria-label="상세 필터"
-          >
-            <SlidersHorizontal size={16} />
-          </button>
         </div>
 
-        {/* 과목 필터 */}
-        <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-1">
-          {SUBJECTS.map((item) => (
+        {/* 시험 필터 */}
+        <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+          <button
+            onClick={() => setExamType("")}
+            className={chip(examType === "")}
+          >
+            전체 시험
+          </button>
+          {examTypes.map((t) => (
             <button
-              key={item}
-              onClick={() => setSubject(item)}
-              className={`whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
-                subject === item
-                  ? "border-transparent bg-primary font-medium text-primary-foreground"
-                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-              }`}
+              key={t}
+              onClick={() => setExamType(examType === t ? "" : t)}
+              className={chip(examType === t)}
             >
-              {item}
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* 세부과목 필터 — 다중 선택 */}
+        <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-1">
+          {visibleSubjects.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => toggleSubject(s.id)}
+              aria-pressed={subjectIds.includes(s.id)}
+              className={chip(subjectIds.includes(s.id))}
+            >
+              {s.name}
             </button>
           ))}
         </div>
@@ -92,9 +121,6 @@ export default function QuestionsPage() {
             </span>
             개의 문제
           </span>
-          <button className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-            최신순
-          </button>
         </div>
 
         {/* 그리드 */}
