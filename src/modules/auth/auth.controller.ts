@@ -29,8 +29,8 @@ export class AuthController {
 
   @Get('me')
   @ApiBearerAuth()
-  @ApiOperation({ summary: '현재 로그인 사용자 정보' })
+  @ApiOperation({ summary: '현재 로그인 사용자 정보 (xp/level 포함)' })
   me(@CurrentUser() user: CurrentUserPayload) {
-    return user;
+    return this.service.getProfile(user.id);
   }
 }

@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UserRoleType } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '@/prisma/prisma.service';
+import { titleForLevel, xpToNextTier, isBoostActive } from '@/common/constants/xp';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -60,6 +61,44 @@ export class AuthService {
     if (!ok) throw new UnauthorizedException('이메일 또는 비밀번호가 올바르지 않습니다.');
 
     return this.issueToken(user);
+  }
+
+  /**
+   * GET /auth/me — 토큰의 사용자 id로 DB를 읽어 xp/level 등 최신 프로필을 돌려준다.
+   * (JWT 페이로드에는 xp/level이 없으므로 여기서 조회한다.)
+   */
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        nickname: true,
+        xp: true,
+        level: true,
+        currentStreak: true,
+        longestStreak: true,
+        xpBoostUntil: true,
+        roles: { select: { role: true } },
+      },
+    });
+    if (!user) throw new UnauthorizedException('사용자를 찾을 수 없습니다.');
+    return {
+      id: user.id,
+      email: user.email,
+      nickname: user.nickname,
+      xp: user.xp,
+      level: user.level,
+      title: titleForLevel(user.level),
+      xpToNextTier: xpToNextTier(user.xp),
+      streak: {
+        current: user.currentStreak,
+        longest: user.longestStreak,
+        boostActive: isBoostActive(user.xpBoostUntil, new Date()),
+        boostUntil: user.xpBoostUntil,
+      },
+      roles: user.roles.map((r) => r.role),
+    };
   }
 
   private async issueToken(user: {

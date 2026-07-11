@@ -7,6 +7,20 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { QuestionKind } from '@/common/constants/question';
+import {
+  XP_RULES,
+  levelForXp,
+  computeStreak,
+  streakMilestoneXp,
+  comboBonusXp,
+  isBoostActive,
+  boostExpiry,
+  weakSubjectIds,
+  BOOST_MULTIPLIER,
+  XP_REASON,
+  XpReason,
+  satisfiedMilestoneKeys,
+} from '@/common/constants/xp';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
 import { grade, isSelfGradable, maskSnapshot, QuestionSnapshot } from './grading.util';
@@ -92,6 +106,7 @@ export class ExamSessionsService {
           userId,
           subjectId: dto.subjectId ?? null,
           workbookId: dto.workbookId ?? null,
+          isReview: dto.isReview ?? false,
           filterCriteria: (dto.questionIds?.length
             ? { mode: 'playlist', questionIds: picked, workbookId: dto.workbookId ?? null }
             : { mode: 'filter', questionCount: dto.questionCount, ...(dto.filter ?? {}) }) as JsonWritable,
@@ -275,6 +290,8 @@ export class ExamSessionsService {
             answer: {
               select: { isCorrect: true, selectedChoiceIds: true, timeSpentSec: true },
             },
+            // 취약 유형 보너스 판정을 위해 각 문항의 세부과목이 필요하다.
+            question: { select: { subjectId: true } },
           },
         },
       },
@@ -283,10 +300,16 @@ export class ExamSessionsService {
     if (session.userId !== userId) throw new ForbiddenException('본인 세션만 제출할 수 있습니다.');
     if (session.status !== 'IN_PROGRESS') throw new BadRequestException('이미 제출된 세션입니다.');
 
+    // 취약 유형(하위 20% 정답률 세부과목) — 이번 세션 제외, 과거 이력 기준.
+    const weakSet = await this.computeWeakSubjectIds(userId, id);
+
     const total = session.sessionQuestions.length;
     let correct = 0;
     let answered = 0;
+    let weakCorrect = 0; // 취약 유형을 맞힌 정답 수 → WEAK_TYPE 보너스 대상
     const gradedQuestionIds: { id: string; correct: boolean }[] = [];
+    // 콤보(세션 내 연속 정답) 계산용 — 문항 순서대로 정답 여부.
+    const correctFlags: boolean[] = [];
     // 평균 풀이시간 캐시: 채점 여부와 무관하게 시간이 기록된 답안만 집계한다.
     const timed: { id: string; sec: number }[] = [];
     // 선지별 오답 분포: 선택된 선지 id마다 +1.
@@ -296,6 +319,10 @@ export class ExamSessionsService {
       const isCorrect = sq.answer?.isCorrect;
       if (sq.answer) answered += 1;
       if (isCorrect === true) correct += 1;
+      correctFlags.push(isCorrect === true);
+      if (isCorrect === true && sq.question?.subjectId && weakSet.has(sq.question.subjectId)) {
+        weakCorrect += 1;
+      }
       // 자동 채점된(정오가 확정된) 문항만 통계 캐시에 반영.
       if (isCorrect === true || isCorrect === false) {
         gradedQuestionIds.push({ id: sq.questionId, correct: isCorrect });
@@ -315,7 +342,7 @@ export class ExamSessionsService {
       : null;
     const scorePercent = total > 0 ? Math.round((correct / total) * 1000) / 10 : 0;
 
-    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const reward = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.examSession.update({
         where: { id },
         data: { status: 'SUBMITTED', submittedAt: now, durationSec },
@@ -363,6 +390,11 @@ export class ExamSessionsService {
           update: { count: { increment: 1 } },
         });
       }
+
+      // XP 적립: 정답 기본점 + 콤보 + 스트릭, 부스터 반영. 서술형(미확정)은 selfGrade에서.
+      // 복습(오답노트 출처) 세션이면 정답 기본점을 REVIEW_CORRECT(+15)로 올린다.
+      const perCorrectXp = session.isReview ? XP_RULES.REVIEW_CORRECT : XP_RULES.CORRECT;
+      return this.awardForSubmit(tx, userId, correct, correctFlags, now, perCorrectXp, weakCorrect, id);
     });
 
     return {
@@ -373,6 +405,8 @@ export class ExamSessionsService {
       correct,
       scorePercent,
       durationSec,
+      // 이번 제출로 적립된 XP와 갱신된 xp/레벨. 적립 없으면 null.
+      reward,
     };
   }
 
@@ -388,7 +422,7 @@ export class ExamSessionsService {
         questionId: true,
         snapshot: true,
         answer: { select: { id: true, isCorrect: true } },
-        examSession: { select: { userId: true, status: true } },
+        examSession: { select: { id: true, userId: true, status: true, isReview: true } },
       },
     });
     if (!sq) throw new NotFoundException('세션 문항을 찾을 수 없습니다.');
@@ -406,7 +440,16 @@ export class ExamSessionsService {
     const answerId = sq.answer.id;
     const prev = sq.answer.isCorrect; // null(미채점) | boolean(재채점)
 
-    await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // XP 델타: 정답이면 +기본점, 직전이 정답이었으면 -기본점.
+    //   복습(오답노트 출처) 세션이면 기본점은 REVIEW_CORRECT(+15), 아니면 CORRECT(+10).
+    //   null→정답:+p, null→오답:0, 오답→정답:+p, 정답→오답:-p, 변화없음:0.
+    const perCorrectXp = sq.examSession.isReview
+      ? XP_RULES.REVIEW_CORRECT
+      : XP_RULES.CORRECT;
+    const xpDelta =
+      (isCorrect ? perCorrectXp : 0) - (prev === true ? perCorrectXp : 0);
+
+    const reward = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.examSessionAnswer.update({ where: { id: answerId }, data: { isCorrect } });
 
       // 정답률 캐시 델타: 최초 확정이면 total+1(+정답 시 correct+1), 재채점이면 correct만 보정.
@@ -424,9 +467,206 @@ export class ExamSessionsService {
           data: { correctSolvedCount: { increment: isCorrect ? 1 : -1 } },
         });
       }
+
+      return xpDelta !== 0
+        ? this.awardXp(tx, userId, xpDelta, {
+            reason: XP_REASON.SELF_GRADE,
+            examSessionId: sq.examSession.id,
+          })
+        : null;
     });
 
-    return { sessionQuestionId, isCorrect };
+    return { sessionQuestionId, isCorrect, reward };
+  }
+
+  /**
+   * XP를 delta만큼 적립(음수 가능 — 자기채점 하향 시 회수)하고 xp에서 레벨을 다시 계산한다.
+   * 채점 트랜잭션 내부에서 호출한다 — 캐시 갱신과 원자적으로 커밋되어야 하기 때문.
+   * xp는 0 미만으로 내려가지 않도록 바닥을 친다.
+   */
+  private async awardXp(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    delta: number,
+    ctx: { reason: XpReason; examSessionId?: string | null },
+  ): Promise<{ xp: number; level: number; gained: number }> {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { xp: true, longestStreak: true },
+    });
+    const current = user?.xp ?? 0;
+    const xp = Math.max(0, current + delta);
+    const level = levelForXp(xp);
+    await tx.user.update({ where: { id: userId }, data: { xp, level } });
+    const gained = xp - current;
+    // 원장 기록 + 마일스톤 감지. 자기채점은 스트릭 무관이라 최장 스트릭은 기존값 그대로.
+    await this.recordXpEvent(tx, userId, {
+      amount: gained,
+      reason: ctx.reason,
+      balanceAfter: xp,
+      longestStreak: user?.longestStreak ?? 0,
+      examSessionId: ctx.examSessionId,
+    });
+    return { xp, level, gained };
+  }
+
+  /**
+   * XP 원장(xp_history) 1행 기록 + 마일스톤 달성 감지를, 적립 트랜잭션 내부에서 함께 커밋한다.
+   *   - 순증감이 0이면 원장 행은 남기지 않는다(변화 없는 이벤트 노이즈 방지).
+   *   - 마일스톤은 현재 만족 집합을 createMany(skipDuplicates)로 멱등 삽입 → 신규 달성만 기록.
+   */
+  private async recordXpEvent(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    params: {
+      amount: number;
+      reason: XpReason;
+      balanceAfter: number;
+      longestStreak: number;
+      examSessionId?: string | null;
+      breakdown?: Record<string, unknown> | null;
+    },
+  ): Promise<void> {
+    if (params.amount !== 0) {
+      await tx.xpHistory.create({
+        data: {
+          userId,
+          amount: params.amount,
+          reason: params.reason,
+          balanceAfter: params.balanceAfter,
+          examSessionId: params.examSessionId ?? null,
+          breakdown: (params.breakdown ?? undefined) as JsonWritable,
+        },
+      });
+    }
+    const keys = satisfiedMilestoneKeys(params.balanceAfter, params.longestStreak);
+    if (keys.length > 0) {
+      await tx.milestoneAchievement.createMany({
+        data: keys.map((milestoneKey) => ({ userId, milestoneKey })),
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  /**
+   * 사용자의 세부과목별 정답률을 집계해 '취약 유형'(하위 20%) 세부과목 id 집합을 구한다.
+   * 이번 세션(excludeSessionId)은 제외해 "이번에 도전하기 전"의 취약점을 기준으로 판정한다.
+   * 자동채점/자기채점이 끝난(is_correct NOT NULL) 답안만 집계 대상.
+   */
+  private async computeWeakSubjectIds(
+    userId: string,
+    excludeSessionId: string,
+  ): Promise<Set<string>> {
+    const rows = await this.prisma.$queryRaw<
+      { subjectId: string; total: bigint | number; correct: bigint | number }[]
+    >`
+      SELECT q.subject_id AS subjectId,
+             COUNT(*) AS total,
+             SUM(a.is_correct = 1) AS correct
+      FROM exam_session_answers a
+      JOIN exam_session_questions sq ON sq.id = a.exam_session_question_id
+      JOIN questions q ON q.id = sq.question_id
+      JOIN exam_sessions s ON s.id = sq.exam_session_id
+      WHERE s.user_id = ${userId}
+        AND a.is_correct IS NOT NULL
+        AND s.id <> ${excludeSessionId}
+      GROUP BY q.subject_id
+    `;
+    const stats = rows.map((r) => ({
+      subjectId: r.subjectId,
+      total: Number(r.total),
+      correct: Number(r.correct),
+    }));
+    return weakSubjectIds(stats);
+  }
+
+  /**
+   * 세션 제출 시 XP 적립(정답 기본점 + 콤보 + 스트릭 + 데일리)과 스트릭/부스터 상태 갱신을 한 번에.
+   *   1) 기본점 = 정답 수 × CORRECT, 콤보 = 세션 내 연속 정답 보너스.
+   *   2) 부스터가 유효하면 (기본점+콤보)에 2배 적용(스트릭·데일리 보너스는 제외).
+   *   3) 스트릭 전이 후 7/30일 마일스톤이면 보너스 + 다음날 2배 부스터 부여.
+   *   4) 그날 첫 제출이면 데일리 챌린지 보너스 +50(하루 1회, 부스터 미적용).
+   * 채점 트랜잭션 내부에서 호출되어 캐시 갱신과 원자적으로 커밋된다.
+   */
+  private async awardForSubmit(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    correctCount: number,
+    correctFlags: boolean[],
+    now: Date,
+    /** 정답 1개당 기본 XP. 일반 세션 CORRECT(10), 복습 세션 REVIEW_CORRECT(15). */
+    perCorrectXp: number,
+    /** 취약 유형(하위 20% 정답률 과목)을 맞힌 정답 수 → 개당 WEAK_TYPE 보너스. */
+    weakCorrectCount: number,
+    /** 출처 세션 id — xp_history 추적용. */
+    examSessionId: string,
+  ) {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: {
+        xp: true,
+        currentStreak: true,
+        longestStreak: true,
+        lastActiveDate: true,
+        xpBoostUntil: true,
+      },
+    });
+    if (!user) return null;
+
+    // 1) 기본점 + 콤보 + 취약유형 보너스 (부스터 적용 대상)
+    const solveXp = correctCount * perCorrectXp;
+    const comboXp = comboBonusXp(correctFlags);
+    const weakXp = weakCorrectCount * XP_RULES.WEAK_TYPE;
+    const boostActive = isBoostActive(user.xpBoostUntil, now);
+    const grindXp = (solveXp + comboXp + weakXp) * (boostActive ? BOOST_MULTIPLIER : 1);
+
+    // 2) 스트릭 전이 + 마일스톤(부스터 미적용)
+    const st = computeStreak(user.lastActiveDate, user.currentStreak, now);
+    const milestone = st.counted ? streakMilestoneXp(st.currentStreak) : { xp: 0, grantBoost: false };
+
+    // 3) 데일리 챌린지 보너스(부스터 미적용) — 그날 첫 채점 제출에만 +50, 하루 1회.
+    //    st.counted가 곧 "오늘 첫 학습"이므로(lastActiveDate 기준) 별도 컬럼 없이 하루 1회를 보장한다.
+    const dailyXp = st.counted ? XP_RULES.DAILY_CHALLENGE : 0;
+
+    const gained = grindXp + milestone.xp + dailyXp;
+    const xp = Math.max(0, user.xp + gained);
+    const level = levelForXp(xp);
+    const longestStreak = Math.max(user.longestStreak, st.currentStreak);
+    // 부스터 만료: 이번에 마일스톤을 새로 밟았으면 갱신, 아니면 기존 유지.
+    const xpBoostUntil = milestone.grantBoost ? boostExpiry(now) : user.xpBoostUntil;
+
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        xp,
+        level,
+        currentStreak: st.currentStreak,
+        longestStreak,
+        // 오늘 처음 학습(counted)일 때만 마지막 학습일을 오늘로 갱신.
+        ...(st.counted ? { lastActiveDate: now } : {}),
+        xpBoostUntil,
+      },
+    });
+
+    const breakdown = { solveXp, comboXp, weakXp, streakXp: milestone.xp, dailyXp, boostActive };
+    // 원장 기록 + 마일스톤 감지(제출 후 xp/최장스트릭 기준).
+    await this.recordXpEvent(tx, userId, {
+      amount: gained,
+      reason: XP_REASON.SESSION_SUBMIT,
+      balanceAfter: xp,
+      longestStreak,
+      examSessionId,
+      breakdown,
+    });
+
+    return {
+      xp,
+      level,
+      gained,
+      breakdown,
+      streak: { current: st.currentStreak, longest: longestStreak, extended: st.counted },
+      boostGranted: milestone.grantBoost,
+    };
   }
 
   // --- 헬퍼 -----------------------------------------------------------

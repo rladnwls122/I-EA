@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -61,6 +62,14 @@ export class CreateSessionDto {
   @IsOptional()
   @IsUUID()
   workbookId?: string;
+
+  @ApiPropertyOptional({
+    description: '오답노트에서 조립한 복습 세션 여부. true면 정답 시 복습 보너스(+15) 적립',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isReview?: boolean;
 
   @ApiPropertyOptional({
     description: '수동 플레이리스트: 지정 문항 ID들로 세트 구성(있으면 filter/questionCount 무시)',

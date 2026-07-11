@@ -13,6 +13,7 @@ import {
   LlmRegenerateChoicesResult,
   TutorTurn,
 } from './llm.types';
+import { GeminiKeyPool } from './gemini-key-pool';
 
 /**
  * 인라인 재생성은 사용자가 버튼을 누르고 기다린다. 배치보다 짧게 끊는다.
@@ -34,11 +35,18 @@ const RETRY_BACKOFF_MS = 400;
 class RetryableLlmError extends Error {}
 
 /**
- * 429 RESOURCE_EXHAUSTED — 쿼터 초과.
- * 쿼터 창은 분/일 단위라 수백 ms 백오프로 재시도해봐야 똑같이 실패한다.
- * 사용자를 기다리게 하면서 호출 수만 3배로 태우므로 **재시도하지 않고** 즉시 429로 돌려준다.
+ * 429(RESOURCE_EXHAUSTED, rate limit) 또는 403(quota/permission) — 이 키는 지금 못 쓴다.
+ * 같은 키로 백오프 재시도해봐야 같은 창 안에서는 똑같이 실패하므로, 재시도 대신
+ * 해당 키를 풀에서 쿨다운시키고 다른 정상 키로 회전한다(callGemini 참고).
  */
-class RateLimitedLlmError extends Error {}
+class KeyExhaustedLlmError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -52,17 +60,28 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 @Injectable()
 export class GeminiLlmService {
   private readonly logger = new Logger(GeminiLlmService.name);
-  private readonly apiKey: string;
+  /** 여러 API 키를 라운드-로빈으로 돌려쓰고 429/403 키를 쿨다운시키는 게이트웨이. */
+  private readonly keyPool: GeminiKeyPool;
   /** 재현성 추적을 위해 ai_generations.model에 저장할 값 */
   readonly model: string;
   private readonly maxTokens: number;
   private readonly baseUrl: string;
 
   constructor(private readonly config: ConfigService) {
-    // .env에 하드코딩된 값을 그대로 참조한다. 없으면 부팅은 막지 않되 호출 시점에 실패시킨다.
-    this.apiKey = this.config.get<string>('GEMINI_API_KEY') ?? '';
-    if (!this.apiKey) {
-      this.logger.warn('GEMINI_API_KEY가 설정되지 않았습니다. 생성 잡이 FAILED 처리됩니다.');
+    // 여러 키를 콤마로 받는다(GEMINI_KEYS=key1,key2,key3).
+    // 하위호환으로 단일 GEMINI_API_KEY도 함께 흡수한다(풀 내부에서 중복/공백 정리).
+    const multiKeys = (this.config.get<string>('GEMINI_KEYS') ?? '').split(',');
+    const singleKey = this.config.get<string>('GEMINI_API_KEY') ?? '';
+    this.keyPool = new GeminiKeyPool([...multiKeys, singleKey], {
+      cooldownMs: Number(this.config.get<string>('GEMINI_KEY_COOLDOWN_MS') ?? 60_000),
+      cooldownQuotaMs: Number(this.config.get<string>('GEMINI_KEY_COOLDOWN_403_MS') ?? 900_000),
+    });
+    if (!this.keyPool.hasKeys) {
+      this.logger.warn(
+        'Gemini API 키가 설정되지 않았습니다(GEMINI_KEYS/GEMINI_API_KEY). 생성 잡이 FAILED 처리됩니다.',
+      );
+    } else {
+      this.logger.log(`Gemini 키 풀 초기화: ${this.keyPool.size}개 키`);
     }
     this.model = this.config.get<string>('GEMINI_MODEL') ?? 'gemini-2.5-flash';
     this.maxTokens = Number(this.config.get<string>('GEMINI_MAX_TOKENS') ?? 4096);
@@ -73,7 +92,7 @@ export class GeminiLlmService {
 
   /** 다른 클래스에서 키 존재 여부만 확인하고 싶을 때 사용. */
   get isConfigured(): boolean {
-    return this.apiKey.length > 0;
+    return this.keyPool.hasKeys;
   }
 
   /**
@@ -122,47 +141,72 @@ export class GeminiLlmService {
     history: TutorTurn[],
     userText: string,
   ): AsyncIterable<string> {
-    if (!this.isConfigured) {
-      throw new ServiceUnavailableException('GEMINI_API_KEY가 설정되지 않았습니다.');
+    if (!this.keyPool.hasKeys) {
+      throw new ServiceUnavailableException('Gemini API 키가 설정되지 않았습니다.');
     }
-
-    const url = `${this.baseUrl}/models/${this.model}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
 
     // 히스토리를 Gemini contents로 펼치고 이번 사용자 발화를 마지막에 붙인다.
     const contents = [
       ...history.map((t) => ({ role: t.role, parts: [{ text: t.text }] })),
       { role: 'user', parts: [{ text: userText }] },
     ];
+    const body = JSON.stringify({
+      system_instruction: { parts: [{ text: system }] },
+      contents,
+      generationConfig: {
+        maxOutputTokens: this.maxTokens,
+        // 산문을 받는다 — responseMimeType(JSON 강제)을 켜지 않는다.
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    });
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: system }] },
-          contents,
-          generationConfig: {
-            maxOutputTokens: this.maxTokens,
-            // 산문을 받는다 — responseMimeType(JSON 강제)을 켜지 않는다.
-            thinkingConfig: { thinkingBudget: 0 },
-          },
-        }),
-      });
-    } catch (err) {
-      // 첫 바이트 전 네트워크 실패 → 아직 아무것도 흘리지 않았으므로 던진다.
-      throw new ServiceUnavailableException(
-        `AI 튜터 응답 생성에 실패했습니다: ${(err as Error).message}`,
-      );
+    // 첫 바이트를 받기 전에 429/403이면 그 키를 쿨다운시키고 다음 키로 회전한다.
+    // 스트림이 시작된 뒤(아래 reader 루프)의 실패는 재시도하지 않는다(중복 방지).
+    let response: Response | null = null;
+    let anyKeyExhausted = false;
+    for (let rotation = 0; rotation < this.keyPool.size; rotation++) {
+      const key = this.keyPool.acquire();
+      if (!key) break;
+      const url = `${this.baseUrl}/models/${this.model}:streamGenerateContent?alt=sse&key=${key}`;
+
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        });
+      } catch (err) {
+        // 첫 바이트 전 네트워크 실패는 키 문제가 아니다 → 회전하지 않고 즉시 던진다.
+        throw new ServiceUnavailableException(
+          `AI 튜터 응답 생성에 실패했습니다: ${(err as Error).message}`,
+        );
+      }
+
+      if (res.ok && res.body) {
+        response = res;
+        break;
+      }
+
+      // 429/403: 이 키를 쿨다운시키고 다음 키로 회전.
+      if (res.status === 429 || res.status === 403) {
+        this.keyPool.penalize(key, res.status);
+        anyKeyExhausted = true;
+        this.logger.warn(
+          `튜터 스트림 키 회전(HTTP ${res.status}) — 남은 정상 키 ${this.keyPool.availableCount()}개`,
+        );
+        continue;
+      }
+
+      // 그 외(5xx·4xx): 회전해도 같으므로 즉시 포기.
+      const detail = await res.text().catch(() => '');
+      this.logger.error(`튜터 스트림 시작 실패: HTTP ${res.status} ${detail.slice(0, 300)}`);
+      throw new ServiceUnavailableException('AI 튜터 응답 생성에 실패했습니다.');
     }
 
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '');
-      const message = `HTTP ${response.status} ${detail.slice(0, 300)}`;
-      this.logger.error(`튜터 스트림 시작 실패: ${message}`);
-      // 첫 바이트 전 실패. 기존 분류와 동일한 의미로 HTTP 예외에 매핑한다.
-      // 429(쿼터 초과) → 429, 그 외(5xx·4xx) → 503. 스트림 경로라 재시도는 하지 않는다.
-      if (response.status === 429) {
+    if (!response) {
+      // 모든 키가 429/403으로 소진.
+      if (anyKeyExhausted) {
         throw new HttpException(
           'AI 요청이 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.',
           HttpStatus.TOO_MANY_REQUESTS,
@@ -234,34 +278,63 @@ export class GeminiLlmService {
     user: string,
     opts: { timeoutMs?: number; attempts?: number; disableThinking?: boolean } = {},
   ): Promise<string> {
-    if (!this.apiKey) {
-      throw new ServiceUnavailableException('GEMINI_API_KEY가 설정되지 않았습니다.');
+    if (!this.keyPool.hasKeys) {
+      throw new ServiceUnavailableException('Gemini API 키가 설정되지 않았습니다.');
     }
 
     const attempts = Math.max(1, opts.attempts ?? 1);
     let lastError = '';
+    let anyKeyExhausted = false;
 
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-      try {
-        return await this.callGeminiOnce(system, user, opts);
-      } catch (err) {
-        lastError = (err as Error).message;
+    // 바깥 루프: 429/403에 걸린 키는 쿨다운시키고 다음 정상 키로 회전한다.
+    // 최대 풀 크기만큼 회전한다(그 이상은 이미 모든 키를 한 번씩 시도한 셈).
+    for (let rotation = 0; rotation < this.keyPool.size; rotation++) {
+      const key = this.keyPool.acquire();
+      if (!key) break; // 남은 정상 키 없음
 
-        // 쿼터 초과는 재시도해도 같은 창 안에서는 반드시 실패한다. 즉시 포기하고
-        // 429로 돌려줘 프론트가 "잠시 후 다시" 안내를 띄우게 한다.
-        if (err instanceof RateLimitedLlmError) {
-          this.logger.error(`LLM 쿼터 초과: ${lastError}`);
-          throw new HttpException(
-            'AI 요청이 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.',
-            HttpStatus.TOO_MANY_REQUESTS,
-          );
+      // 안쪽 루프: 같은 키에 대한 일시적 장애(5xx/타임아웃) 재시도.
+      let rotateToNextKey = false;
+      for (let attempt = 1; attempt <= attempts; attempt++) {
+        try {
+          return await this.callGeminiOnce(key, system, user, opts);
+        } catch (err) {
+          lastError = (err as Error).message;
+
+          // 429/403: 이 키는 지금 못 쓴다 — 쿨다운시키고 다른 키로 회전한다.
+          if (err instanceof KeyExhaustedLlmError) {
+            this.keyPool.penalize(key, err.status);
+            anyKeyExhausted = true;
+            this.logger.warn(
+              `LLM 키 회전(HTTP ${err.status}): ${lastError} — 남은 정상 키 ${this.keyPool.availableCount()}개`,
+            );
+            rotateToNextKey = true;
+            break;
+          }
+
+          // 5xx/타임아웃: 서버측 일시 장애 — 같은 키로 짧게 재시도.
+          if (err instanceof RetryableLlmError && attempt < attempts) {
+            this.logger.warn(`LLM 일시 실패(${attempt}/${attempts}): ${lastError} — 재시도`);
+            await sleep(RETRY_BACKOFF_MS * attempt);
+            continue;
+          }
+
+          // 4xx(잘못된 요청 등)는 어떤 키로 호출해도 동일하게 실패한다 — 즉시 포기.
+          // 재시도 소진한 5xx도 여기로 떨어진다(키를 더 태우지 않고 포기).
+          this.logger.error(`LLM 호출 실패: ${lastError}`);
+          throw new ServiceUnavailableException('문항 생성 모델 호출에 실패했습니다.');
         }
-
-        if (!(err instanceof RetryableLlmError) || attempt === attempts) break;
-
-        this.logger.warn(`LLM 일시 실패(${attempt}/${attempts}): ${lastError} — 재시도`);
-        await sleep(RETRY_BACKOFF_MS * attempt);
       }
+
+      if (!rotateToNextKey) break;
+    }
+
+    // 여기까지 왔다는 건 모든 키가 429/403으로 소진됐다는 뜻.
+    if (anyKeyExhausted) {
+      this.logger.error(`LLM 모든 키 소진(rate limit/quota): ${lastError}`);
+      throw new HttpException(
+        'AI 요청이 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     this.logger.error(`LLM 호출 실패: ${lastError}`);
@@ -269,11 +342,12 @@ export class GeminiLlmService {
   }
 
   private async callGeminiOnce(
+    key: string,
     system: string,
     user: string,
     opts: { timeoutMs?: number; disableThinking?: boolean },
   ): Promise<string> {
-    const url = `${this.baseUrl}/models/${this.model}:generateContent?key=${this.apiKey}`;
+    const url = `${this.baseUrl}/models/${this.model}:generateContent?key=${key}`;
 
     let response: Response;
     try {
@@ -301,11 +375,13 @@ export class GeminiLlmService {
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
       const message = `HTTP ${response.status} ${detail.slice(0, 300)}`;
-      // 429: 쿼터 초과 — 재시도 무의미(분/일 단위 창).
-      if (response.status === 429) throw new RateLimitedLlmError(message);
+      // 429(rate limit)·403(quota/permission): 이 키는 지금 못 쓴다 — 회전 대상.
+      if (response.status === 429 || response.status === 403) {
+        throw new KeyExhaustedLlmError(response.status, message);
+      }
       // 5xx: 일시적 과부하 — 짧은 백오프로 재시도할 가치가 있다.
       if (response.status >= 500) throw new RetryableLlmError(message);
-      // 4xx: 잘못된 요청·키 — 재시도해도 같다.
+      // 그 외 4xx: 잘못된 요청 — 재시도·회전해도 같다.
       throw new Error(message);
     }
 

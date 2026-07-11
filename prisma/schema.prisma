@@ -67,8 +67,20 @@ model User {
   passwordHash String   @map("password_hash") @db.VarChar(255)
   nickname     String   @db.VarChar(100)
   creatorBio   String?  @map("creator_bio") @db.Text
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  // 게이미피케이션(미니멀 설계): 개인 성장 지표만 둔다. 랭킹/티어/리그 없음.
+  //   xp    = 누적 경험치. 정답·복습·스트릭 등으로 적립(적립 규칙은 XP_RULES).
+  //   level = xp에서 파생(levelForXp). 저장해두면 조회 시 재계산이 필요 없다.
+  xp             Int       @default(0)
+  level          Int       @default(1)
+  // 스트릭(일 단위 연속 학습). 콤보(세션 내 연속 정답)는 제출 시 계산하므로 필드 없음.
+  //   lastActiveDate = 마지막으로 학습(채점)한 날짜. 어제면 streak+1, 갭이면 리셋.
+  //   xpBoostUntil   = 스트릭 7/30일 달성 시 부여되는 XP 2배 부스터 만료 시각.
+  lastActiveDate DateTime? @map("last_active_date") @db.Date
+  currentStreak  Int       @default(0) @map("current_streak")
+  longestStreak  Int       @default(0) @map("longest_streak")
+  xpBoostUntil   DateTime? @map("xp_boost_until")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   roles            UserRole[]
   aiGenerations    AiGeneration[]
@@ -80,8 +92,51 @@ model User {
   questionComments QuestionComment[]
   annotations      UserQuestionAnnotation[]
   workbooks        Workbook[]
+  xpHistory        XpHistory[]
+  milestones       MilestoneAchievement[]
 
   @@map("users")
+}
+
+// ---------------------------------------------------------------------
+// 1-a. xp_history — XP 적립 원장(ledger).
+//   XP를 바꾸는 이벤트(세션 제출 / 자기채점)마다 1행. 사후 감사·그래프·롤백 근거.
+//   amount        = 이번 이벤트 순증감(자기채점 하향 시 음수 가능).
+//   balanceAfter  = 이벤트 반영 후 누적 xp(단조 증가 원장 → 재계산 없이 추이 조회).
+//   breakdown     = solve/combo/weak/streak/daily 등 세부 내역(Json, 표시·디버깅용).
+//   examSessionId = 출처 세션(자기채점/제출). 세션과 무관한 적립이면 null.
+// ---------------------------------------------------------------------
+model XpHistory {
+  id            String   @id @default(uuid()) @db.Char(36)
+  userId        String   @map("user_id") @db.Char(36)
+  amount        Int
+  reason        String   @db.VarChar(40)
+  balanceAfter  Int      @map("balance_after")
+  breakdown     Json?
+  examSessionId String?  @map("exam_session_id") @db.Char(36)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("xp_history")
+}
+
+// ---------------------------------------------------------------------
+// 1-b. milestone_achievements — 마일스톤 달성 이력.
+//   마일스톤 정의는 코드(MILESTONES @ xp.ts)가 단일 출처. 여기엔 '언제 달성했나'만 저장.
+//   (userId, milestoneKey) 유니크 → createMany({skipDuplicates})로 멱등하게 최초 1회만 기록.
+// ---------------------------------------------------------------------
+model MilestoneAchievement {
+  id           String   @id @default(uuid()) @db.Char(36)
+  userId       String   @map("user_id") @db.Char(36)
+  milestoneKey String   @map("milestone_key") @db.VarChar(40)
+  achievedAt   DateTime @default(now()) @map("achieved_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, milestoneKey])
+  @@map("milestone_achievements")
 }
 
 // ---------------------------------------------------------------------
@@ -292,6 +347,8 @@ model ExamSession {
   subjectId      String?           @map("subject_id") @db.Char(36)
   // 문제집을 통째로 응시한 경우의 출처. 평균점수 집계원.
   workbookId     String?           @map("workbook_id") @db.Char(36)
+  // 오답노트 출처 플래그. true면 복습 세션 → 정답 시 REVIEW_CORRECT(+15) 적립.
+  isReview       Boolean           @default(false) @map("is_review")
   filterCriteria Json              @map("filter_criteria")
   status         ExamSessionStatus @default(IN_PROGRESS)
   startedAt      DateTime?         @map("started_at")

@@ -1,6 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { REASON_LABELS, ReasonCode } from '@/common/constants/question';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
+import {
+  MILESTONES,
+  milestoneProgress,
+  titleForLevel,
+  xpToNextTier,
+} from '@/common/constants/xp';
 
 export interface WrongStat {
   key: string;
@@ -47,6 +54,51 @@ export class MeService {
         durationSec: s.durationSec,
       };
     });
+  }
+
+  /** XP 적립 원장(최신순, 오프셋 페이지네이션). 각 행: 순증감·사유·잔액·세부내역. */
+  async xpHistory(userId: string, query: PaginationQueryDto) {
+    const { page, limit, skip } = query;
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.xpHistory.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.xpHistory.count({ where: { userId } }),
+    ]);
+    return { items, total, page, limit };
+  }
+
+  /**
+   * 마일스톤 대시보드 — 정의 순서대로 달성 여부/달성시각/진행률(현재·목표·비율)/잠금(선행 미달성).
+   * summary에 현재 xp·레벨·타이틀·스트릭·다음 티어까지 남은 xp·달성 수를 함께 제공한다.
+   */
+  async milestones(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { xp: true, level: true, currentStreak: true, longestStreak: true },
+    });
+    if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+
+    const rows = await this.prisma.milestoneAchievement.findMany({ where: { userId } });
+    const achieved = new Map(rows.map((r) => [r.milestoneKey, r.achievedAt]));
+    const milestones = milestoneProgress(user.xp, user.longestStreak, achieved);
+
+    return {
+      summary: {
+        xp: user.xp,
+        level: user.level,
+        title: titleForLevel(user.level),
+        currentStreak: user.currentStreak,
+        longestStreak: user.longestStreak,
+        xpToNextTier: xpToNextTier(user.xp),
+        achievedCount: achieved.size,
+        totalCount: MILESTONES.length,
+      },
+      milestones,
+    };
   }
 
   /**
