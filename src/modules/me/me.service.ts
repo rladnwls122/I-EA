@@ -104,12 +104,35 @@ export class MeService {
   /**
    * 통합 오답노트 — 통계(bySubject/byType/byReason) + 오답 문항 + 각 문항의 내 주석을 한 번에.
    * 정오가 확정된(is_correct NOT NULL) 답안만 통계 대상(서술형은 자기채점 후 반영).
+   * filter(시험/대분류/세부과목)가 오면 그 범위의 문항만 집계한다.
    */
-  async notes(userId: string) {
+  async notes(
+    userId: string,
+    filter: { examType?: string; examCategory?: string; subjectId?: string } = {},
+  ) {
+    // 세부과목 3단 필터 — subjects 테이블 기준. 값이 없으면 조건 자체를 생략.
+    const subjectWhere =
+      filter.examType || filter.examCategory
+        ? {
+            ...(filter.examType ? { examType: filter.examType } : {}),
+            ...(filter.examCategory ? { examCategory: filter.examCategory } : {}),
+          }
+        : undefined;
+    const questionWhere =
+      filter.subjectId || subjectWhere
+        ? {
+            ...(filter.subjectId ? { subjectId: filter.subjectId } : {}),
+            ...(subjectWhere ? { subject: subjectWhere } : {}),
+          }
+        : undefined;
+
     const graded = await this.prisma.examSessionAnswer.findMany({
       where: {
         isCorrect: { not: null },
-        examSessionQuestion: { examSession: { userId, status: 'SUBMITTED' } },
+        examSessionQuestion: {
+          examSession: { userId, status: 'SUBMITTED' },
+          ...(questionWhere ? { question: questionWhere } : {}),
+        },
       },
       include: {
         examSessionQuestion: {
@@ -117,7 +140,13 @@ export class MeService {
             examSessionId: true,
             questionId: true,
             question: {
-              select: { subjectId: true, questionType: true, subject: { select: { name: true } } },
+              select: {
+                subjectId: true,
+                questionType: true,
+                stem: true,
+                difficulty: true,
+                subject: { select: { name: true } },
+              },
             },
           },
         },
@@ -132,6 +161,8 @@ export class MeService {
       subjectId: string;
       subjectName: string;
       questionType: string;
+      stem: unknown;
+      difficulty: number;
       sessionId: string;
     }[] = [];
     let solved = 0;
@@ -160,14 +191,23 @@ export class MeService {
           subjectId: q.subjectId,
           subjectName: q.subject.name,
           questionType: q.questionType,
+          stem: q.stem,
+          difficulty: q.difficulty,
           sessionId: sq.examSessionId,
         });
       }
     }
 
     // 내 주석 — byReason 통계 + 오답 문항별 주석 조인.
+    // 범위 필터가 있으면 그 범위에서 채점된 문항의 주석만 센다(원인 통계도 범위를 따라간다).
+    const scopedQuestionIds = questionWhere
+      ? Array.from(new Set(graded.map((a) => a.examSessionQuestion.questionId)))
+      : null;
     const annotations = await this.prisma.userQuestionAnnotation.findMany({
-      where: { userId },
+      where: {
+        userId,
+        ...(scopedQuestionIds ? { questionId: { in: scopedQuestionIds } } : {}),
+      },
       orderBy: { updatedAt: 'desc' },
     });
     const annByQuestion = new Map<string, typeof annotations>();

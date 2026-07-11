@@ -7,6 +7,7 @@
 
 import type {
   Subject,
+  Tag,
   Question,
   Passage,
   QuestionStatus,
@@ -153,7 +154,7 @@ export function createQuestion(
   });
 }
 
-/** 문제 수정 */
+/** 문제 수정. tagIds를 주면 question_tags 매핑을 통째로 교체한다. */
 export function updateQuestion(
   id: string,
   data: Partial<
@@ -169,7 +170,7 @@ export function updateQuestion(
       | 'totalTimeSpentSec'
       | 'timedSolvedCount'
     >
-  >,
+  > & { tagIds?: string[] },
 ) {
   return apiFetch<Question>(`/questions/${id}`, {
     method: 'PATCH',
@@ -428,18 +429,25 @@ export function deleteAnnotation(annotationId: string) {
 
 /** 오답노트 조회 (요약 + 틀린 문제 + 주석) */
 export function fetchMyNotes(params?: {
+  examType?: string;
+  examCategory?: string;
   subjectId?: string;
-  reasonCode?: string;
 }) {
   const query = new URLSearchParams();
+  if (params?.examType) query.set('examType', params.examType);
+  if (params?.examCategory) query.set('examCategory', params.examCategory);
   if (params?.subjectId) query.set('subjectId', params.subjectId);
-  if (params?.reasonCode)
-    query.set('reasonCode', params.reasonCode);
 
   const qs = query.toString();
   return apiFetch<MyNotesResponse>(
     `/me/notes${qs ? `?${qs}` : ''}`,
   );
+}
+
+/** 태그 목록 (category로 선택 필터) */
+export function fetchTags(category?: string) {
+  const qs = category ? `?category=${encodeURIComponent(category)}` : '';
+  return apiFetch<Tag[]>(`/catalog/tags${qs}`);
 }
 
 /** 내 시험 세션 이력 조회 */

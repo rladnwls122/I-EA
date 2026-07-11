@@ -141,6 +141,8 @@ export interface CreateAiGenerationInput {
   includePassage?: boolean;
   /** 선호 문제 유형(힌트) */
   questionType?: QuestionType;
+  /** OX(참/거짓) 2지선다 스타일 힌트. 저장되는 questionType은 그대로 객관식. */
+  ox?: boolean;
 }
 
 /** POST /ai-generations 응답 (즉시 202) */
@@ -256,16 +258,45 @@ export interface User {
 // ─── 오답노트 / 내 정보 ────────────────────────────────────────────
 
 /** GET /me/notes 응답 */
+/** GET /me/notes — 백엔드 실제 응답 shape (me.service.notes와 1:1). */
+export interface WrongStat {
+  key: string;
+  label: string;
+  total: number;
+  wrong: number;
+  wrongRatio: number;
+}
+
+export interface ReasonStat {
+  code: string;
+  label: string;
+  count: number;
+}
+
+export interface WrongQuestionItem {
+  questionId: string;
+  subjectId: string;
+  subjectName: string;
+  questionType: QuestionType;
+  /** 발문 — ProseMirror JSON */
+  stem: any;
+  difficulty: number;
+  sessionId: string;
+  annotationCount: number;
+  annotations: UserQuestionAnnotation[];
+}
+
 export interface MyNotesResponse {
   summary: {
-    bySubject: Record<string, number>;
-    byType: Record<string, number>;
-    byReason: Record<string, number>;
+    sessions: number;
+    solved: number;
+    correct: number;
+    scorePercent: number;
+    bySubject: WrongStat[];
+    byType: WrongStat[];
+    byReason: ReasonStat[];
   };
-  wrongQuestions: {
-    question: Question;
-    annotations: UserQuestionAnnotation[];
-  }[];
+  wrongQuestions: WrongQuestionItem[];
 }
 
 /** GET /me/exam-sessions 응답 항목 */

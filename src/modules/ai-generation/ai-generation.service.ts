@@ -40,6 +40,7 @@ export class AiGenerationService {
           questionCount: dto.questionCount,
           includePassage: dto.includePassage ?? false,
           questionType: dto.questionType ?? null,
+          ox: dto.ox ?? false,
         },
       },
       select: { id: true, status: true, createdAt: true },

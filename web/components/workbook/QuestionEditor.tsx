@@ -13,9 +13,11 @@ import {
   fetchPassage,
   fetchQuestion,
   fetchSubjects,
+  fetchTags,
   regenerateChoices,
+  updateQuestion,
 } from "@/lib/api";
-import type { Question, Subject } from "@/lib/types";
+import type { Question, Subject, Tag } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +35,7 @@ type Draft = {
   answerText: string;
   explanation: any; // ProseMirror JSON
   showExplanation: boolean;
+  tagIds: string[]; // 부착된 태그 — 실제 문항(id가 UUID)이면 토글 즉시 서버에 저장
 };
 
 const emptyObjective: Draft = {
@@ -46,6 +49,7 @@ const emptyObjective: Draft = {
   answerText: "",
   explanation: buildRichDoc(""),
   showExplanation: false,
+  tagIds: [],
 };
 
 const emptySubjective: Draft = {
@@ -59,6 +63,7 @@ const emptySubjective: Draft = {
   answerText: "",
   explanation: buildRichDoc(""),
   showExplanation: false,
+  tagIds: [],
 };
 
 const SUGGESTIONS = [
@@ -67,6 +72,31 @@ const SUGGESTIONS = [
   "OX 퀴즈 만들기",
   "지문 기반으로 출제",
 ];
+
+/** AI 패널에서 고를 수 있는 유형 칩. 백엔드 QUESTION_KINDS는 객관식/주관식뿐 — OX는 UI 전용 힌트. */
+const TYPE_CHIPS = ["주관식", "객관식", "OX"] as const;
+type TypeChip = (typeof TYPE_CHIPS)[number];
+
+const DIFFICULTY_OPTIONS = [1, 2, 3, 4, 5];
+const COUNT_OPTIONS = [1, 2, 3, 5];
+
+/**
+ * 선택된 유형 칩 → 생성 API의 questionType 힌트(단일값·optional).
+ * OX는 백엔드 저장 타입이 아니라 객관식의 스타일 힌트(ox 플래그, resolveOx)로 별도 전달한다.
+ * 그래서 여기서는 객관식/주관식 "종류"만 판단 — 둘 다(또는 OX만 단독) 선택되면 힌트 생략(믹스).
+ */
+function resolveQuestionTypeHint(types: Set<TypeChip>): "객관식" | "주관식" | undefined {
+  const kinds = new Set<"객관식" | "주관식">();
+  if (types.has("객관식") || types.has("OX")) kinds.add("객관식");
+  if (types.has("주관식")) kinds.add("주관식");
+  if (kinds.size !== 1) return undefined;
+  return Array.from(kinds)[0];
+}
+
+/** OX 칩 선택 여부 → 생성 API의 ox 힌트. */
+function resolveOx(types: Set<TypeChip>): boolean {
+  return types.has("OX");
+}
 
 /**
  * ProseMirror 값을 doc 형태로 정규화한다.
@@ -97,6 +127,8 @@ function questionToDraft(q: Question): Draft {
     answerText: q.correctAnswerText ?? "",
     explanation: toDoc(q.explanation),
     showExplanation: false,
+    // findOne 응답의 tags(관계 매핑)를 실어온다 — Question 타입엔 없지만 백엔드가 내려줌.
+    tagIds: ((q as any).tags ?? []).map((t: Tag) => t.id),
   };
 }
 
@@ -145,24 +177,71 @@ export function QuestionEditor() {
   /* ── 생성 옵션 ── */
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [subjectId, setSubjectId] = useState("");
+  // 대분류(examCategory) 칩 → 그 안의 세부과목 칩, 2단 선택.
+  const [category, setCategory] = useState("");
+  const [typeSel, setTypeSel] = useState<Set<TypeChip>>(new Set());
   const [difficulty, setDifficulty] = useState(3);
   const [count, setCount] = useState(1);
   const [includePassage, setIncludePassage] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  // 생성 직후 바로 초안에 꽂지 않고, 검토(정답/해설 확인) 후 명시적으로 적용할 대기열.
+  const [pendingPreview, setPendingPreview] = useState<Draft[]>([]);
+
+  const toggleType = (t: TypeChip) =>
+    setTypeSel((prev) => {
+      const next = new Set(prev);
+      next.has(t) ? next.delete(t) : next.add(t);
+      return next;
+    });
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, pendingPreview]);
 
-  // 생성 API는 subjectId(NOT NULL)가 필수 → 세부과목 목록을 받아 첫 항목을 기본 선택.
+  // 생성 API는 subjectId(NOT NULL)가 필수 → 세부과목 목록을 받아 첫 대분류·첫 과목을 기본 선택.
   useEffect(() => {
     fetchSubjects()
       .then((list) => {
         setSubjects(list);
-        setSubjectId((prev) => prev || list[0]?.id || "");
+        const first = list[0];
+        setCategory((prev) => prev || first?.examCategory || "");
+        setSubjectId((prev) => prev || first?.id || "");
       })
       .catch(() => toast.error("과목 목록을 불러오지 못했습니다."));
   }, []);
+
+  // 태그 카탈로그 — 문항 카드의 태그 토글 칩 데이터.
+  const [tags, setTags] = useState<Tag[]>([]);
+  useEffect(() => {
+    fetchTags()
+      .then(setTags)
+      .catch(() => {}); // 태그는 부가 기능 — 실패해도 에디터는 동작해야 한다.
+  }, []);
+
+  /** 문항 카드에서 태그 토글. 실제 문항(UUID id)이면 서버에도 바로 저장한다. */
+  const toggleDraftTag = (draft: Draft, tagId: string) => {
+    const next = draft.tagIds.includes(tagId)
+      ? draft.tagIds.filter((t) => t !== tagId)
+      : [...draft.tagIds, tagId];
+    update(draft.id, "tagIds", next);
+    if (draft.id.includes("-")) {
+      updateQuestion(draft.id, { tagIds: next }).catch(() => {
+        toast.error("태그 저장에 실패했습니다.");
+        update(draft.id, "tagIds", draft.tagIds); // 롤백
+      });
+    }
+  };
+
+  // 대분류 칩 목록(중복 제거, 원본 순서 보존)과 현재 대분류의 세부과목 목록.
+  const categories = Array.from(new Set(subjects.map((s) => s.examCategory)));
+  const subjectsInCategory = subjects.filter((s) => s.examCategory === category);
+
+  /** 대분류 전환 시 그 안의 첫 세부과목을 자동 선택(빈 subjectId 방지). */
+  const selectCategory = (c: string) => {
+    setCategory(c);
+    const first = subjects.find((s) => s.examCategory === c);
+    setSubjectId(first?.id ?? "");
+  };
 
   /* ── 핸들러 ── */
   const update = (id: string, key: keyof Draft, value: unknown) =>
@@ -181,6 +260,25 @@ export function QuestionEditor() {
 
   const pushAi = (text: string) =>
     setMessages((prev) => [...prev, { role: "ai", text }]);
+
+  /** 미리보기 대기열에서 문제집(에디터 초안)으로 명시 반영. */
+  const applyPreview = (id: string) => {
+    const draft = pendingPreview.find((d) => d.id === id);
+    if (!draft) return;
+    setDrafts((list) => [...list, draft]);
+    setPendingPreview((list) => list.filter((d) => d.id !== id));
+    toast.success("문제집에 적용했어요.");
+  };
+
+  const applyAllPreview = () => {
+    if (pendingPreview.length === 0) return;
+    setDrafts((list) => [...list, ...pendingPreview]);
+    setPendingPreview([]);
+    toast.success("문제집에 모두 적용했어요.");
+  };
+
+  const discardPreview = (id: string) =>
+    setPendingPreview((list) => list.filter((d) => d.id !== id));
 
   const handleSend = async () => {
     const currentPrompt = prompt.trim();
@@ -201,6 +299,8 @@ export function QuestionEditor() {
         difficulty,
         questionCount: count,
         includePassage,
+        questionType: resolveQuestionTypeHint(typeSel),
+        ox: resolveOx(typeSel),
       });
       pushAi("생성 중이에요… 잠시만 기다려 주세요.");
 
@@ -238,8 +338,9 @@ export function QuestionEditor() {
         }
       }
 
-      setDrafts((list) => [...list, ...newDrafts]);
-      pushAi(`문항 ${newDrafts.length}개를 에디터에 추가했어요. 계속 다듬어 보세요.`);
+      // 바로 초안에 꽂지 않고 미리보기 대기열에 둔다 — 정답/해설을 확인하고 명시적으로 적용.
+      setPendingPreview((list) => [...list, ...newDrafts]);
+      pushAi(`문항 ${newDrafts.length}개를 만들었어요. 아래에서 확인하고 적용해 주세요.`);
     } catch (e) {
       console.error(e);
       pushAi("생성 중 오류가 발생했어요. 다시 시도해 주세요.");
@@ -417,6 +518,30 @@ export function QuestionEditor() {
                 </>
               )}
 
+              {/* 태그 — 카탈로그 태그 토글. 실제 문항이면 즉시 저장, 새 문항이면 로컬 유지 */}
+              {tags.length > 0 && (
+                <div className="mb-3">
+                  <label className="mb-2 block text-xs font-medium text-muted-foreground">태그</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => toggleDraftTag(draft, t.id)}
+                        aria-pressed={draft.tagIds.includes(t.id)}
+                        className={`rounded-full border px-2.5 py-1 text-[11px] transition-all active:scale-[0.98] motion-reduce:transition-none ${
+                          draft.tagIds.includes(t.id)
+                            ? "border-primary bg-primary/10 font-medium text-foreground"
+                            : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                        }`}
+                      >
+                        # {t.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* 해설 아코디언 */}
               <button
                 onClick={() => update(draft.id, "showExplanation", !draft.showExplanation)}
@@ -469,8 +594,13 @@ export function QuestionEditor() {
         </div>
       </section>
 
-      {/* ═══ 우측 패널: AI 채팅 ═══ */}
-      <aside className="w-full lg:w-[360px] flex flex-col bg-card border-l border-border relative z-20">
+      {/* ═══ 우측 패널: AI 채팅 (글래스) ═══ */}
+      <aside className="glass-panel w-full lg:w-[360px] flex flex-col border-l relative z-20">
+        {/* ambient glow — 유리 뒤에 비칠 빛. 콘텐츠 아래(-z-10), 인터랙션 차단 없음 */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+          <div className="absolute -top-24 -right-20 h-64 w-64 rounded-full bg-primary/[0.08] blur-3xl" />
+          <div className="absolute bottom-16 -left-24 h-72 w-72 rounded-full bg-[#a78bfa]/[0.06] blur-3xl" />
+        </div>
         {/* 헤더 */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
@@ -487,13 +617,109 @@ export function QuestionEditor() {
               key={i}
               className={`px-4 py-3 rounded-xl text-sm leading-relaxed max-w-[90%] whitespace-pre-wrap border ${
                 msg.role === "ai"
-                  ? "bg-surface-raised text-foreground border-border"
+                  ? "glass-chip text-foreground"
                   : "bg-primary/10 text-foreground border-primary/20 self-end ml-auto"
               }`}
             >
               {msg.text}
             </div>
           ))}
+
+          {/* 라이브 데모 카드 — 아직 아무 요청도 없을 때만. 어떤 결과물이 나오는지 미리 보여준다. */}
+          {messages.length <= 1 && pendingPreview.length === 0 && !isGenerating && (
+            <div className="space-y-2 opacity-80">
+              <div className="px-4 py-3 rounded-xl text-sm leading-relaxed max-w-[90%] border bg-primary/10 text-foreground border-primary/20 self-end ml-auto">
+                “화자의 정서 변화를 묻는 고난도 문항 1개”
+              </div>
+              <div className="glass-chip border border-dashed rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Badge variant="secondary" className="text-[10px] font-medium">객관식</Badge>
+                  <span className="text-[10px] text-muted-foreground">이렇게 만들어드려요</span>
+                </div>
+                <p className="text-sm text-foreground leading-relaxed">
+                  (가)의 화자에 대한 설명으로 가장 적절한 것은?
+                </p>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-primary bg-primary/10 text-foreground text-xs">
+                    <Check size={13} strokeWidth={2.5} className="text-primary flex-shrink-0" />
+                    <span>상실의 슬픔을 절제된 어조로 드러내고 있다.</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-muted-foreground text-xs">
+                    <span>미래에 대한 낙관적 기대를 표출하고 있다.</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-muted-foreground text-xs">
+                    <span>대상을 향한 원망을 직설적으로 토로하고 있다.</span>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed border-t border-border pt-2">
+                  반복되는 시어와 차분한 종결 어미에서 감정을 억누르는 화자의 태도가 드러납니다.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 생성 결과 미리보기 — 정답/해설 확인 후 명시적으로 적용해야 초안에 반영됨 */}
+          {pendingPreview.map((draft) => (
+            <div key={draft.id} className="glass-chip border rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-[10px] font-medium">{draft.type}</Badge>
+              </div>
+              <p className="text-sm text-foreground leading-relaxed">{extractPlainText(draft.stem)}</p>
+
+              {draft.type === "객관식" ? (
+                <div className="space-y-1.5">
+                  {draft.choices.map((choice, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+                        draft.correct === i
+                          ? "border-primary bg-primary/10 text-foreground"
+                          : "border-border text-muted-foreground"
+                      }`}
+                    >
+                      {draft.correct === i && <Check size={13} strokeWidth={2.5} className="text-primary flex-shrink-0" />}
+                      <span>{choice}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {draft.answerText ? `정답: ${draft.answerText}` : "서술형(자기채점 대상)"}
+                </p>
+              )}
+
+              {extractPlainText(draft.explanation) && (
+                <p className="text-xs text-muted-foreground leading-relaxed border-t border-border pt-2">
+                  {extractPlainText(draft.explanation)}
+                </p>
+              )}
+
+              {draft.passage != null && (
+                <Badge variant="secondary" className="text-[10px] font-medium">지문 포함</Badge>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <Button onClick={() => applyPreview(draft.id)} size="sm" className="flex-1">
+                  문제집에 적용하기
+                </Button>
+                <button
+                  onClick={() => discardPreview(draft.id)}
+                  className="px-3 text-xs text-muted-foreground hover:text-wrong transition-colors"
+                >
+                  무시
+                </button>
+              </div>
+            </div>
+          ))}
+          {pendingPreview.length > 1 && (
+            <button
+              onClick={applyAllPreview}
+              className="w-full text-xs font-medium text-primary hover:text-primary/80 transition-colors py-1"
+            >
+              {pendingPreview.length}개 모두 적용하기
+            </button>
+          )}
+
           <div ref={chatEndRef} />
         </div>
 
@@ -510,62 +736,143 @@ export function QuestionEditor() {
           ))}
         </div>
 
-        {/* 생성 옵션 — 과목(필수)·난이도·문항 수 */}
-        <div className="flex items-center gap-2 px-4 pb-2">
-          <select
-            value={subjectId}
-            onChange={(e) => setSubjectId(e.target.value)}
-            disabled={isGenerating}
-            aria-label="세부과목"
-            className="flex-1 min-w-0 bg-surface-raised border border-border rounded-md px-2 py-1.5 text-xs text-foreground outline-none disabled:opacity-50"
-          >
-            {subjects.length === 0 && <option value="">과목 로딩…</option>}
-            {subjects.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.examCategory} · {s.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={difficulty}
-            onChange={(e) => setDifficulty(Number(e.target.value))}
-            disabled={isGenerating}
-            aria-label="난이도"
-            className="bg-surface-raised border border-border rounded-md px-2 py-1.5 text-xs text-foreground outline-none disabled:opacity-50"
-          >
-            {[1, 2, 3, 4, 5].map((d) => (
-              <option key={d} value={d}>난이도 {d}</option>
-            ))}
-          </select>
-          <select
-            value={count}
-            onChange={(e) => setCount(Number(e.target.value))}
-            disabled={isGenerating}
-            aria-label="문항 수"
-            className="bg-surface-raised border border-border rounded-md px-2 py-1.5 text-xs text-foreground outline-none disabled:opacity-50"
-          >
-            {[1, 2, 3, 5].map((n) => (
-              <option key={n} value={n}>{n}문항</option>
-            ))}
-          </select>
+        {/* 생성 옵션 — 과목(필수): 대분류 칩 → 세부과목 칩 2단 선택 */}
+        <div className="px-4 pb-2">
+          <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">과목</label>
+          {subjects.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground">과목 로딩…</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => selectCategory(c)}
+                    disabled={isGenerating}
+                    aria-pressed={category === c}
+                    className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+                      category === c
+                        ? "bg-primary border-transparent text-primary-foreground"
+                        : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+              {subjectsInCategory.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {subjectsInCategory.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSubjectId(s.id)}
+                      disabled={isGenerating}
+                      aria-pressed={subjectId === s.id}
+                      className={`px-3 py-1.5 rounded-full border text-[11px] transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+                        subjectId === s.id
+                          ? "border-primary bg-primary/10 text-foreground font-medium"
+                          : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      }`}
+                    >
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
 
-        {/* 지문 포함 토글 */}
+        {/* 유형 — 다중선택 칩. 1개=강제, 2개+=힌트 생략(섞어서 생성), 0개=완전 자동 */}
         <div className="px-4 pb-2">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={includePassage}
-              onChange={(e) => setIncludePassage(e.target.checked)}
+          <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">유형</label>
+          <div className="flex flex-wrap gap-1.5">
+            {TYPE_CHIPS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => toggleType(t)}
+                disabled={isGenerating}
+                aria-pressed={typeSel.has(t)}
+                className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+                  typeSel.has(t)
+                    ? "bg-primary border-transparent text-primary-foreground"
+                    : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            여러 개를 고르면 섞어서 출제해요. 아무것도 안 고르면 AI가 알아서 정해요.
+          </p>
+        </div>
+
+        {/* 난이도 — 프리셋 필 버튼 */}
+        <div className="px-4 pb-2">
+          <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">난이도</label>
+          <div className="flex flex-wrap gap-1.5">
+            {DIFFICULTY_OPTIONS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDifficulty(d)}
+                disabled={isGenerating}
+                aria-pressed={difficulty === d}
+                className={`w-8 h-8 rounded-full border text-[11px] font-mono font-medium transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+                  difficulty === d
+                    ? "bg-primary border-transparent text-primary-foreground"
+                    : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 문항 수 — 프리셋 필 버튼 + 지문 포함 토글 칩 */}
+        <div className="px-4 pb-2">
+          <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">문항 수</label>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {COUNT_OPTIONS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setCount(n)}
+                disabled={isGenerating}
+                aria-pressed={count === n}
+                className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+                  count === n
+                    ? "bg-primary border-transparent text-primary-foreground"
+                    : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                }`}
+              >
+                {n}문항
+              </button>
+            ))}
+            <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => setIncludePassage((v) => !v)}
               disabled={isGenerating}
-              className="h-3.5 w-3.5 rounded border-border accent-primary disabled:opacity-50"
-            />
-            지문(본문) 함께 생성
-          </label>
+              aria-pressed={includePassage}
+              className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+                includePassage
+                  ? "bg-primary border-transparent text-primary-foreground"
+                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+              }`}
+            >
+              지문 포함
+            </button>
+          </div>
         </div>
 
         {/* 입력 바 */}
-        <div className="border-t border-border px-4 py-3 flex items-end gap-2 bg-card">
+        <div className="glass-bar border-t px-4 py-3 flex items-end gap-2">
           <textarea
             ref={textareaRef}
             value={prompt}
@@ -579,7 +886,9 @@ export function QuestionEditor() {
                 handleSend();
               }
             }}
-            placeholder="예: 현대시 화자의 태도를 묻는 상 난이도 문항 1개"
+            placeholder={
+              "예:\n국어 문학 파트, 시어의 상징적 의미를 묻는 고난도 문제로 만들어주세요.\n비유적 표현과 화자의 정서 변화에 초점을 맞추고,\n해설은 오답 선지가 왜 틀렸는지까지 자세히 설명해주세요."
+            }
             rows={1}
             disabled={isGenerating}
             className="flex-1 bg-transparent border-0 outline-none text-sm text-foreground placeholder:text-muted-foreground resize-none min-h-[36px] max-h-[120px] disabled:opacity-50"

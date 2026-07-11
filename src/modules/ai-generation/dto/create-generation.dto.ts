@@ -41,6 +41,15 @@ export class CreateGenerationDto {
   @IsBoolean()
   includePassage?: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      'OX 퀴즈 스타일 힌트. true면 객관식 문항을 O/X 2지선다로 유도한다(questionType 저장값은 그대로 객관식).',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  ox?: boolean;
+
   @ApiPropertyOptional({ description: '선호 문제 유형(힌트)', enum: QUESTION_KINDS })
   @IsOptional()
   @IsIn(QUESTION_KINDS)

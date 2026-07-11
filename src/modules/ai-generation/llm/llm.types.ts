@@ -70,6 +70,8 @@ export interface LlmGenerationContext {
   questionCount: number;
   includePassage: boolean;
   questionType?: QuestionKind;
+  /** OX(참/거짓) 2지선다 스타일 힌트. questionType 저장값은 그대로 객관식 — 별도 타입을 만들지 않는다. */
+  ox?: boolean;
   /** 소분류명 (예: 문학) */
   subjectName?: string;
   /** 대분류 (예: 국어) */

@@ -5,6 +5,9 @@ import { BookOpenCheck, BrainCircuit, Lightbulb, User } from "lucide-react";
 
 export function AppSidebar() {
   const pathname = usePathname();
+  // 인트로(비로그인 랜딩)는 몰입형 — 사이드바를 아예 그리지 않는다.
+  // body의 pl-[64px]는 인트로 페이지가 -ml-[64px]로 상쇄한다(intro/page.tsx 참고).
+  if (pathname.startsWith("/intro")) return null;
   const nav = [
     { href: "/questions", label: "문제 탐색", icon: BrainCircuit },
     { href: "/workbook", label: "문제집", icon: BookOpenCheck },

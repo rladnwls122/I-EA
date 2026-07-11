@@ -55,6 +55,7 @@ export class AiGenerationProcessor extends WorkerHost {
       questionCount: Number(params.questionCount ?? 1),
       includePassage: Boolean(params.includePassage ?? false),
       questionType: (params.questionType as QuestionKind) ?? undefined,
+      ox: Boolean(params.ox ?? false),
       subjectName: generation.subject?.name,
       examCategory: generation.subject?.examCategory,
       examType: generation.subject?.examType,
@@ -85,6 +86,10 @@ export class AiGenerationProcessor extends WorkerHost {
           // 주관식 단답 정답(있으면 자동채점 근거). 서술형이면 null → 자기채점.
           const correctAnswerText =
             kind === '주관식' && q.answerText?.trim() ? q.answerText.trim() : null;
+          // OX 힌트를 요청했고 실제로 2지선다로 나온 객관식만 OX 스타일로 태깅한다.
+          // questionType 저장값(QUESTION_KINDS)은 그대로 두고 metadata에만 표시 —
+          // 새 타입을 도입하지 않고도 에디터/문제은행이 OX 뱃지를 구분해 보여줄 수 있다.
+          const isOxStyle = ctx.ox && kind === '객관식' && choices?.length === 2;
           await tx.question.create({
             data: {
               creatorId: generation.creatorId,
@@ -96,6 +101,7 @@ export class AiGenerationProcessor extends WorkerHost {
               // nullable Json은 값이 없으면 필드를 생략 → 컬럼 NULL로 저장
               ...(choices ? { choices: choices as JsonWritable } : {}),
               ...(correctAnswerText ? { correctAnswerText } : {}),
+              ...(isOxStyle ? { metadata: { style: 'OX' } as JsonWritable } : {}),
               ...(q.explanationText
                 ? { explanation: buildRichBlocks(q.explanationText) as JsonWritable }
                 : {}),

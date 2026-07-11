@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
+import { QueryNotesDto } from './dto/query-notes.dto';
 import { MeService } from './me.service';
 
 @ApiTags('me')
@@ -18,9 +19,9 @@ export class MeController {
   }
 
   @Get('notes')
-  @ApiOperation({ summary: '통합 오답노트 (세부과목·유형·원인별 집계 + 오답 문항 + 내 주석)' })
-  notes(@CurrentUser() user: CurrentUserPayload) {
-    return this.service.notes(user.id);
+  @ApiOperation({ summary: '통합 오답노트 (시험·과목·세부과목 필터 + 원인별 집계 + 오답 문항 + 내 주석)' })
+  notes(@CurrentUser() user: CurrentUserPayload, @Query() query: QueryNotesDto) {
+    return this.service.notes(user.id, query);
   }
 
   @Get('xp/history')

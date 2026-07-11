@@ -1,5 +1,7 @@
 "use client";
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   BookOpenCheck,
@@ -33,6 +35,16 @@ const FEATURES = [
 
 export default function Home() {
   const { recent } = useRecentQuestions();
+  const router = useRouter();
+
+  // 비로그인 첫 방문은 인트로로 보낸다. '둘러보기'로 들어온 세션(introSeen)은 그대로 통과 —
+  // 인트로 ↔ 홈 리다이렉트 루프 방지.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!localStorage.getItem("token") && !sessionStorage.getItem("introSeen")) {
+      router.replace("/intro");
+    }
+  }, [router]);
 
   return (
     <main className="min-h-screen bg-background pb-20">
