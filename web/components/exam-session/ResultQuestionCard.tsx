@@ -1,5 +1,6 @@
 "use client";
-import { Check, Loader2, X } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, Check, Loader2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useSelfGrade } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
@@ -132,6 +133,13 @@ export function ResultQuestionCard({
           {extractPlainText(item.snapshot.explanation)}
         </p>
       )}
+
+      <Link
+        href={`/questions/${item.questionId}?reveal=1`}
+        className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+      >
+        문항 상세 보기 <ArrowUpRight size={12} />
+      </Link>
     </article>
   );
 }

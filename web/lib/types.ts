@@ -190,7 +190,7 @@ export interface ChoiceDistributionItem {
 export interface QuestionStats {
   /** 총 풀이 수 */
   totalSolved: number;
-  /** 정답률 (0~1, 데이터 없으면 null) */
+  /** 정답률 퍼센트(예: 41.2). 표본 부족이면 null */
   correctRate: number | null;
   /** 평균 풀이 시간(초, 데이터 없으면 null) */
   avgTimeSpentSec: number | null;
