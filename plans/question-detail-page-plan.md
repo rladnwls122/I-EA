@@ -31,3 +31,7 @@ tsc --noEmit. 서버 기동 검증은 사용자 지시로 생략.
 
 ## 완료 기록
 (구현 후 갱신)
+## 완료 기록 (2026-07-12)
+- Completed: /questions/[id] 전체(게이팅/통계/별점/댓글), 결과카드 상세링크 배선(52011010)
+- Changed: lib(types/api/hooks)+components/question-detail 6개+라우트
+- Validation: tsc clean, 리뷰 subagent ready-to-ship(0 findings)

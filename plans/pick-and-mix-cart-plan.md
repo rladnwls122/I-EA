@@ -24,3 +24,7 @@ tsc --noEmit. 서버 기동 검증 생략(사용자 지시).
 
 ## 완료 기록
 (구현 후 갱신)
+## 완료 기록 (2026-07-12)
+- Completed: cart-store(persist)+createSession+QuestionPreview 실배선+CartButton/Panel/AssembleDialog (dbf5d01f)
+- 부수: E1 복습 배선(4c193783), E2 문제집 미리보기+startWorkbook 계약 교정(afcbdcec)
+- Validation: tsc clean, 묶음 리뷰 — Important 1건은 백엔드 400 가드로 false positive 판정
