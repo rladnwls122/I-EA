@@ -101,6 +101,16 @@ The wrong-answer notebook is two decoupled axes, joined only on the client (and 
 
 Railway via `railway.json` → `npm run start:railway`, which runs `prisma db push --skip-generate --accept-data-loss` then `node dist/main.js`. **Production uses `db push`, not migrations** — the `prisma/migrations` dev flow and the deployed schema-sync path differ; keep `schema.prisma` authoritative. The frontend targets Cloudflare Pages / Vercel (`@cloudflare/next-on-pages`, `wrangler` in `web/`).
 
+### Frontend (`web/`) notes
+
+`web/WEB_GUIDE.md` is the authoritative AI-facing guide for this app (the auto-generated `web/README.md` is unmodified create-next-app boilerplate — ignore it). Key rules from it:
+
+- **Vega charts must be client-only.** Chart components import `vega`/`vega-lite`/`react-vega`, which break under SSR (`canvas` errors). Load them via `next/dynamic` with `ssr: false`, and double-guard with `typeof window !== 'undefined'` inside the component. Don't bump the Vega package versions.
+- **Layout is flat, no `AppFrame` wrapper.** `app/layout.tsx` renders a global sidebar (`AppSidebar`); left padding comes from `pl-[64px]` on `body`. Pages start directly with `<main>` — don't reintroduce a layout wrapper or duplicate the margin. Routes like `app/notes/` use parallel routes (`@sidebar` slot).
+- **Real API vs mock data is still mixed.** `lib/api.ts` + `lib/hooks.ts` are the real backend integration and should be preferred for any new/changed feature; some pages (e.g. `app/questions/page.tsx`) still read `lib/mock-data.ts`. `lib/mock-data.ts` and `lib/types.ts` disagree on shape in places (e.g. `id: number` vs `string`) — treat `lib/types.ts` as the source of truth and fix mismatches toward it. API calls read the auth token from `localStorage`, so they must run in client components only.
+- **Rich text is ProseMirror JSON, same as the backend** (`stem`, `choices`, `explanation`). Never render these fields as raw strings — use `lib/prosemirror.ts`'s `extractPlainText` or a dedicated renderer, or you'll get `[object Object]` or a runtime crash.
+- **Defensive guards expected throughout:** `typeof window !== 'undefined'` before any `localStorage` access, existence checks before `new Date(field)` conversions, and `(data || []).map(...)` before assuming an API response is an array.
+
 ## Conventions
 
 - Comments and user-facing messages (validation errors, exceptions) are written in **Korean**; match that when editing existing files.
