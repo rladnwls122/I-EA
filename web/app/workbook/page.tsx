@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useWorkbooks } from "@/lib/hooks";
 import { WorkbookPreviewSidebar } from "@/components/workbook/WorkbookPreviewSidebar";
+import { CartButton } from "@/components/cart/CartButton";
 
 export default function WorkbookPage() {
   const [keyword, setKeyword] = useState("");
@@ -107,6 +108,7 @@ export default function WorkbookPage() {
         </div>
       )}
       <WorkbookPreviewSidebar workbookId={selectedId} onClose={() => setSelectedId(null)} />
+      <CartButton />
     </main>
   );
 }

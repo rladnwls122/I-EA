@@ -60,13 +60,20 @@ export class WorkbooksService {
   async list(dto: QueryWorkbookDto, userId: string | null): Promise<PaginatedResult<unknown>> {
     const subjectFilter = this.buildSubjectFilter(dto);
 
-    const where: Prisma.WorkbookWhereInput = {
-      OR: userId ? [{ visibility: 'PUBLIC' }, { ownerId: userId }] : [{ visibility: 'PUBLIC' }],
+    const base: Prisma.WorkbookWhereInput = {
       ...(dto.q ? { title: { contains: dto.q } } : {}),
       ...(subjectFilter
         ? { questions: { some: { question: { subject: subjectFilter } } } }
         : {}),
     };
+
+    // mine=true — 담기 대상 선택(내 문제집에 추가) 등에서 공개 여부 무관하게 내 것만.
+    const where: Prisma.WorkbookWhereInput = dto.mine
+      ? { ...base, ownerId: userId ?? '__none__' }
+      : {
+          ...base,
+          OR: userId ? [{ visibility: 'PUBLIC' }, { ownerId: userId }] : [{ visibility: 'PUBLIC' }],
+        };
 
     const orderBy: Prisma.WorkbookOrderByWithRelationInput =
       dto.sort === 'recent' ? { createdAt: 'desc' } : { viewCount: 'desc' };

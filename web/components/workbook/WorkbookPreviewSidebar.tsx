@@ -1,15 +1,17 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { Eye, GitFork, Loader2, Play, Users, X } from "lucide-react";
+import { Check, Eye, GitFork, Loader2, Play, ShoppingBasket, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkbook, useStartWorkbook } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
+import { useCartStore } from "@/lib/cart-store";
 
 /**
  * 문제집 미리보기 사이드바 — 카드 클릭으로 열리고, [풀기]로 세션 시작.
+ * 문항별로 장바구니에 개별 담기도 가능(그 중 일부만 골라 다른 문제집/세션으로).
  * 미발행 문항은 백엔드가 제외(skippedQuestionIds) → 토스트로 안내.
  */
 export function WorkbookPreviewSidebar({
@@ -22,6 +24,7 @@ export function WorkbookPreviewSidebar({
   const router = useRouter();
   const { data: workbook, isLoading } = useWorkbook(workbookId);
   const startWorkbook = useStartWorkbook();
+  const { add, remove, has } = useCartStore();
 
   if (!workbookId) return null;
 
@@ -121,19 +124,44 @@ export function WorkbookPreviewSidebar({
                   <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
                     수록 문항
                   </span>
-                  {questions.map((wq, i) => (
-                    <div
-                      key={wq.questionId}
-                      className="flex items-start gap-3 rounded-lg border border-border bg-surface-raised p-3"
-                    >
-                      <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full border border-border font-mono text-[10px] text-muted-foreground">
-                        {i + 1}
-                      </span>
-                      <p className="line-clamp-2 text-[13px] leading-relaxed text-foreground/90">
-                        {wq.question ? extractPlainText(wq.question.stem) : "문항"}
-                      </p>
-                    </div>
-                  ))}
+                  {questions.map((wq, i) => {
+                    const inCart = has(wq.questionId);
+                    return (
+                      <div
+                        key={wq.questionId}
+                        className="flex items-start gap-3 rounded-lg border border-border bg-surface-raised p-3"
+                      >
+                        <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full border border-border font-mono text-[10px] text-muted-foreground">
+                          {i + 1}
+                        </span>
+                        <p className="line-clamp-2 flex-1 text-[13px] leading-relaxed text-foreground/90">
+                          {wq.question ? extractPlainText(wq.question.stem) : "문항"}
+                        </p>
+                        <button
+                          type="button"
+                          aria-label={inCart ? "담김 — 빼려면 클릭" : "이 문항만 담기"}
+                          onClick={() =>
+                            inCart
+                              ? remove(wq.questionId)
+                              : wq.question &&
+                                add({
+                                  id: wq.questionId,
+                                  stemText: extractPlainText(wq.question.stem),
+                                  subjectName: wq.question.subject?.name,
+                                  questionType: wq.question.questionType,
+                                })
+                          }
+                          className={`flex h-7 w-7 flex-none items-center justify-center rounded-md border transition-colors ${
+                            inCart
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                          }`}
+                        >
+                          {inCart ? <Check size={13} /> : <ShoppingBasket size={13} />}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </>

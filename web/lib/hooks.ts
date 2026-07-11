@@ -189,10 +189,12 @@ export function useWorkbooks(params?: {
   visibility?: string;
   search?: string;
   sort?: 'popular' | 'recent';
-}) {
+  mine?: boolean;
+}, enabled = true) {
   return useQuery({
     queryKey: ['workbooks', params],
     queryFn: () => fetchWorkbooks(params),
+    enabled,
   });
 }
 

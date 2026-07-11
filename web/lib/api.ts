@@ -248,13 +248,15 @@ export function fetchWorkbooks(params?: {
   visibility?: string;
   search?: string;
   sort?: 'popular' | 'recent';
+  mine?: boolean;
 }) {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.visibility) query.set('visibility', params.visibility);
-  if (params?.search) query.set('search', params.search);
+  if (params?.search) query.set('q', params.search);
   if (params?.sort) query.set('sort', params.sort);
+  if (params?.mine) query.set('mine', 'true');
 
   const qs = query.toString();
   return apiFetch<PaginatedResponse<Workbook>>(

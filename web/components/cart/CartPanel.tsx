@@ -1,19 +1,21 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Play, Save, Trash2, X } from "lucide-react";
+import { FolderPlus, Loader2, Play, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { useCreateSession } from "@/lib/hooks";
 import { useCartStore } from "@/lib/cart-store";
 import { AssembleDialog } from "./AssembleDialog";
+import { AddToWorkbookDialog } from "./AddToWorkbookDialog";
 
-/** 장바구니 패널 — 담은 문항 목록 + 조립 액션(세션 풀기 / 문제집 저장 / 비우기). */
+/** 장바구니 패널 — 담은 문항 목록 + 조립 액션(세션 풀기 / 새 문제집 / 기존 문제집에 담기 / 비우기). */
 export function CartPanel({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const { items, remove, clear } = useCartStore();
   const createSession = useCreateSession();
   const [assembleOpen, setAssembleOpen] = useState(false);
+  const [addToWorkbookOpen, setAddToWorkbookOpen] = useState(false);
 
   const startSession = () => {
     if (items.length === 0) return;
@@ -106,7 +108,15 @@ export function CartPanel({ onClose }: { onClose: () => void }) {
               disabled={items.length === 0}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-medium text-foreground transition-colors hover:border-primary/40 disabled:opacity-50"
             >
-              <Save size={13} /> 문제집으로 저장
+              <Save size={13} /> 새 문제집
+            </button>
+            <button
+              type="button"
+              onClick={() => setAddToWorkbookOpen(true)}
+              disabled={items.length === 0}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-medium text-foreground transition-colors hover:border-primary/40 disabled:opacity-50"
+            >
+              <FolderPlus size={13} /> 내 문제집에 담기
             </button>
             <button
               type="button"
@@ -122,6 +132,7 @@ export function CartPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <AssembleDialog open={assembleOpen} onClose={() => setAssembleOpen(false)} />
+      <AddToWorkbookDialog open={addToWorkbookOpen} onClose={() => setAddToWorkbookOpen(false)} />
     </>
   );
 }

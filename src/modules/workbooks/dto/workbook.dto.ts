@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -12,6 +13,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { WORKBOOK_VISIBILITIES } from '@/common/constants/question';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 
@@ -131,4 +133,10 @@ export class QueryWorkbookDto extends PaginationQueryDto {
   @IsOptional()
   @IsIn(['popular', 'recent'])
   sort?: 'popular' | 'recent';
+
+  @ApiPropertyOptional({ description: '내 문제집만 조회(공개 여부 무관)' })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true' || value === true)
+  @IsBoolean()
+  mine?: boolean;
 }
