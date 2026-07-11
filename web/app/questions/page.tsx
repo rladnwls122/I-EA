@@ -19,7 +19,7 @@ export default function QuestionsPage() {
   const { data, isLoading } = useQuestions({ search: keyword });
 
   const filtered = useMemo(() => {
-    const list = data?.data || [];
+    const list = data?.items || [];
     return list.filter(
       (q) => subject === "전체" || q.subject?.name === subject,
     );

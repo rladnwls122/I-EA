@@ -447,7 +447,7 @@ export function fetchMyNotes(params?: {
 /** 태그 목록 (category로 선택 필터) */
 export function fetchTags(category?: string) {
   const qs = category ? `?category=${encodeURIComponent(category)}` : '';
-  return apiFetch<Tag[]>(`/catalog/tags${qs}`);
+  return apiFetch<Tag[]>(`/tags${qs}`);
 }
 
 /** 내 시험 세션 이력 조회 */
