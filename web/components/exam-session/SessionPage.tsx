@@ -1,14 +1,18 @@
 "use client";
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useSession, useSubmitSession } from "@/lib/hooks";
+import type { SubmitSessionResult } from "@/lib/types";
 import { OmrPanel } from "./OmrPanel";
 import { SolveQuestionCard } from "./SolveQuestionCard";
 import { SolveBottomBar } from "./SolveBottomBar";
 import { SubmitDialog } from "./SubmitDialog";
 import { DrawingOverlay } from "./DrawingOverlay";
+import { ResultBanner } from "./ResultBanner";
+import { ResultQuestionCard } from "./ResultQuestionCard";
 
 const Calculator = dynamic(
   () => import("./Calculator").then((m) => m.Calculator),
@@ -16,6 +20,7 @@ const Calculator = dynamic(
 );
 
 export function SessionPage({ id }: { id: string }) {
+  const queryClient = useQueryClient();
   const { data: session, isLoading, isError } = useSession(id);
   const submitSession = useSubmitSession();
 
@@ -23,6 +28,8 @@ export function SessionPage({ id }: { id: string }) {
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
+  // 방금 제출한 응답(reward 포함) — 새로고침하면 사라지고 서버 재조회 값으로 대체된다.
+  const [justSubmitted, setJustSubmitted] = useState<SubmitSessionResult | null>(null);
 
   // 서버에서 최초 로드된 답변 상태로 answeredIds를 초기화(한 번만).
   const initialized = useMemo(() => {
@@ -55,8 +62,9 @@ export function SessionPage({ id }: { id: string }) {
 
   const handleSubmit = () => {
     submitSession.mutate(id, {
-      onSuccess: () => {
+      onSuccess: (result) => {
         setSubmitDialogOpen(false);
+        setJustSubmitted(result);
         toast.success("제출 완료! 채점 결과를 확인하세요.");
       },
       onError: () => {
@@ -96,10 +104,72 @@ export function SessionPage({ id }: { id: string }) {
   }
 
   if (session.status !== "IN_PROGRESS") {
-    // SUBMITTED — Task 12에서 결과 레이아웃으로 교체
+    // SUBMITTED — 결과 모드
+    const sortedQuestions = session.questions
+      .slice()
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+    const total = session.questions.length;
+    const correct = session.questions.filter((q) => q.answer?.isCorrect === true).length;
+    const scorePercent = total > 0 ? Math.round((correct / total) * 1000) / 10 : 0;
+
     return (
-      <div className="p-8 text-sm text-muted-foreground">
-        결과 모드 — {session.questions.length}문항 (Task 12에서 완성)
+      <div className="mx-auto max-w-5xl p-6">
+        <ResultBanner
+          total={justSubmitted?.total ?? total}
+          correct={justSubmitted?.correct ?? correct}
+          scorePercent={justSubmitted?.scorePercent ?? scorePercent}
+          durationSec={justSubmitted?.durationSec ?? session.durationSec}
+          reward={justSubmitted?.reward}
+        />
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {sortedQuestions.map((q) => (
+            <ResultQuestionCard
+              key={q.sessionQuestionId}
+              item={q}
+              order={q.displayOrder}
+              onSelfGraded={() => {
+                /* useSelfGrade는 세션 쿼리를 자동 invalidate하지 않으므로
+                   배너/카드 최신화를 위해 세션을 다시 조회한다. 자기채점 이후엔
+                   서버 값이 정본이 되도록 방금-제출 스냅샷도 비운다. */
+                setJustSubmitted(null);
+                queryClient.invalidateQueries({ queryKey: ["session", id] });
+              }}
+            />
+          ))}
+        </div>
+
+        <div className="fixed bottom-6 right-6 z-40 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setDrawingEnabled((v) => !v)}
+            aria-pressed={drawingEnabled}
+            className={`flex h-11 w-11 items-center justify-center rounded-full border shadow-lg transition-colors ${
+              drawingEnabled
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-card text-muted-foreground hover:text-foreground"
+            }`}
+            title="화면필기"
+          >
+            ✏️
+          </button>
+          <button
+            type="button"
+            onClick={() => setCalculatorOpen((v) => !v)}
+            aria-pressed={calculatorOpen}
+            className={`flex h-11 w-11 items-center justify-center rounded-full border shadow-lg transition-colors ${
+              calculatorOpen
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border bg-card text-muted-foreground hover:text-foreground"
+            }`}
+            title="계산기"
+          >
+            🧮
+          </button>
+        </div>
+
+        {drawingEnabled && <DrawingOverlay onClose={() => setDrawingEnabled(false)} />}
+        {calculatorOpen && <Calculator onClose={() => setCalculatorOpen(false)} />}
       </div>
     );
   }
