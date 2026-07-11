@@ -12,6 +12,13 @@ import { MeService } from './me.service';
 export class MeController {
   constructor(private readonly service: MeService) {}
 
+  // 'exam-sessions'보다 먼저 선언 — 정적 세그먼트(active)가 명확히 매칭되도록.
+  @Get('exam-sessions/active')
+  @ApiOperation({ summary: '진행 중(IN_PROGRESS) 세션 1개 — 대시보드 이어하기 배너용. 없으면 null' })
+  activeSession(@CurrentUser() user: CurrentUserPayload) {
+    return this.service.activeSession(user.id);
+  }
+
   @Get('exam-sessions')
   @ApiOperation({ summary: '내 제출 세션(풀이기록)' })
   sessions(@CurrentUser() user: CurrentUserPayload) {

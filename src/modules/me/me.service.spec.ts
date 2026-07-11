@@ -56,3 +56,40 @@ describe('MeService.notes', () => {
     ]);
   });
 });
+
+describe('MeService.activeSession', () => {
+  async function makeService(findFirstResult: unknown) {
+    const prisma = {
+      examSession: { findFirst: jest.fn().mockResolvedValue(findFirstResult) },
+    } as unknown as PrismaService;
+    const module = await Test.createTestingModule({
+      providers: [MeService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    return module.get(MeService);
+  }
+
+  it('진행 중 세션이 있으면 요약(진행률 포함)을 반환한다', async () => {
+    const service = await makeService({
+      id: 'sess-1',
+      subject: { name: '문학' },
+      workbook: null,
+      startedAt: new Date('2026-07-12T00:00:00Z'),
+      sessionQuestions: [{ answer: { id: 'ans-1' } }, { answer: null }, { answer: null }],
+    });
+
+    const result = await service.activeSession('user-1');
+
+    expect(result).toMatchObject({
+      id: 'sess-1',
+      subjectName: '문학',
+      workbookTitle: null,
+      total: 3,
+      answered: 1,
+    });
+  });
+
+  it('진행 중 세션이 없으면 null을 반환한다', async () => {
+    const service = await makeService(null);
+    expect(await service.activeSession('user-1')).toBeNull();
+  });
+});

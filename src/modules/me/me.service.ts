@@ -26,6 +26,32 @@ export interface ReasonStat {
 export class MeService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * 진행 중(IN_PROGRESS) 세션 중 가장 최근 1개 — 대시보드 이어하기 배너용.
+   * 없으면 null. answered는 답안이 저장된 문항 수(진행률 표시용).
+   */
+  async activeSession(userId: string) {
+    const session = await this.prisma.examSession.findFirst({
+      where: { userId, status: 'IN_PROGRESS' },
+      orderBy: { startedAt: 'desc' },
+      include: {
+        subject: { select: { name: true } },
+        workbook: { select: { title: true } },
+        sessionQuestions: { select: { answer: { select: { id: true } } } },
+      },
+    });
+    if (!session) return null;
+
+    return {
+      id: session.id,
+      subjectName: session.subject?.name ?? null,
+      workbookTitle: session.workbook?.title ?? null,
+      total: session.sessionQuestions.length,
+      answered: session.sessionQuestions.filter((q) => q.answer != null).length,
+      startedAt: session.startedAt,
+    };
+  }
+
   /** 풀이기록 — 제출된 세션 요약(최신순). */
   async examSessions(userId: string) {
     const sessions = await this.prisma.examSession.findMany({
