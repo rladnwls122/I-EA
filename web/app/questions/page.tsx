@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { QuestionCard } from "@/components/questions/QuestionCard";
@@ -20,20 +20,38 @@ const chip = (active: boolean) =>
 export default function QuestionsPage() {
   const [keyword, setKeyword] = useState("");
   const [examType, setExamType] = useState("");
+  const [category, setCategory] = useState("");
   const [subjectIds, setSubjectIds] = useState<string[]>([]);
   const [selected, setSelected] = useState<Question | null>(null);
 
   const { data: subjectsData } = useSubjects();
   const allSubjects: Subject[] = subjectsData || [];
+
+  // 3단 분류: 시험(examType) → 대분류(examCategory) → 세부과목(subject, 다중).
   const examTypes = useMemo(
     () => Array.from(new Set(allSubjects.map((s) => s.examType))),
     [allSubjects],
   );
-  // 시험을 고르면 그 시험의 세부과목만, 안 고르면 전체 세부과목을 보여준다.
-  const visibleSubjects = useMemo(
-    () => (examType ? allSubjects.filter((s) => s.examType === examType) : allSubjects),
+  const categories = useMemo(
+    () =>
+      examType
+        ? Array.from(new Set(allSubjects.filter((s) => s.examType === examType).map((s) => s.examCategory)))
+        : [],
     [allSubjects, examType],
   );
+  // 대분류를 골라야 그 대분류의 세부과목만 노출한다(선택 전엔 안 보임).
+  const leafSubjects = useMemo(
+    () =>
+      examType && category
+        ? allSubjects.filter((s) => s.examType === examType && s.examCategory === category)
+        : [],
+    [allSubjects, examType, category],
+  );
+
+  // 첫 로드 시 시험을 첫 번째 값으로 자동 선택한다.
+  useEffect(() => {
+    if (!examType && examTypes.length > 0) setExamType(examTypes[0]);
+  }, [examType, examTypes]);
 
   const { data, isLoading } = useQuestions({
     search: keyword || undefined,
@@ -80,18 +98,16 @@ export default function QuestionsPage() {
           />
         </div>
 
-        {/* 시험 필터 */}
+        {/* 1단: 시험 선택 (기본값 첫 번째) */}
         <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
-          <button
-            onClick={() => setExamType("")}
-            className={chip(examType === "")}
-          >
-            전체 시험
-          </button>
           {examTypes.map((t) => (
             <button
               key={t}
-              onClick={() => setExamType(examType === t ? "" : t)}
+              onClick={() => {
+                setExamType(t);
+                setCategory("");
+                setSubjectIds([]);
+              }}
               className={chip(examType === t)}
             >
               {t}
@@ -99,19 +115,39 @@ export default function QuestionsPage() {
           ))}
         </div>
 
-        {/* 세부과목 필터 — 다중 선택 */}
-        <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-1">
-          {visibleSubjects.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => toggleSubject(s.id)}
-              aria-pressed={subjectIds.includes(s.id)}
-              className={chip(subjectIds.includes(s.id))}
-            >
-              {s.name}
-            </button>
-          ))}
-        </div>
+        {/* 2단: 대분류 선택 — 시험을 골라야 노출 */}
+        {examType && categories.length > 0 && (
+          <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+            {categories.map((c) => (
+              <button
+                key={c}
+                onClick={() => {
+                  setCategory(category === c ? "" : c);
+                  setSubjectIds([]);
+                }}
+                className={chip(category === c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 3단: 세부과목 다중 선택 — 대분류를 골라야 노출 */}
+        {category && leafSubjects.length > 0 && (
+          <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-1">
+            {leafSubjects.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => toggleSubject(s.id)}
+                aria-pressed={subjectIds.includes(s.id)}
+                className={chip(subjectIds.includes(s.id))}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* 결과 카운트 */}
         <div className="mb-5 flex items-center justify-between">
