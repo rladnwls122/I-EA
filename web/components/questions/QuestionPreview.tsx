@@ -1,129 +1,176 @@
 "use client";
 import { useState } from "react";
-import { Check, ChevronRight, FolderPlus, X } from "lucide-react";
+import { Check, ChevronRight, FolderPlus, Lock, X } from "lucide-react";
 import type { Question } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { extractPlainText } from "@/lib/prosemirror";
 
-export function QuestionPreview({ question, onClose }: { question: Question | null; onClose: () => void }) {
-  const [saved, setSaved] = useState(false); 
-  const [newBook, setNewBook] = useState(false); 
+export function QuestionPreview({
+  question,
+  onClose,
+}: {
+  question: Question | null;
+  onClose: () => void;
+}) {
+  const [saved, setSaved] = useState(false);
+  const [newBook, setNewBook] = useState(false);
   const [title, setTitle] = useState("");
 
   if (!question) return null;
 
-  const add = () => { 
-    if (newBook && !title.trim()) return; 
-    setSaved(true); 
+  const add = () => {
+    if (newBook && !title.trim()) return;
+    setSaved(true);
   };
 
   const choices = question.choices?.content || [];
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex justify-end" onMouseDown={onClose}>
-      <aside 
-        className="w-full max-w-[480px] bg-card h-full border-l-4 border-border flex flex-col shadow-2xl animate-in slide-in-from-right duration-300" 
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm"
+      onMouseDown={onClose}
+    >
+      <aside
+        className="flex h-full w-full max-w-[480px] flex-col border-l border-border bg-card shadow-2xl animate-in slide-in-from-right duration-300"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="p-8 border-b-2 border-border flex items-center justify-between">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between border-b border-border p-6">
           <div>
-            <span className="text-[11px] font-black text-muted-foreground uppercase tracking-widest mb-1 block">문제 미리보기</span>
-            <h2 className="text-2xl font-black tracking-tight">{question.subject?.name || "과목 미지정"}</h2>
+            <span className="mb-1 block font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+              문제 미리보기
+            </span>
+            <h2 className="text-xl font-semibold tracking-tight">
+              {question.subject?.name || "과목 미지정"}
+            </h2>
           </div>
-          <button className="p-2 hover:bg-surface-raised rounded-xl transition-colors" aria-label="닫기" onClick={onClose}>
-            <X size={24} strokeWidth={3} />
+          <button
+            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground"
+            aria-label="닫기"
+            onClick={onClose}
+          >
+            <X size={20} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-          <div className="flex items-center gap-3 mb-8">
-            <span className="bg-primary/10 text-primary border-2 border-primary/20 px-3 py-1 rounded-lg text-[12px] font-black uppercase">
+        {/* 본문 */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="mb-6 flex items-center gap-2">
+            <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
               {question.questionType}
-            </span>
-            <span className="bg-surface-raised border-2 border-border px-3 py-1 rounded-lg text-[12px] font-black text-muted-foreground">
-              난이도 {question.difficulty}
+            </Badge>
+            <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+              난이도
+              <span className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <span
+                    key={n}
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      n <= question.difficulty ? "bg-primary" : "bg-border"
+                    }`}
+                  />
+                ))}
+              </span>
             </span>
           </div>
 
-          <div className="prose prose-slate dark:prose-invert max-w-none mb-10">
-            <p className="text-lg font-bold leading-relaxed whitespace-pre-wrap text-foreground">
-              {extractPlainText(question.stem)}
-            </p>
-          </div>
+          <p className="mb-8 whitespace-pre-wrap text-[15px] leading-relaxed text-foreground">
+            {extractPlainText(question.stem)}
+          </p>
 
           {question.questionType === "객관식" ? (
-            <div className="space-y-3 mb-10">
+            <div className="mb-8 space-y-2">
               {choices.map((c: any, i: number) => (
-                <button 
-                  className="w-full flex items-start gap-4 p-4 bg-surface-raised border-2 border-border rounded-xl text-left hover:border-primary transition-all group" 
+                <div
+                  className="flex items-start gap-3 rounded-lg border border-border bg-surface-raised p-3.5"
                   key={i}
                 >
-                  <b className="w-6 h-6 rounded-full bg-border group-hover:bg-primary group-hover:text-black flex items-center justify-center text-[12px] font-black shrink-0 transition-colors">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border font-mono text-[11px] text-muted-foreground">
                     {i + 1}
-                  </b>
-                  <span className="text-[15px] font-bold text-foreground/80 group-hover:text-foreground transition-colors">
+                  </span>
+                  <span className="text-sm leading-relaxed text-foreground/90">
                     {extractPlainText(c)}
                   </span>
-                </button>
+                </div>
               ))}
             </div>
           ) : (
-            <div className="p-6 bg-surface-raised border-2 border-dashed border-border rounded-2xl text-center mb-10">
-              <p className="text-[14px] font-bold text-muted-foreground">답안을 입력하는 주관식 문항입니다.</p>
+            <div className="mb-8 rounded-lg border border-dashed border-border bg-surface-raised p-5 text-center">
+              <p className="text-sm text-muted-foreground">
+                답안을 직접 입력하는 주관식 문항입니다.
+              </p>
             </div>
           )}
 
-          <div className="p-4 bg-purple/10 border-2 border-purple/20 rounded-xl flex items-start gap-3">
-            <div className="p-1 bg-purple text-black rounded-md shrink-0">
-              <Check size={14} strokeWidth={4} />
-            </div>
-            <p className="text-[13px] font-bold text-purple-700 dark:text-purple-300">
+          <div className="flex items-start gap-2.5 rounded-lg border border-border bg-surface-raised p-3.5">
+            <Lock size={15} className="mt-0.5 shrink-0 text-muted-foreground" />
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
               문제를 풀기 전에는 정답과 해설이 공개되지 않습니다.
             </p>
           </div>
         </div>
 
-        <div className="p-8 bg-surface-raised border-t-4 border-border space-y-4">
-          <div className="flex bg-card border-2 border-border rounded-xl p-1">
-            <button 
-              className={`flex-1 py-2 text-[13px] font-black rounded-lg transition-all ${!newBook ? "bg-primary text-black shadow-sm" : "text-muted-foreground hover:text-foreground"}`} 
+        {/* 담기 */}
+        <div className="space-y-3 border-t border-border p-6">
+          <div className="flex gap-1 rounded-lg border border-border p-1">
+            <button
+              className={`flex-1 rounded-md py-2 text-[13px] font-medium transition-colors ${
+                !newBook
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
               onClick={() => setNewBook(false)}
             >
               기존 문제집
             </button>
-            <button 
-              className={`flex-1 py-2 text-[13px] font-black rounded-lg transition-all flex items-center justify-center gap-2 ${newBook ? "bg-primary text-black shadow-sm" : "text-muted-foreground hover:text-foreground"}`} 
+            <button
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-[13px] font-medium transition-colors ${
+                newBook
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
               onClick={() => setNewBook(true)}
             >
-              <FolderPlus size={14} strokeWidth={3} /> 새 문제집
+              <FolderPlus size={14} /> 새 문제집
             </button>
           </div>
 
           {newBook ? (
-            <input 
-              autoFocus 
-              className="w-full bg-card border-2 border-border rounded-xl px-4 py-3 text-sm font-bold focus:border-primary outline-none transition-all" 
-              value={title} 
-              onChange={(e) => setTitle(e.target.value)} 
+            <Input
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
               placeholder="새 문제집 이름"
+              className="h-11"
             />
           ) : (
-            <select className="w-full bg-card border-2 border-border rounded-xl px-4 py-3 text-sm font-bold focus:border-primary outline-none transition-all appearance-none cursor-pointer">
-              <option value="" disabled>문제집을 선택하세요</option>
+            <select className="h-11 w-full cursor-pointer appearance-none rounded-md border border-input bg-transparent px-3 text-sm text-foreground outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring">
+              <option value="" disabled>
+                문제집을 선택하세요
+              </option>
               <option>2026 수능 국어 실전 문제집</option>
               <option>문학 오답 다시보기</option>
             </select>
           )}
 
-          <button 
-            className="w-full bg-foreground text-background py-4 rounded-2xl font-black text-[15px] flex items-center justify-center gap-2 hover:-translate-y-1 hover:shadow-neo transition-all active:translate-y-0 active:shadow-none" 
+          <Button
             onClick={add}
+            size="lg"
+            className="w-full"
+            variant={saved ? "secondary" : "default"}
           >
             {saved ? (
-              <><Check size={20} strokeWidth={3} /> 문제를 담았습니다</>
+              <>
+                <Check size={18} /> 문제를 담았습니다
+              </>
             ) : (
-              <>문제 담기 <ChevronRight size={20} strokeWidth={3} /></>
+              <>
+                문제 담기 <ChevronRight size={18} />
+              </>
             )}
-          </button>
+          </Button>
         </div>
       </aside>
     </div>

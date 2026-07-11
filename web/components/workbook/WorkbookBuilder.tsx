@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Bot, Check, PencilLine, Sparkles, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSubjectTree, useGenerationPolling, useCreateWorkbook, useCreateAiGeneration } from "@/lib/hooks";
+import { useSubjectTree, useGenerationPolling, useCreateWorkbook, useCreateAiGeneration, useAddQuestionToWorkbook } from "@/lib/hooks";
 import type { Subject } from "@/lib/types";
 
 export function WorkbookBuilder() {
@@ -14,6 +14,7 @@ export function WorkbookBuilder() {
   const { data: subjectTree, isLoading: subjectsLoading } = useSubjectTree();
   const createWorkbook = useCreateWorkbook();
   const createAiGen = useCreateAiGeneration();
+  const addQuestionToWorkbook = useAddQuestionToWorkbook();
 
   /* ── Step & Selection State ── */
   const [step, setStep] = useState<1 | 2>(1);
@@ -34,6 +35,7 @@ export function WorkbookBuilder() {
   const [aiTopic, setAiTopic] = useState("");
   const [aiCount, setAiCount] = useState(5);
   const [generationId, setGenerationId] = useState<string | null>(null);
+  const [linkedGenerationId, setLinkedGenerationId] = useState<string | null>(null);
 
   /* ── AI 폴링 ── */
   const { data: generation } = useGenerationPolling(generationId);
@@ -78,13 +80,10 @@ export function WorkbookBuilder() {
     try {
       const gen = await createAiGen.mutateAsync({
         subjectId: selectedSubject.id,
-        inputParams: {
-          topic: aiTopic,
-          questionCount: aiCount,
-          questionType,
-          difficulty,
-          workbookId: createdWorkbookId,
-        },
+        prompt: aiTopic,
+        difficulty,
+        questionCount: aiCount,
+        questionType,
       });
       setGenerationId(gen.id);
     } catch (e) {
@@ -98,6 +97,26 @@ export function WorkbookBuilder() {
       setExamType(examTypes[0]);
     }
   }, [subjectTree, examType, examTypes]);
+
+  /* ── AI 생성 완료 시 생성된 문항을 문제집에 자동 연결 (generationId당 1회) ── */
+  useEffect(() => {
+    if (
+      !isCompleted ||
+      !createdWorkbookId ||
+      !generationId ||
+      linkedGenerationId === generationId ||
+      !generation?.questions?.length
+    ) {
+      return;
+    }
+    setLinkedGenerationId(generationId);
+    generation.questions.forEach((q) => {
+      addQuestionToWorkbook.mutate({
+        workbookId: createdWorkbookId,
+        questionId: q.id,
+      });
+    });
+  }, [isCompleted, createdWorkbookId, generationId, linkedGenerationId, generation, addQuestionToWorkbook]);
 
   return (
     <div className="max-w-[980px] mx-auto px-8 py-8">
@@ -350,19 +369,20 @@ export function WorkbookBuilder() {
           {/* AI 생성 완료 */}
           {isCompleted && generation?.questions && (
             <div className="mt-6">
-              <p className="text-sm text-correct font-semibold mb-3">✓ {generation.questions.length}개 문항이 생성되었습니다!</p>
+              <p className="text-sm text-correct font-semibold mb-3">
+                ✓ {generation.questions.length}개 문항이 생성되어 문제집에 추가되었습니다!
+              </p>
               <div className="space-y-3">
                 {generation.questions.map((q, i) => (
                   <div key={q.id} className="bg-card border border-border rounded-xl p-5 transition-colors duration-150 hover:border-primary/20"
                     style={{ animationDelay: `${i * 80}ms` }}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-primary">문항 {i + 1} · {q.questionType}</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-foreground">문항 {i + 1} · {q.questionType}</span>
                       <Link href={`/studio/editor?questionId=${q.id}`}
                         className="text-xs text-muted-foreground hover:text-foreground transition-colors">
                         ✏️ 정밀 편집
                       </Link>
                     </div>
-                    <p className="text-sm text-foreground">{q.searchText || "생성된 문항"}</p>
                   </div>
                 ))}
               </div>

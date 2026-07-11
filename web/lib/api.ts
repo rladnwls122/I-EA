@@ -12,6 +12,8 @@ import type {
   Workbook,
   WorkbookQuestion,
   AiGeneration,
+  AiGenerationCreated,
+  CreateAiGenerationInput,
   QuestionStats,
   QuestionComment,
   UserQuestionAnnotation,
@@ -325,11 +327,8 @@ export function reorderWorkbookQuestions(
 // ─── AI 생성 ────────────────────────────────────────────────────────
 
 /** AI 문제 생성 요청 (비동기, BullMQ 큐) */
-export function createAiGeneration(data: {
-  subjectId: string;
-  inputParams: Record<string, any>;
-}) {
-  return apiFetch<AiGeneration>('/ai-generations', {
+export function createAiGeneration(data: CreateAiGenerationInput) {
+  return apiFetch<AiGenerationCreated>('/ai-generations', {
     method: 'POST',
     body: JSON.stringify(data),
   });

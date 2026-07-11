@@ -128,20 +128,39 @@ export interface WorkbookQuestion {
 /** AI 생성 상태 */
 export type AiGenerationStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
 
+/** POST /ai-generations 요청 바디 — CreateGenerationDto와 1:1 대응 */
+export interface CreateAiGenerationInput {
+  subjectId: string;
+  /** 자연어 출제 지시 (주제/조건 등), 최대 2000자 */
+  prompt: string;
+  /** 난이도 1~5 */
+  difficulty: number;
+  /** 생성할 문항 수 1~20 */
+  questionCount: number;
+  /** 지문(passage)을 함께 생성할지 여부 */
+  includePassage?: boolean;
+  /** 선호 문제 유형(힌트) */
+  questionType?: QuestionType;
+}
+
+/** POST /ai-generations 응답 (즉시 202) */
+export interface AiGenerationCreated {
+  id: string;
+  status: AiGenerationStatus;
+  createdAt: string;
+}
+
+/** GET /ai-generations/:id 응답 (폴링용) */
 export interface AiGeneration {
   id: string;
-  creatorId: string;
-  subjectId: string;
-  /** 생성 요청 파라미터 스냅샷 (JSON) */
-  inputParams: any;
+  status: AiGenerationStatus;
   /** 사용된 LLM 모델명 */
   model: string;
-  status: AiGenerationStatus;
   createdAt: string;
 
   // ── 생성 결과 (COMPLETED 시) ──
-  passages?: any[];
-  questions?: Question[];
+  passageIds: string[];
+  questions: Pick<Question, 'id' | 'questionType' | 'status'>[];
 }
 
 // ─── 문제 통계 ──────────────────────────────────────────────────────

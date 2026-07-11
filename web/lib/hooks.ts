@@ -25,6 +25,7 @@ import {
   deleteQuestion,
   publishQuestion,
   createWorkbook,
+  addQuestionToWorkbook,
   createAiGeneration,
   createComment,
   createAnnotation,
@@ -194,6 +195,27 @@ export function useCreateWorkbook() {
     mutationFn: createWorkbook,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workbooks'] });
+    },
+  });
+}
+
+/** 문제집에 문제 추가 뮤테이션 */
+export function useAddQuestionToWorkbook() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      workbookId,
+      questionId,
+      displayOrder,
+    }: {
+      workbookId: string;
+      questionId: string;
+      displayOrder?: number;
+    }) => addQuestionToWorkbook(workbookId, { questionId, displayOrder }),
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['workbook', variables.workbookId],
+      });
     },
   });
 }

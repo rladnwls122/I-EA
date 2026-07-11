@@ -3,30 +3,47 @@
 @tailwind utilities;
 
 :root {
-  --background: #0f1115;
-  --foreground: #fcfcfc;
-  --card: #1a1d24;
-  --card-foreground: #fcfcfc;
-  --popover: #1a1d24;
-  --popover-foreground: #fcfcfc;
-  --primary: #ccff00;
-  --primary-foreground: #000000;
-  --primary-hover: #b3e600;
-  --primary-shadow: #88b300;
-  --secondary: #272c36;
-  --secondary-foreground: #fcfcfc;
-  --muted: #272c36;
-  --muted-foreground: #8a93a6;
-  --accent: #272c36;
-  --accent-foreground: #fcfcfc;
-  --border: #333947;
-  --input: #333947;
-  --ring: #ccff00;
-  --radius: 1.25rem;
-  --surface-raised: #272c36;
-  --purple: #ce82ff;
-  --correct: #58cc02;
-  --wrong: #ff4b4b;
+  /* near-black 다크 · Geist · emerald 강조 · hairline 테두리 (Solves 계열) */
+  --background: #08090a;
+  --foreground: #f3f4f5;
+  --card: #0f1113;
+  --card-foreground: #f3f4f5;
+  --popover: #101214;
+  --popover-foreground: #f3f4f5;
+  --primary: #34d399;
+  --primary-foreground: #04120c;
+  --primary-hover: #2bbe86;
+  --primary-shadow: #1c7d58;
+  --secondary: #17191c;
+  --secondary-foreground: #f3f4f5;
+  --muted: #17191c;
+  --muted-foreground: #888e95;
+  --accent: #17191c;
+  --accent-foreground: #f3f4f5;
+  --destructive: #f87171;
+  --destructive-foreground: #1a0606;
+  --border: #1c1f24;
+  --input: #24272d;
+  --ring: #34d399;
+  --radius: 0.85rem;
+  --surface-raised: #16181b;
+  --purple: #a78bfa;
+  --correct: #34d399;
+  --wrong: #f87171;
+  /* 차트/사이드바 토큰 (shadcn 참조용 최소 정의) */
+  --chart-1: #34d399;
+  --chart-2: #a78bfa;
+  --chart-3: #f87171;
+  --chart-4: #fbbf24;
+  --chart-5: #60a5fa;
+  --sidebar: #090a0d;
+  --sidebar-foreground: #f3f4f5;
+  --sidebar-primary: #34d399;
+  --sidebar-primary-foreground: #04120c;
+  --sidebar-accent: #17191c;
+  --sidebar-accent-foreground: #f3f4f5;
+  --sidebar-border: #1c1f24;
+  --sidebar-ring: #34d399;
 }
 
 .dark {
