@@ -314,8 +314,122 @@ export interface MyExamSession {
 // ─── 페이지네이션 ───────────────────────────────────────────────────
 
 export interface PaginatedResponse<T> {
-  data: T[];
+  items: T[];
   total: number;
   page: number;
   limit: number;
+}
+
+// ─── 시험 세션 응시 (GET/PUT/POST /exam-sessions/*) ─────────────────
+
+export type SessionStatus = 'IN_PROGRESS' | 'SUBMITTED' | 'EXPIRED';
+
+export interface SessionChoice {
+  id: string;
+  /** IN_PROGRESS(풀이 중)에는 마스킹되어 없음 */
+  isCorrect?: boolean;
+  /** ProseMirror JSON */
+  content?: any;
+  explanation?: any;
+}
+
+export interface SessionQuestionSnapshot {
+  questionType: QuestionType;
+  /** ProseMirror JSON */
+  stem: any;
+  choices?: SessionChoice[];
+  /** ProseMirror JSON. IN_PROGRESS에는 없음 */
+  explanation?: any;
+  /** 주관식 단답 정답. IN_PROGRESS에는 없음(undefined) */
+  correctAnswerText?: string | null;
+  points: number;
+  difficulty: number;
+}
+
+export interface SessionAnswer {
+  selectedChoiceIds: string[] | null;
+  answerText: string | null;
+  annotations: any;
+  /** IN_PROGRESS에는 undefined(마스킹). SUBMITTED에는 boolean|null(서술형 미채점) */
+  isCorrect: boolean | null | undefined;
+  timeSpentSec: number | null;
+}
+
+export interface SessionQuestionItem {
+  sessionQuestionId: string;
+  questionId: string;
+  displayOrder: number;
+  isHintUsed: boolean;
+  hintUsedAt: string | null;
+  snapshot: SessionQuestionSnapshot;
+  answer: SessionAnswer | null;
+}
+
+export interface SessionDetail {
+  id: string;
+  subject: { id: string; name: string } | null;
+  status: SessionStatus;
+  startedAt: string | null;
+  submittedAt: string | null;
+  durationSec: number | null;
+  questions: SessionQuestionItem[];
+}
+
+export interface SubmitAnswerInput {
+  selectedChoiceIds?: string[];
+  answerText?: string;
+  timeSpentSec?: number;
+}
+
+export interface SubmitAnswerResult {
+  sessionQuestionId: string;
+  saved: true;
+}
+
+export interface RevealHintResult {
+  sessionQuestionId: string;
+  hint: string | null;
+  isHintUsed: true;
+  hintUsedAt: string;
+}
+
+export interface RewardBreakdown {
+  solveXp: number;
+  comboXp: number;
+  weakXp: number;
+  streakXp: number;
+  dailyXp: number;
+  boostActive: boolean;
+}
+
+export interface SubmitReward {
+  xp: number;
+  level: number;
+  gained: number;
+  breakdown: RewardBreakdown;
+  streak: { current: number; longest: number; extended: boolean };
+  boostGranted: boolean;
+}
+
+export interface SubmitSessionResult {
+  id: string;
+  status: 'SUBMITTED';
+  total: number;
+  answered: number;
+  correct: number;
+  scorePercent: number;
+  durationSec: number | null;
+  reward: SubmitReward | null;
+}
+
+export interface SelfGradeReward {
+  xp: number;
+  level: number;
+  gained: number;
+}
+
+export interface SelfGradeResult {
+  sessionQuestionId: string;
+  isCorrect: boolean;
+  reward: SelfGradeReward | null;
 }
