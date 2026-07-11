@@ -31,6 +31,11 @@ import {
   createAnnotation,
   updateAnnotation,
   deleteAnnotation,
+  fetchSession,
+  submitSessionAnswer,
+  revealSessionHint,
+  submitSession,
+  selfGradeSessionQuestion,
 } from './api';
 import type {
   Subject,
@@ -38,6 +43,7 @@ import type {
   QuestionStatus,
   Workbook,
   AiGeneration,
+  SubmitAnswerInput,
 } from './types';
 
 // ─── 과목 ───────────────────────────────────────────────────────────
@@ -453,4 +459,61 @@ export function useDebounce<T>(value: T, delay = 300): T {
   }, [value, delay]);
 
   return debouncedValue;
+}
+
+// ─── 시험 세션 응시 ─────────────────────────────────────────────────
+
+/** 세션 응시 데이터. IN_PROGRESS/SUBMITTED로 프론트가 모드를 분기한다 */
+export function useSession(id: string | null) {
+  return useQuery({
+    queryKey: ['session', id],
+    queryFn: () => fetchSession(id!),
+    enabled: !!id,
+  });
+}
+
+/**
+ * 답안 저장(autosave). mutationKey에 sessionQuestionId를 포함해
+ * SolveBottomBar가 useIsMutating(['submit-answer'])으로 "저장중" 여부를
+ * 전역에서 알 수 있게 한다. 세션 전체를 invalidate하지 않는다 —
+ * 매 저장마다 리페치하면 카드가 깜빡인다(로컬 상태가 이미 최신).
+ */
+export function useSubmitAnswer(sessionQuestionId: string) {
+  return useMutation({
+    mutationKey: ['submit-answer', sessionQuestionId],
+    mutationFn: (data: SubmitAnswerInput) =>
+      submitSessionAnswer(sessionQuestionId, data),
+  });
+}
+
+/** 힌트 열람. 힌트 없는 문항이면 apiFetch가 Error를 throw(404) */
+export function useRevealHint() {
+  return useMutation({
+    mutationFn: (sessionQuestionId: string) =>
+      revealSessionHint(sessionQuestionId),
+  });
+}
+
+/** 세션 최종 제출. 성공 시 세션 쿼리를 invalidate해 SUBMITTED로 재조회 → 결과 모드 전환 */
+export function useSubmitSession() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => submitSession(id),
+    onSuccess: (_result, id) => {
+      queryClient.invalidateQueries({ queryKey: ['session', id] });
+    },
+  });
+}
+
+/** 서술형 자기채점. 호출부가 성공 후 세션 쿼리 invalidate를 직접 처리한다(id를 몰라 여기선 못함) */
+export function useSelfGrade() {
+  return useMutation({
+    mutationFn: ({
+      sessionQuestionId,
+      isCorrect,
+    }: {
+      sessionQuestionId: string;
+      isCorrect: boolean;
+    }) => selfGradeSessionQuestion(sessionQuestionId, isCorrect),
+  });
 }
