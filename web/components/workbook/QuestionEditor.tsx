@@ -154,21 +154,7 @@ async function pollGeneration(
 }
 
 export function QuestionEditor() {
-  const [drafts, setDrafts] = useState<Draft[]>([
-    {
-      ...emptyObjective,
-      id: "1",
-      stem: buildRichDoc("다음 작품에 나타난 화자의 태도로 가장 적절한 것은?"),
-      choices: [
-        "대상에 대한 그리움을 드러내고 있다.",
-        "현실을 비판적으로 바라보고 있다.",
-        "미래에 대한 기대를 표현하고 있다.",
-        "자신의 처지를 체념하고 있다.",
-      ],
-      correct: 0,
-      explanation: buildRichDoc("시어의 반복과 어조를 중심으로 화자의 정서를 파악한다."),
-    },
-  ]);
+  const [drafts, setDrafts] = useState<Draft[]>([]);
 
   const router = useRouter();
 
@@ -422,10 +408,17 @@ export function QuestionEditor() {
       });
       toast.success(`문제집으로 저장했습니다 (${questionIds.length}문항).`);
 
-      // 4) 바로 풀기 — 세션 시작 후 이동
+      // 4) 바로 풀기 — 세션 시작 실패는 저장 실패와 구분해 안내(문제집은 이미 저장됨).
       if (solveAfter) {
-        const res = await startWorkbook(wb.id);
-        router.push(`/exam-sessions/${res.id}`);
+        try {
+          const res = await startWorkbook(wb.id);
+          router.push(`/exam-sessions/${res.id}`);
+        } catch (e) {
+          console.error(e);
+          toast.error(
+            e instanceof Error ? e.message : "문제집은 저장됐지만 세션 시작에 실패했습니다.",
+          );
+        }
       }
     } catch (e) {
       console.error(e);

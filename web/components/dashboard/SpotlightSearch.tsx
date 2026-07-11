@@ -50,9 +50,8 @@ export function SpotlightSearch() {
   // 검색/필터 결과 — 열려 있고 조건이 하나라도 있어야 조회
   const hasCriteria = open && (keyword.trim().length > 0 || !!subjectId);
   const { data: results, isLoading } = useQuestions(
-    hasCriteria
-      ? { search: keyword.trim() || undefined, subjectId: subjectId || undefined, limit: 12 }
-      : { limit: 0 },
+    { search: keyword.trim() || undefined, subjectId: subjectId || undefined, limit: 12 },
+    hasCriteria,
   );
   const questions = hasCriteria ? results?.items || [] : [];
 

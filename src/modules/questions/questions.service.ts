@@ -53,6 +53,9 @@ export class QuestionsService {
           points: true,
           status: true,
           subjectId: true,
+          // 목록 카드 미리보기용 — 발문과 과목명(선지/해설은 상세 조회로).
+          stem: true,
+          subject: { select: { id: true, name: true } },
           totalSolvedCount: true,
           correctSolvedCount: true,
           viewCount: true,

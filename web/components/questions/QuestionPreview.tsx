@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { extractPlainText } from "@/lib/prosemirror";
 import { useCartStore } from "@/lib/cart-store";
-import { useCreateSession } from "@/lib/hooks";
+import { useCreateSession, useQuestion } from "@/lib/hooks";
 
 export function QuestionPreview({
   question,
@@ -19,13 +19,16 @@ export function QuestionPreview({
   const router = useRouter();
   const { add, remove, has } = useCartStore();
   const createSession = useCreateSession();
+  // 목록 응답엔 선지/해설이 없다 — 열리면 상세를 재조회해 점진 보강.
+  const { data: full } = useQuestion(question?.id ?? null);
 
   if (!question) return null;
+  const q = full ?? question;
 
   // choices는 실 API에선 배열([{id,content,isCorrect}]), 레거시 목업에선 {content:[]} — 양쪽 방어.
-  const choices: any[] = Array.isArray(question.choices)
-    ? question.choices
-    : question.choices?.content || [];
+  const choices: any[] = Array.isArray(q.choices)
+    ? q.choices
+    : q.choices?.content || [];
 
   const inCart = has(question.id);
 
@@ -36,9 +39,9 @@ export function QuestionPreview({
     }
     add({
       id: question.id,
-      stemText: extractPlainText(question.stem),
+      stemText: extractPlainText(q.stem),
       subjectName: question.subject?.name,
-      questionType: question.questionType,
+      questionType: q.questionType,
     });
   };
 
@@ -68,7 +71,7 @@ export function QuestionPreview({
               문제 미리보기
             </span>
             <h2 className="text-xl font-semibold tracking-tight">
-              {question.subject?.name || "과목 미지정"}
+              {q.subject?.name || "과목 미지정"}
             </h2>
           </div>
           <button
@@ -84,7 +87,7 @@ export function QuestionPreview({
         <div className="flex-1 overflow-y-auto p-6">
           <div className="mb-6 flex items-center gap-2">
             <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
-              {question.questionType}
+              {q.questionType}
             </Badge>
             <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
               난이도
@@ -93,7 +96,7 @@ export function QuestionPreview({
                   <span
                     key={n}
                     className={`h-1.5 w-1.5 rounded-full ${
-                      n <= question.difficulty ? "bg-primary" : "bg-border"
+                      n <= q.difficulty ? "bg-primary" : "bg-border"
                     }`}
                   />
                 ))}
@@ -102,10 +105,10 @@ export function QuestionPreview({
           </div>
 
           <p className="mb-8 whitespace-pre-wrap text-[15px] leading-relaxed text-foreground">
-            {extractPlainText(question.stem)}
+            {extractPlainText(q.stem)}
           </p>
 
-          {question.questionType === "객관식" ? (
+          {q.questionType === "객관식" ? (
             <div className="mb-8 space-y-2">
               {choices.map((c: any, i: number) => (
                 <div

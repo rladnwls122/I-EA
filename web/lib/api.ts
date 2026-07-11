@@ -128,7 +128,8 @@ export function fetchQuestions(params?: {
     query.set('questionType', params.questionType);
   if (params?.difficulty)
     query.set('difficulty', String(params.difficulty));
-  if (params?.search) query.set('search', params.search);
+  // 백엔드 QueryQuestionDto의 검색 파라미터명은 q(whitelist라 search는 400).
+  if (params?.search) query.set('q', params.search);
   if (params?.sort) query.set('sort', params.sort);
 
   const qs = query.toString();

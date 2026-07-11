@@ -96,10 +96,11 @@ export function useQuestions(params?: {
   difficulty?: number;
   search?: string;
   sort?: 'latest' | 'popular';
-}) {
+}, enabled = true) {
   return useQuery({
     queryKey: ['questions', params],
     queryFn: () => fetchQuestions(params),
+    enabled,
   });
 }
 
