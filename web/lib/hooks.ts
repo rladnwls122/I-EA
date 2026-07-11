@@ -361,14 +361,14 @@ export function useDeleteAnnotation(questionId: string) {
 // ─── 내 정보 (me) ───────────────────────────────────────────────────
 
 /** 오답노트 (요약 + 틀린 문제). 시험/대분류/세부과목 범위 필터 지원. */
-export function useMyNotes(params?: {
-  examType?: string;
-  examCategory?: string;
-  subjectId?: string;
-}) {
+export function useMyNotes(
+  params?: { examType?: string; examCategory?: string; subjectId?: string },
+  enabled = true,
+) {
   return useQuery({
     queryKey: ['my-notes', params],
     queryFn: () => fetchMyNotes(params),
+    enabled,
   });
 }
 

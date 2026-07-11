@@ -60,12 +60,18 @@ function StreakHero({ enabled }: { enabled: boolean }) {
 
         <div className="flex gap-2">
           <Button asChild size="sm">
-            <Link href="/questions">
-              문제 탐색 <ArrowRight size={14} />
+            <Link href="/workbook/create">
+              나만의 문제집 생성 <ArrowRight size={14} />
             </Link>
           </Button>
-          <Button asChild size="sm" variant="outline">
-            <Link href="/workbook">문제집 둘러보기</Link>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              document.getElementById("popular")?.scrollIntoView({ behavior: "smooth" })
+            }
+          >
+            문제집 둘러보기
           </Button>
         </div>
       </div>

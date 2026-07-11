@@ -6,7 +6,7 @@ import { REASON_COLORS } from "@/components/notes/reason-colors";
 
 /** 오답노트 요약 — 원인별 컴팩트 바. 도넛은 /notes가 담당(중복 구현 안 함). */
 export function WrongNotesSummary({ enabled }: { enabled: boolean }) {
-  const { data, isLoading } = useMyNotes(enabled ? undefined : undefined);
+  const { data, isLoading } = useMyNotes(undefined, enabled);
   const byReason = enabled ? data?.summary.byReason || [] : [];
   const wrongCount = enabled ? (data?.wrongQuestions || []).length : 0;
   const total = byReason.reduce((s, r) => s + r.count, 0);
@@ -88,7 +88,7 @@ export function RecentSessions({ enabled }: { enabled: boolean }) {
             <Link
               key={s.id}
               href={`/exam-sessions/${s.id}`}
-              className="flex items-center gap-3 rounded-lg border border-border px-3.5 py-3 transition-colors hover:border-primary/40"
+              className="flex items-center gap-3 rounded-lg border border-border px-3.5 py-3 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg motion-reduce:transition-none motion-reduce:hover:translate-y-0"
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-medium text-foreground">

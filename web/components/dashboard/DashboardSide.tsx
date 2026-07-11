@@ -93,7 +93,7 @@ export function PopularContent() {
             <Link
               key={q.id}
               href={`/questions/${q.id}`}
-              className="block rounded-lg border border-border px-3 py-2 transition-colors hover:border-primary/40"
+              className="block rounded-lg border border-border px-3 py-2 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg motion-reduce:transition-none motion-reduce:hover:translate-y-0"
             >
               <p className="line-clamp-1 text-xs text-foreground">
                 {extractPlainText(q.stem)}
@@ -125,7 +125,7 @@ export function PopularContent() {
             <Link
               key={wb.id}
               href="/workbook"
-              className="block rounded-lg border border-border px-3 py-2 transition-colors hover:border-primary/40"
+              className="block rounded-lg border border-border px-3 py-2 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg motion-reduce:transition-none motion-reduce:hover:translate-y-0"
             >
               <p className="line-clamp-1 text-xs text-foreground">{wb.title}</p>
               <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
