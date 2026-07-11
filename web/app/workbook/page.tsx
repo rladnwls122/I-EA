@@ -5,9 +5,11 @@ import { Search, Users, Eye, GitFork } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useWorkbooks } from "@/lib/hooks";
+import { WorkbookPreviewSidebar } from "@/components/workbook/WorkbookPreviewSidebar";
 
 export default function WorkbookPage() {
   const [keyword, setKeyword] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const { data, isLoading } = useWorkbooks({ search: keyword || undefined });
   const workbooks = data?.items || [];
 
@@ -61,10 +63,11 @@ export default function WorkbookPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {workbooks.map((wb) => (
-            // 문제집 상세 페이지(/workbook/[id])는 아직 없어 카드는 조회 전용이다.
-            <div
+            <button
               key={wb.id}
-              className="flex flex-col justify-between rounded-xl border border-border bg-card p-5"
+              type="button"
+              onClick={() => setSelectedId(wb.id)}
+              className="flex flex-col justify-between rounded-xl border border-border bg-card p-5 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
             >
               <div>
                 <div className="mb-2 flex items-center gap-2">
@@ -99,10 +102,11 @@ export default function WorkbookPage() {
                   <Users size={13} /> {wb.attemptCount}
                 </span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
+      <WorkbookPreviewSidebar workbookId={selectedId} onClose={() => setSelectedId(null)} />
     </main>
   );
 }

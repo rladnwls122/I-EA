@@ -39,6 +39,7 @@ import {
   fetchReviews,
   upsertReview,
   createSession,
+  startWorkbook,
 } from './api';
 import type {
   Subject,
@@ -556,4 +557,9 @@ export function useUpsertReview() {
 /** 세션 조립(플레이리스트/필터/복습). 성공 시 /exam-sessions/[id]로 이동은 호출부 몫 */
 export function useCreateSession() {
   return useMutation({ mutationFn: createSession });
+}
+
+/** 문제집 바로 풀기 — 세션 생성. 라우팅/토스트는 호출부 몫 */
+export function useStartWorkbook() {
+  return useMutation({ mutationFn: (workbookId: string) => startWorkbook(workbookId) });
 }

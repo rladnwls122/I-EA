@@ -33,6 +33,7 @@ import type {
   ReviewsResponse,
   CreateSessionInput,
   CreateSessionResult,
+  StartWorkbookResult,
 } from './types';
 
 // ─── 기본 설정 ──────────────────────────────────────────────────────
@@ -296,14 +297,11 @@ export function forkWorkbook(id: string) {
   });
 }
 
-/** 문제집 시작 (시험 세션 생성) */
+/** 문제집 시작 (시험 세션 생성). 응답 id가 세션 id다 */
 export function startWorkbook(id: string) {
-  return apiFetch<{ examSessionId: string }>(
-    `/workbooks/${id}/start`,
-    {
-      method: 'POST',
-    },
-  );
+  return apiFetch<StartWorkbookResult>(`/workbooks/${id}/start`, {
+    method: 'POST',
+  });
 }
 
 /** 문제집에 문제 추가 */

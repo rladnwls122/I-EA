@@ -490,3 +490,8 @@ export interface CreateSessionResult {
   questionCount: number;
   status: 'IN_PROGRESS';
 }
+
+/** POST /workbooks/:id/start 응답 — 발행 문항만 담고 제외분은 skippedQuestionIds */
+export interface StartWorkbookResult extends CreateSessionResult {
+  skippedQuestionIds: string[];
+}
