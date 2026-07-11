@@ -8,6 +8,9 @@ import {
 import { TiptapEditor } from "@/components/editor/TiptapEditor";
 import { buildRichDoc, extractPlainText } from "@/lib/prosemirror";
 import { regenerateChoices } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
 /* ── 문항 타입 ── */
@@ -136,7 +139,7 @@ export function QuestionEditor() {
         correctChoiceText,
         choiceCount: draft.choices.length - 1, // 정답 1개 제외한 매력적 오답 수
       });
-      
+
       // 정답을 제외한 나머지 선지를 재생성된 오답으로 덮어쓰기
       const newChoices = [...draft.choices];
       let distractorIndex = 0;
@@ -166,72 +169,73 @@ export function QuestionEditor() {
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh)] overflow-hidden">
       {/* ═══ 좌측 패널: 문항 에디터 ═══ */}
-      <section className="flex-1 flex flex-col min-w-0 border-r-2 border-border relative">
+      <section className="flex-1 flex flex-col min-w-0 border-r border-border relative">
         {/* 헤더 */}
-        <header className="flex items-center justify-between px-6 py-4 border-b-2 border-border bg-background sticky top-0 z-10">
+        <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-background sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <Link href="/workbook/create" className="text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft size={20} strokeWidth={2.5} />
+              <ArrowLeft size={20} strokeWidth={2} />
             </Link>
             <div>
-              <span className="inline-block bg-surface-raised border-2 border-border text-foreground px-2 py-0.5 rounded-md text-[10px] font-black tracking-widest uppercase">문제집 편집</span>
-              <h1 className="text-lg font-black tracking-tight">2026 수능 국어 · 문학</h1>
+              <span className="mb-1 block font-mono text-[11px] uppercase tracking-widest text-muted-foreground">문제집 편집</span>
+              <h1 className="text-lg font-semibold tracking-tight">2026 수능 국어 · 문학</h1>
             </div>
           </div>
-          <button className="flex items-center gap-2 bg-primary text-black px-5 py-2.5 rounded-xl font-black text-sm border-2 border-black shadow-[0_3px_0_0_rgba(255,255,255,0.2)] hover:-translate-y-0.5 active:translate-y-[2px] active:shadow-none transition-all">
-            <Check size={16} strokeWidth={3} /> 저장하기
-          </button>
+          <Button size="sm" className="gap-2">
+            <Check size={16} strokeWidth={2} /> 저장하기
+          </Button>
         </header>
 
         {/* 문항 리스트 (스크롤) */}
         <div className="flex-1 overflow-y-auto px-6 py-5 pb-24 space-y-4 relative">
           {drafts.map((draft, index) => (
-            <article key={draft.id} className="bg-card border-2 border-border rounded-2xl p-6 shadow-neo-sm hover:border-primary/30 transition-all">
+            <article key={draft.id} className="bg-card border border-border rounded-xl p-6 transition-colors hover:border-primary/40">
               {/* 카드 헤더 */}
               <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2 text-primary text-xs font-black">
-                  <GripVertical size={16} strokeWidth={2.5} className="text-muted-foreground cursor-grab" />
-                  <span>문항 {index + 1}</span>
-                  <span className="bg-surface-raised border-2 border-border text-foreground px-2 py-0.5 rounded-md text-[10px] font-black">{draft.type}</span>
+                <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                  <GripVertical size={16} strokeWidth={2} className="text-muted-foreground cursor-grab" />
+                  <span className="font-mono tabular-nums">문항 {index + 1}</span>
+                  <Badge variant="secondary" className="font-mono text-[10px] font-medium text-muted-foreground">{draft.type}</Badge>
                 </div>
                 <button
                   onClick={() => removeQuestion(draft.id)}
                   className="text-muted-foreground hover:text-wrong transition-colors duration-150"
                   aria-label="문항 삭제"
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={16} strokeWidth={2} />
                 </button>
               </div>
 
               {/* 지문 (Tiptap) */}
-              <label className="block text-xs font-black text-foreground/70 mb-1.5">지문</label>
+              <label className="mb-2 block text-xs font-medium text-muted-foreground">지문</label>
               <div className="mb-4 relative">
-                <TiptapEditor 
-                  value={draft.stem} 
-                  onChange={(json) => update(draft.id, "stem", json)} 
-                  placeholder="문항의 지문을 입력하세요." 
+                <TiptapEditor
+                  value={draft.stem}
+                  onChange={(json) => update(draft.id, "stem", json)}
+                  placeholder="문항의 지문을 입력하세요."
                 />
               </div>
 
               {/* 객관식: 선지 */}
               {draft.type === "객관식" && (
                 <>
-                  <label className="block text-xs font-black text-foreground/70 mb-1.5">선지</label>
+                  <label className="mb-2 block text-xs font-medium text-muted-foreground">선지</label>
                   <div className="space-y-2 mb-3">
                     {draft.choices.map((choice, i) => (
                       <div key={i} className="flex gap-2">
                         <button
                           onClick={() => update(draft.id, "correct", i)}
-                          className={`w-10 h-10 flex-shrink-0 rounded-xl border-2 text-xs font-black transition-all active:translate-y-[1px] ${
+                          className={`w-10 h-10 flex-shrink-0 rounded-lg border font-mono text-xs font-medium transition-all active:translate-y-0 motion-reduce:transition-none ${
                             draft.correct === i
-                              ? "bg-primary border-black text-black shadow-[0_2px_0_0_rgba(255,255,255,0.2)]"
-                              : "border-border text-muted-foreground hover:border-primary shadow-neo-sm"
+                              ? "bg-primary border-transparent text-primary-foreground"
+                              : "border-border text-muted-foreground hover:border-primary/40"
                           }`}
+                          aria-label={`정답 ${i + 1}번`}
                         >
                           {i + 1}
                         </button>
-                        <input
-                          className="flex-1 bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-bold text-foreground outline-none transition-all focus:border-primary shadow-neo-sm"
+                        <Input
+                          className="flex-1 h-10"
                           value={choice}
                           onChange={(e) =>
                             update(draft.id, "choices", draft.choices.map((c, n) => (n === i ? e.target.value : c)))
@@ -242,12 +246,12 @@ export function QuestionEditor() {
                     ))}
                   </div>
                   {/* AI 오답 선지 재생성 */}
-                  <button 
+                  <button
                     onClick={() => handleRegenerateChoices(draft)}
                     disabled={isRegenerating === draft.id}
-                    className="flex items-center gap-1.5 text-xs font-black text-purple transition-colors hover:text-purple/80 mb-3 disabled:opacity-50"
+                    className="flex items-center gap-1.5 text-xs font-medium text-primary transition-colors hover:text-primary/80 mb-3 disabled:opacity-50"
                   >
-                    {isRegenerating === draft.id ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />}
+                    {isRegenerating === draft.id ? <Loader2 size={13} strokeWidth={2} className="animate-spin" /> : <RotateCcw size={13} strokeWidth={2} />}
                     {isRegenerating === draft.id ? "생성 중..." : "AI 매력적 오답 자동 생성"}
                   </button>
                 </>
@@ -256,9 +260,9 @@ export function QuestionEditor() {
               {/* 주관식: 정답 */}
               {draft.type === "주관식" && (
                 <>
-                  <label className="block text-xs font-black text-foreground/70 mb-1.5">정답</label>
-                  <input
-                    className="w-full bg-background border-2 border-border rounded-xl px-3 py-2.5 text-sm font-bold text-foreground outline-none transition-all focus:border-primary shadow-neo-sm mb-3"
+                  <label className="mb-2 block text-xs font-medium text-muted-foreground">정답</label>
+                  <Input
+                    className="mb-3 h-10"
                     value={draft.answerText}
                     onChange={(e) => update(draft.id, "answerText", e.target.value)}
                     placeholder="정답을 입력하세요 (단답형 자동채점, 서술형은 비워두기)"
@@ -269,17 +273,17 @@ export function QuestionEditor() {
               {/* 해설 아코디언 */}
               <button
                 onClick={() => update(draft.id, "showExplanation", !draft.showExplanation)}
-                className="flex items-center gap-1.5 text-xs font-black text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
               >
-                {draft.showExplanation ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                {draft.showExplanation ? <ChevronUp size={14} strokeWidth={2} /> : <ChevronDown size={14} strokeWidth={2} />}
                 해설
               </button>
               {draft.showExplanation && (
                 <div className="mt-2 relative">
-                  <TiptapEditor 
-                    value={draft.explanation} 
-                    onChange={(json) => update(draft.id, "explanation", json)} 
-                    placeholder="해설을 입력하세요." 
+                  <TiptapEditor
+                    value={draft.explanation}
+                    onChange={(json) => update(draft.id, "explanation", json)}
+                    placeholder="해설을 입력하세요."
                     minHeight="60px"
                   />
                 </div>
@@ -291,42 +295,42 @@ export function QuestionEditor() {
           <div className="flex gap-2">
             <button
               onClick={() => addQuestion("객관식")}
-              className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-dashed border-border text-primary text-sm font-black shadow-neo-sm hover:-translate-y-0.5 hover:border-primary active:translate-y-[2px] active:shadow-none transition-all"
+              className="flex-1 flex items-center justify-center gap-2 py-4 rounded-xl border border-dashed border-border text-primary text-sm font-medium transition-all hover:-translate-y-0.5 hover:border-primary/40 active:translate-y-0 motion-reduce:hover:translate-y-0 motion-reduce:transition-none"
             >
-              <Plus size={18} strokeWidth={3} /> 객관식 추가
+              <Plus size={18} strokeWidth={2} /> 객관식 추가
             </button>
             <button
               onClick={() => addQuestion("주관식")}
-              className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-dashed border-border text-primary text-sm font-black shadow-neo-sm hover:-translate-y-0.5 hover:border-primary active:translate-y-[2px] active:shadow-none transition-all"
+              className="flex-1 flex items-center justify-center gap-2 py-4 rounded-xl border border-dashed border-border text-primary text-sm font-medium transition-all hover:-translate-y-0.5 hover:border-primary/40 active:translate-y-0 motion-reduce:hover:translate-y-0 motion-reduce:transition-none"
             >
-              <Plus size={18} strokeWidth={3} /> 주관식 추가
+              <Plus size={18} strokeWidth={2} /> 주관식 추가
             </button>
           </div>
         </div>
 
         {/* 플로팅 툴바 */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-3 rounded-2xl bg-card border-2 border-border shadow-neo z-20">
-          <button onClick={() => addQuestion("객관식")} className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-surface-raised transition-colors" title="문항 추가">
-            <Plus size={20} strokeWidth={2.5} />
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 px-5 py-3 rounded-xl bg-card border border-border shadow-sm z-20">
+          <button onClick={() => addQuestion("객관식")} className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-raised transition-colors" title="문항 추가">
+            <Plus size={20} strokeWidth={2} />
           </button>
-          <button className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-surface-raised transition-colors" title="저장">
-            <Check size={20} strokeWidth={2.5} />
+          <button className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-raised transition-colors" title="저장">
+            <Check size={20} strokeWidth={2} />
           </button>
-          <button className="p-2 rounded-xl text-muted-foreground hover:text-wrong/80 hover:bg-wrong/10 transition-colors" title="삭제">
-            <Trash2 size={20} strokeWidth={2.5} />
+          <button className="p-2 rounded-lg text-muted-foreground hover:text-wrong hover:bg-wrong/10 transition-colors" title="삭제">
+            <Trash2 size={20} strokeWidth={2} />
           </button>
         </div>
       </section>
 
       {/* ═══ 우측 패널: AI 채팅 ═══ */}
-      <aside className="w-full lg:w-[360px] flex flex-col bg-card border-l-2 border-border relative z-20">
+      <aside className="w-full lg:w-[360px] flex flex-col bg-card border-l border-border relative z-20">
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-5 py-4 border-b-2 border-border">
-          <div className="flex items-center gap-2 text-purple font-black text-sm">
-            <Sparkles size={18} strokeWidth={2.5} />
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
+            <Sparkles size={18} strokeWidth={2} className="text-primary" />
             AI 출제 도우미
           </div>
-          <span className="bg-surface-raised border-2 border-border text-[10px] font-black text-muted-foreground px-2 py-0.5 rounded-md">beta</span>
+          <Badge variant="secondary" className="font-mono text-[10px] font-medium text-muted-foreground">beta</Badge>
         </div>
 
         {/* 메시지 영역 */}
@@ -334,9 +338,9 @@ export function QuestionEditor() {
           {messages.map((msg, i) => (
             <div
               key={i}
-              className={`px-4 py-3 rounded-xl text-sm leading-relaxed max-w-[90%] whitespace-pre-wrap font-bold border-2 ${
+              className={`px-4 py-3 rounded-xl text-sm leading-relaxed max-w-[90%] whitespace-pre-wrap border ${
                 msg.role === "ai"
-                  ? "bg-purple/10 text-foreground border-purple/20"
+                  ? "bg-surface-raised text-foreground border-border"
                   : "bg-primary/10 text-foreground border-primary/20 self-end ml-auto"
               }`}
             >
@@ -352,7 +356,7 @@ export function QuestionEditor() {
             <button
               key={s}
               onClick={() => setPrompt(s)}
-              className="px-3 py-1.5 rounded-xl border-2 border-purple/30 text-purple/80 text-[11px] font-bold transition-all hover:border-purple hover:text-purple hover:bg-purple/5 active:translate-y-[1px]"
+              className="px-3 py-1.5 rounded-full border border-border text-muted-foreground text-[11px] transition-colors hover:border-primary/40 hover:text-foreground"
             >
               {s}
             </button>
@@ -360,7 +364,7 @@ export function QuestionEditor() {
         </div>
 
         {/* 입력 바 */}
-        <div className="border-t-2 border-border px-4 py-3 flex items-end gap-2 bg-card">
+        <div className="border-t border-border px-4 py-3 flex items-end gap-2 bg-card">
           <textarea
             ref={textareaRef}
             value={prompt}
@@ -376,15 +380,16 @@ export function QuestionEditor() {
             }}
             placeholder="예: 현대시 화자의 태도를 묻는 상 난이도 문항 1개"
             rows={1}
-            className="flex-1 bg-transparent border-0 outline-none text-sm font-bold text-foreground resize-none min-h-[36px] max-h-[120px]"
+            className="flex-1 bg-transparent border-0 outline-none text-sm text-foreground placeholder:text-muted-foreground resize-none min-h-[36px] max-h-[120px]"
           />
-          <button
+          <Button
             onClick={handleSend}
             disabled={!prompt.trim()}
-            className="p-2.5 rounded-xl bg-primary text-black border-2 border-black shadow-[0_2px_0_0_rgba(255,255,255,0.2)] hover:-translate-y-0.5 active:translate-y-[1px] active:shadow-none transition-all disabled:opacity-40"
+            size="icon"
+            aria-label="전송"
           >
-            <Send size={16} strokeWidth={3} />
-          </button>
+            <Send size={16} strokeWidth={2} />
+          </Button>
         </div>
       </aside>
     </div>

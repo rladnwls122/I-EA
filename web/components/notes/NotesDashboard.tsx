@@ -1,9 +1,25 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Clock3, Lightbulb, Search, Target, Loader2 } from "lucide-react";
+import { ChevronRight, Lightbulb, ListChecks, Search, Target } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useMyNotes } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
+
+/** Record<string, number>에서 값이 가장 큰 key. 비어 있으면 null. */
+function topKey(rec: Record<string, number> | undefined): string | null {
+  if (!rec) return null;
+  let best: string | null = null;
+  let bestVal = -Infinity;
+  for (const [k, v] of Object.entries(rec)) {
+    if (v > bestVal) {
+      best = k;
+      bestVal = v;
+    }
+  }
+  return best;
+}
 
 export function NotesDashboard() {
   const [filter, setFilter] = useState("전체");
@@ -11,83 +27,100 @@ export function NotesDashboard() {
   const { data, isLoading } = useMyNotes();
 
   const subjects = ["전체", ...Object.keys(data?.summary?.bySubject || {})];
-  
-  const filteredQuestions = (data?.wrongQuestions || []).filter(q => {
-    if (filter !== "전체" && q.question.subject?.name !== filter) return false;
-    if (search && !q.question.searchText?.includes(search)) return false;
-    return true;
-  });
+
+  const filteredQuestions = useMemo(() => {
+    return (data?.wrongQuestions || []).filter((q) => {
+      if (filter !== "전체" && q.question.subject?.name !== filter) return false;
+      if (search && !q.question.searchText?.includes(search)) return false;
+      return true;
+    });
+  }, [data, filter, search]);
+
+  // 실제 데이터 기반 지표 — API가 제공하는 필드만 사용한다.
+  const totalWrong = data?.wrongQuestions?.length ?? 0;
+  const topSubject = topKey(data?.summary?.bySubject);
+  const topReason = topKey(data?.summary?.byReason);
 
   return (
-    <main className="p-8 lg:p-10 max-w-5xl mx-auto w-full selection:bg-primary selection:text-black">
-      {/* ── 헤더 ── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+    <main className="mx-auto w-full max-w-5xl p-8 lg:p-10">
+      {/* 헤더 */}
+      <div className="mb-9 flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <span className="inline-block bg-surface-raised border-2 border-border text-foreground px-3 py-1 rounded-md text-[12px] font-black tracking-widest uppercase mb-4">
+          <span className="mb-2 block font-mono text-xs uppercase tracking-widest text-muted-foreground">
             Wrong answer notebook
           </span>
-          <h1 className="text-5xl font-black tracking-tighter leading-tight">
-            틀린 이유를<br />다음 정답으로.
+          <h1 className="text-3xl font-semibold tracking-tight">
+            틀린 이유를 다음 정답으로
           </h1>
-          <p className="text-muted-foreground mt-4 text-[15px] font-bold">
+          <p className="mt-2 text-sm text-muted-foreground">
             풀이 기록과 메모를 다시 꺼내 보며 약한 고리를 채워보세요.
           </p>
         </div>
-        <div className="flex items-center justify-center w-32 h-32 rounded-3xl border-4 border-primary bg-card shadow-neo relative transform rotate-3 hover:rotate-0 hover:translate-y-1 hover:shadow-none transition-all">
-          <div className="flex flex-col items-center">
-            <b className="text-4xl font-black text-primary">68</b>
-            <span className="text-[11px] font-black text-muted-foreground uppercase tracking-wider mt-1">정답률 %</span>
+      </div>
+
+      {/* 요약 통계 — 실제 필드만 (총 오답 수 · 가장 많이 틀린 영역 · 가장 흔한 오답 원인) */}
+      <div className="mb-9 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="flex flex-col rounded-xl border border-border bg-card p-5">
+          <Target size={18} className="mb-3 text-primary" strokeWidth={2} />
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            총 오답 수
+          </span>
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <span className="font-mono text-2xl font-bold tabular-nums text-foreground">
+              {totalWrong}
+            </span>
+            <span className="text-sm text-muted-foreground">문제</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col rounded-xl border border-border bg-card p-5">
+          <ListChecks size={18} className="mb-3 text-primary" strokeWidth={2} />
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            가장 많이 틀린 영역
+          </span>
+          <div className="mt-2">
+            <span className="text-lg font-semibold tracking-tight text-foreground">
+              {topSubject ?? "—"}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-col rounded-xl border border-border bg-card p-5">
+          <Lightbulb size={18} className="mb-3 text-primary" strokeWidth={2} />
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            가장 흔한 오답 원인
+          </span>
+          <div className="mt-2">
+            <span className="text-lg font-semibold tracking-tight text-foreground">
+              {topReason ?? "—"}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* ── 요약 통계 ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-12">
-        <div className="bg-card border-2 border-border rounded-2xl p-6 flex flex-col shadow-neo-sm hover:-translate-y-1 hover:shadow-neo transition-all">
-          <Target className="text-primary mb-4" size={32} strokeWidth={2.5} />
-          <span className="text-[13px] font-black text-muted-foreground mb-1">이번 달 오답</span>
-          <div className="mt-auto">
-            <b className="text-3xl font-black">{data?.wrongQuestions?.length || 0}</b>
-            <span className="text-[15px] font-bold text-muted-foreground ml-1">문제</span>
-          </div>
-        </div>
-        <div className="bg-card border-2 border-border rounded-2xl p-6 flex flex-col shadow-neo-sm hover:-translate-y-1 hover:shadow-neo transition-all">
-          <Clock3 className="text-purple mb-4" size={32} strokeWidth={2.5} />
-          <span className="text-[13px] font-black text-muted-foreground mb-1">평균 풀이 시간</span>
-          <div className="mt-auto">
-            <b className="text-3xl font-black">1:42</b>
-            <span className="text-[15px] font-bold text-muted-foreground ml-1">분</span>
-          </div>
-        </div>
-        <div className="bg-primary text-black border-2 border-black rounded-2xl p-6 flex flex-col shadow-[0_4px_0_0_rgba(255,255,255,0.2)] hover:-translate-y-1 hover:shadow-[0_6px_0_0_rgba(255,255,255,0.2)] transition-all">
-          <Lightbulb className="text-black mb-4" size={32} strokeWidth={2.5} />
-          <span className="text-[13px] font-black opacity-80 mb-1">가장 많이 틀린 영역</span>
-          <div className="mt-auto">
-            <b className="text-2xl font-black tracking-tight">{Object.keys(data?.summary?.bySubject || {})[0] || "-"}</b>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 필터 및 검색 ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 mb-8">
-        <div className="flex items-center bg-background border-2 border-border rounded-xl px-4 py-3 w-full md:w-72 focus-within:border-primary shadow-neo-sm transition-all">
-          <Search size={20} strokeWidth={3} className="text-muted-foreground mr-3" />
-          <input 
-            placeholder="오답 문제 검색" 
+      {/* 필터 및 검색 */}
+      <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+        <div className="relative w-full md:w-72">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            placeholder="오답 문제 검색"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="bg-transparent border-0 outline-none text-[15px] font-bold w-full text-foreground placeholder:text-muted-foreground/60"
+            className="h-11 pl-10"
           />
         </div>
         <div className="flex flex-wrap gap-2">
-          {subjects.map(x => (
-            <button 
-              key={x} 
-              onClick={() => setFilter(x)} 
-              className={`px-4 py-2 rounded-xl text-[13px] font-black transition-all border-2 active:translate-y-[2px] active:shadow-none ${
-                filter === x 
-                  ? "bg-primary text-black border-black shadow-[0_3px_0_0_rgba(255,255,255,0.2)]" 
-                  : "bg-surface-raised text-muted-foreground border-transparent hover:border-border hover:bg-card shadow-sm"
+          {subjects.map((x) => (
+            <button
+              key={x}
+              onClick={() => setFilter(x)}
+              className={`whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+                filter === x
+                  ? "border-transparent bg-primary font-medium text-primary-foreground"
+                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
               }`}
             >
               {x}
@@ -96,42 +129,60 @@ export function NotesDashboard() {
         </div>
       </div>
 
-      {/* ── 오답 리스트 ── */}
+      {/* 오답 리스트 */}
       {isLoading ? (
-        <div className="flex justify-center py-24">
-          <Loader2 className="animate-spin text-primary" size={40} strokeWidth={3} />
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="h-[92px] animate-pulse rounded-xl border border-border bg-surface-raised"
+            />
+          ))}
         </div>
       ) : filteredQuestions.length === 0 ? (
-        <div className="text-center py-24 bg-card border-4 border-border rounded-3xl shadow-neo-sm">
-          <p className="text-lg font-bold text-muted-foreground">해당 조건의 오답 문항이 없습니다.</p>
+        <div className="rounded-xl border border-border bg-card py-20 text-center">
+          <p className="text-sm text-muted-foreground">
+            {search || filter !== "전체"
+              ? "해당 조건의 오답 문항이 없습니다. 다른 과목이나 키워드로 찾아보세요."
+              : "아직 기록된 오답이 없습니다. 문제를 풀면 여기에서 다시 볼 수 있어요."}
+          </p>
         </div>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-3">
           {filteredQuestions.map((q, i) => (
             <Link
               href={`/notes/${q.question.id}`}
               key={q.question.id}
-              className="flex items-start gap-5 p-6 bg-card border-2 border-border rounded-2xl transition-all shadow-neo-sm hover:border-primary hover:-translate-y-1 hover:shadow-neo active:translate-y-1 active:shadow-none group"
+              className="group flex items-start gap-4 rounded-xl border border-border bg-card p-5 transition-all duration-150 hover:border-primary/40 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:translate-y-0"
             >
-              <div className="text-sm font-black text-muted-foreground group-hover:text-primary transition-colors w-8 pt-1">
-                {String(i + 1).padStart(2, '0')}
-              </div>
-              <div className="flex-1 min-w-0">
-                <span className="inline-block bg-surface-raised border-2 border-border text-[10px] font-black text-foreground px-2 py-1 rounded-md mb-3 tracking-widest uppercase">
-                  {q.question.subject?.name} · {q.question.questionType} · 난이도 {q.question.difficulty}
-                </span>
-                <h3 className="text-lg font-bold text-foreground leading-snug mb-4 line-clamp-2">
+              <span className="w-8 shrink-0 pt-0.5 font-mono text-sm tabular-nums text-muted-foreground transition-colors group-hover:text-primary">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="mb-2.5 flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant="secondary"
+                    className="font-mono text-[11px] font-medium text-muted-foreground"
+                  >
+                    {q.question.subject?.name || "과목 미지정"}
+                  </Badge>
+                  <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                    {q.question.questionType} · 난이도 {q.question.difficulty}
+                  </span>
+                </div>
+                <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight text-foreground transition-colors group-hover:text-primary">
                   {extractPlainText(q.question.stem)}
                 </h3>
-                {q.annotations && q.annotations.length > 0 && (
-                  <div className="bg-primary/10 rounded-xl p-4 border-2 border-primary/20">
-                    <p className="text-[13px] font-bold text-primary italic line-clamp-1">
-                      "{q.annotations[0].memoText}"
-                    </p>
-                  </div>
+                {q.annotations && q.annotations.length > 0 && q.annotations[0].memoText && (
+                  <p className="mt-2.5 line-clamp-1 border-l border-primary/40 pl-2.5 text-[13px] italic text-muted-foreground">
+                    {q.annotations[0].memoText}
+                  </p>
                 )}
               </div>
-              <ChevronRight size={24} strokeWidth={3} className="text-muted-foreground group-hover:text-primary transition-colors self-center flex-shrink-0" />
+              <ChevronRight
+                size={18}
+                className="mt-0.5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary"
+              />
             </Link>
           ))}
         </div>

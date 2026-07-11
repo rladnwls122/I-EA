@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Check, Clock3, MessageCircle, Pencil, X, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, MessageCircle, Pencil, X, Loader2 } from "lucide-react";
 import { useQuestion, useAnnotations } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
 
@@ -108,13 +108,10 @@ export default function NoteDetailPage() {
         {/* 사이드 정보 (노트 특정 기능) */}
         <aside className="w-full lg:w-[280px] flex flex-col gap-5">
           <section className="bg-card border border-border rounded-xl p-5">
-            <span className="text-xs font-bold text-muted-foreground block mb-3">이번 풀이 결과</span>
-            <div className="flex items-center gap-2 text-wrong font-bold text-lg mb-2">
-              <X size={20} /> 오답
+            <span className="text-xs font-medium text-muted-foreground block mb-3">이번 풀이 결과</span>
+            <div className="flex items-center gap-2 text-wrong font-semibold text-lg">
+              <X size={20} strokeWidth={2} /> 오답
             </div>
-            <p className="text-xs font-medium text-foreground/70 flex items-center gap-1.5">
-              <Clock3 size={14} /> 1분 38초 소요
-            </p>
           </section>
 
           {annotations && annotations.length > 0 && (

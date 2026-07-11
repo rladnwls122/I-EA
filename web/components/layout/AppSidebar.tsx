@@ -6,45 +6,49 @@ import { BookOpenCheck, BrainCircuit, Lightbulb, User } from "lucide-react";
 export function AppSidebar() {
   const pathname = usePathname();
   const nav = [
-    { href: "/questions", icon: <BrainCircuit size={22} strokeWidth={2.5} /> },
-    { href: "/workbook", icon: <BookOpenCheck size={22} strokeWidth={2.5} /> },
-    { href: "/notes", icon: <Lightbulb size={22} strokeWidth={2.5} /> },
+    { href: "/questions", label: "문제 탐색", icon: BrainCircuit },
+    { href: "/workbook", label: "문제집", icon: BookOpenCheck },
+    { href: "/notes", label: "오답노트", icon: Lightbulb },
   ];
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-[64px] bg-background border-r-2 border-border flex flex-col items-center py-6 z-50">
-      <Link 
-        href="/" 
-        className="w-10 h-10 bg-primary text-primary-foreground font-black text-lg flex items-center justify-center rounded-xl border-2 border-primary-foreground shadow-[0_3px_0_0_#ffffff] transition-transform active:translate-y-[2px] active:shadow-none mb-10"
+    <aside className="fixed left-0 top-0 bottom-0 z-50 flex w-[64px] flex-col items-center border-r border-border bg-sidebar py-5">
+      <Link
+        href="/"
+        aria-label="홈"
+        className="mb-8 flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-transform active:scale-95"
       >
         IΔ
       </Link>
-      
-      <nav className="flex flex-col gap-6">
-        {nav.map((item) => {
-          const active = pathname.startsWith(item.href);
+
+      <nav className="flex flex-col gap-1.5">
+        {nav.map(({ href, label, icon: Icon }) => {
+          const active = pathname.startsWith(href);
           return (
-            <Link 
-              key={item.href} 
-              href={item.href}
-              className={`w-12 h-12 flex items-center justify-center rounded-xl border-2 transition-all ${
-                active 
-                  ? "bg-primary text-primary-foreground border-primary-foreground shadow-[0_3px_0_0_#ffffff] -translate-y-[2px]" 
-                  : "bg-surface-raised text-muted-foreground border-transparent hover:border-border hover:bg-card hover:-translate-y-1"
-              } active:translate-y-[2px] active:shadow-none`}
+            <Link
+              key={href}
+              href={href}
+              aria-label={label}
+              aria-current={active ? "page" : undefined}
+              className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors active:scale-95 motion-reduce:transition-none ${
+                active
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-surface-raised hover:text-foreground"
+              }`}
             >
-              {item.icon}
+              <Icon size={21} strokeWidth={2} />
             </Link>
           );
         })}
       </nav>
 
       <div className="mt-auto">
-        <Link 
+        <Link
           href="/me"
-          className="w-12 h-12 flex items-center justify-center rounded-full bg-card border-2 border-border text-foreground hover:bg-surface-raised hover:border-muted-foreground transition-all active:translate-y-1"
+          aria-label="내 정보"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground active:scale-95 motion-reduce:transition-none"
         >
-          <User size={20} strokeWidth={2.5} />
+          <User size={19} strokeWidth={2} />
         </Link>
       </div>
     </aside>

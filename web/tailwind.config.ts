@@ -77,9 +77,10 @@ const config: Config = {
         mono: ["var(--font-geist-mono)", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        neo: "0 6px 0 0 rgba(0,0,0,0.4)",
-        "neo-primary": "0 6px 0 0 var(--primary-shadow)",
-        "neo-sm": "0 4px 0 0 rgba(0,0,0,0.4)",
+        sm: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        DEFAULT: "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
+        md: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+        lg: "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
       },
       keyframes: {
         shimmer: { "100%": { transform: "translateX(100%)" } },
