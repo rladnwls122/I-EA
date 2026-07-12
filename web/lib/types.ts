@@ -570,3 +570,75 @@ export interface ActiveSession {
   answered: number;
   startedAt: string | null;
 }
+
+// ─── 상점 / 코인 / 상자 ──────────────────────────────────────────────
+
+/** GET /me/wallet 응답 — User 필드 + UserInventory + 미개봉 상자 수를 합성 */
+export interface Wallet {
+  coins: number;
+  xpBoostUntil: string | null;
+  inventory: {
+    STREAK_SHIELD: number;
+    HINT_TOKEN: number;
+  };
+  cosmetics: {
+    /** 보유 코스메틱 itemKey 목록 (COSMETIC_ 접두) */
+    owned: string[];
+    equippedTitle: string | null;
+    nameColor: string | null;
+  };
+  unopenedBoxCount: number;
+}
+
+/** 상점 아이템 종류 */
+export type ShopItemKind = 'BOOST' | 'CONSUMABLE' | 'COSMETIC' | 'PHYSICAL';
+
+/** GET /shop/items 응답 항목 — SHOP_ITEMS 상수 기반(DB 아님), key는 UUID가 아닌 고정 문자열 */
+export interface ShopItem {
+  key: string;
+  name: string;
+  price: number;
+  kind: ShopItemKind;
+}
+
+/** 상자 등급 */
+export type LootBoxTier = 'COMMON' | 'RARE' | 'LEGENDARY';
+
+/** GET /loot-boxes 응답 항목 — 미개봉 상자만 */
+export interface LootBoxSummary {
+  id: string;
+  tier: LootBoxTier;
+  createdAt: string;
+}
+
+/** POST /loot-boxes/:id/open 응답 */
+export interface OpenBoxResult {
+  id: string;
+  tier: LootBoxTier;
+  /** 이번 개봉으로 획득한 코인 */
+  rewardCoins: number;
+  /** 개봉 후 코인 총액 */
+  coins: number;
+}
+
+/** 구매 상태 — PHYSICAL 아이템만 PENDING, 나머지는 즉시 FULFILLED */
+export type PurchaseStatus = 'PENDING' | 'FULFILLED';
+
+/** POST /shop/purchase 응답 */
+export interface PurchaseResult {
+  itemKey: string;
+  /** 차감 후 코인 총액 */
+  coins: number;
+  status: PurchaseStatus;
+}
+
+/** GET /me/purchases 응답 항목 — Purchase 레코드 그대로 */
+export interface MyPurchase {
+  id: string;
+  userId: string;
+  itemKey: string;
+  coinCost: number;
+  status: PurchaseStatus;
+  note: string | null;
+  createdAt: string;
+}

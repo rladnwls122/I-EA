@@ -23,6 +23,7 @@ import {
   updateQuestion,
   deleteQuestion,
   createWorkbook,
+  deleteWorkbook,
   addQuestionToWorkbook,
   createComment,
   createAnnotation,
@@ -40,6 +41,13 @@ import {
   fetchMilestones,
   fetchActiveSession,
   fetchMe,
+  fetchWallet,
+  fetchShopItems,
+  fetchLootBoxes,
+  openLootBox,
+  purchaseItem,
+  equipCosmetic,
+  fetchMyPurchases,
 } from './api';
 import type {
   Subject,
@@ -199,6 +207,17 @@ export function useCreateWorkbook() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: createWorkbook,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workbooks'] });
+    },
+  });
+}
+
+/** 문제집 삭제 뮤테이션 */
+export function useDeleteWorkbook() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteWorkbook(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workbooks'] });
     },
@@ -460,19 +479,31 @@ export function useRevealHint() {
   });
 }
 
-/** 세션 최종 제출. 성공 시 세션 쿼리를 invalidate해 SUBMITTED로 재조회 → 결과 모드 전환 */
+/**
+ * 세션 최종 제출. 성공 시:
+ *  - ['session', id] → SUBMITTED 재조회(결과 모드 전환)
+ *  - ['me']/['milestones']/['active-session'] → 제출로 적립된 XP·레벨·스트릭 반영.
+ *    (전역 staleTime 30s라 이걸 안 하면 프로필/대시보드 XP가 30초간 옛값으로 남는다 — "EXP 안 오름" 증상)
+ */
 export function useSubmitSession() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => submitSession(id),
     onSuccess: (_result, id) => {
       queryClient.invalidateQueries({ queryKey: ['session', id] });
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      queryClient.invalidateQueries({ queryKey: ['milestones'] });
+      queryClient.invalidateQueries({ queryKey: ['active-session'] });
     },
   });
 }
 
-/** 서술형 자기채점. 호출부가 성공 후 세션 쿼리 invalidate를 직접 처리한다(id를 몰라 여기선 못함) */
+/**
+ * 서술형 자기채점. 세션 쿼리 invalidate는 호출부가 처리(id를 몰라 여기선 못함).
+ * 단 자기채점도 XP를 적립하므로 프로필·게이미피케이션 캐시는 여기서 무효화한다.
+ */
 export function useSelfGrade() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
       sessionQuestionId,
@@ -481,6 +512,10 @@ export function useSelfGrade() {
       sessionQuestionId: string;
       isCorrect: boolean;
     }) => selfGradeSessionQuestion(sessionQuestionId, isCorrect),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      queryClient.invalidateQueries({ queryKey: ['milestones'] });
+    },
   });
 }
 
@@ -541,4 +576,80 @@ export function useActiveSession(enabled = true) {
 /** 현재 로그인 사용자 정보 (/me 페이지) */
 export function useMe(enabled = true) {
   return useQuery({ queryKey: ['me'], queryFn: fetchMe, enabled });
+}
+
+// ─── 상점 / 코인 / 상자 ────────────────────────────────────────────
+
+/** 내 지갑(코인/인벤토리/코스메틱/미개봉 상자 수) */
+export function useWallet(enabled = true) {
+  return useQuery({ queryKey: ['wallet'], queryFn: fetchWallet, enabled });
+}
+
+/** 상점 아이템 목록 */
+export function useShopItems(enabled = true) {
+  return useQuery({
+    queryKey: ['shop-items'],
+    queryFn: fetchShopItems,
+    enabled,
+  });
+}
+
+/** 내 미개봉 상자 목록 */
+export function useLootBoxes(enabled = true) {
+  return useQuery({
+    queryKey: ['loot-boxes'],
+    queryFn: fetchLootBoxes,
+    enabled,
+  });
+}
+
+/** 상자 개봉 뮤테이션. 성공 시 지갑(코인)·상자 목록 갱신 */
+export function useOpenBox() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => openLootBox(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['loot-boxes'] });
+    },
+  });
+}
+
+/**
+ * 상점 아이템 구매 뮤테이션. 성공 시:
+ *  - ['wallet'] → 코인/인벤토리/코스메틱 반영
+ *  - ['me']/['milestones'] → XP 부스터 등 효과가 프로필·대시보드에 즉시 반영되도록
+ *  - ['my-purchases'] → 구매 이력 목록 갱신
+ */
+export function usePurchase() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (itemKey: string) => purchaseItem(itemKey),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      queryClient.invalidateQueries({ queryKey: ['milestones'] });
+      queryClient.invalidateQueries({ queryKey: ['my-purchases'] });
+    },
+  });
+}
+
+/** 코스메틱 착용(칭호/닉네임 색) 뮤테이션. 성공 시 지갑 갱신 */
+export function useEquipCosmetic() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (itemKey: string) => equipCosmetic(itemKey),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wallet'] });
+    },
+  });
+}
+
+/** 내 구매 이력 */
+export function useMyPurchases(enabled = true) {
+  return useQuery({
+    queryKey: ['my-purchases'],
+    queryFn: fetchMyPurchases,
+    enabled,
+  });
 }

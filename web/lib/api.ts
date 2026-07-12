@@ -37,6 +37,12 @@ import type {
   StartWorkbookResult,
   MilestonesResponse,
   ActiveSession,
+  Wallet,
+  ShopItem,
+  LootBoxSummary,
+  OpenBoxResult,
+  PurchaseResult,
+  MyPurchase,
 } from './types';
 
 // ─── 기본 설정 ──────────────────────────────────────────────────────
@@ -619,4 +625,49 @@ export function fetchMilestones() {
 /** 진행 중 세션(이어하기 배너). 없으면 null */
 export function fetchActiveSession() {
   return apiFetch<ActiveSession | null>('/me/exam-sessions/active');
+}
+
+// ─── 상점 / 코인 / 상자 ────────────────────────────────────────────
+
+/** 내 지갑(코인/인벤토리/코스메틱/미개봉 상자 수) 조회 */
+export function fetchWallet() {
+  return apiFetch<Wallet>('/me/wallet');
+}
+
+/** 상점 아이템 목록 조회 */
+export function fetchShopItems() {
+  return apiFetch<ShopItem[]>('/shop/items');
+}
+
+/** 내 미개봉 상자 목록 조회 */
+export function fetchLootBoxes() {
+  return apiFetch<LootBoxSummary[]>('/loot-boxes');
+}
+
+/** 상자 개봉 — 코인 보상 지급 */
+export function openLootBox(id: string) {
+  return apiFetch<OpenBoxResult>(`/loot-boxes/${id}/open`, {
+    method: 'POST',
+  });
+}
+
+/** 상점 아이템 구매 */
+export function purchaseItem(itemKey: string) {
+  return apiFetch<PurchaseResult>('/shop/purchase', {
+    method: 'POST',
+    body: JSON.stringify({ itemKey }),
+  });
+}
+
+/** 보유 코스메틱 착용(칭호/닉네임 색) */
+export function equipCosmetic(itemKey: string) {
+  return apiFetch<{ equipped: string }>('/me/cosmetics/equip', {
+    method: 'POST',
+    body: JSON.stringify({ itemKey }),
+  });
+}
+
+/** 내 구매 이력 조회 */
+export function fetchMyPurchases() {
+  return apiFetch<MyPurchase[]>('/me/purchases');
 }
