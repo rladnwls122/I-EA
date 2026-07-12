@@ -1,14 +1,12 @@
 "use client";
 import { useState, useCallback, useEffect } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Loader2, PencilLine } from "lucide-react";
+import { ArrowRight, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { useSubjectTree, useGenerationPolling, useCreateWorkbook, useCreateAiGeneration, useAddQuestionToWorkbook, usePublishQuestion } from "@/lib/hooks";
+import { useSubjectTree, useCreateWorkbook } from "@/lib/hooks";
 import type { Subject } from "@/lib/types";
-import { AiGenerationChat } from "./AiGenerationChat";
 
 /** 선택 pill 공통 스타일 — 선택 시 emerald, 미선택 시 hairline. */
 const pillBase =
@@ -23,36 +21,15 @@ export function WorkbookBuilder() {
   /* ── API 데이터 ── */
   const { data: subjectTree, isLoading: subjectsLoading } = useSubjectTree();
   const createWorkbook = useCreateWorkbook();
-  const createAiGen = useCreateAiGeneration();
-  const addQuestionToWorkbook = useAddQuestionToWorkbook();
-  const publishQuestion = usePublishQuestion();
 
   /* ── 과목 선택 (다중) ── */
   const [examType, setExamType] = useState<string>("");
   const [category, setCategory] = useState<string>("");
   const [selectedSubjects, setSelectedSubjects] = useState<Subject[]>([]);
 
-  /* ── AI 트랙 조건(문항별로 지정 — 상세조건 스텝을 없애고 여기로 옮김) ── */
-  const [aiSettings, setAiSettings] = useState({
-    questionType: "객관식" as "객관식" | "주관식",
-    difficulty: 3,
-    count: 5,
-    includePassage: false,
-    ox: false,
-  });
-
-  /* ── 문제집 자동 생성 + 2-트랙 ── */
+  /* ── 문제집 자동 생성 ── */
   const [createdWorkbookId, setCreatedWorkbookId] = useState<string | null>(null);
   const [creatingWorkbook, setCreatingWorkbook] = useState(false);
-  const [aiTopic, setAiTopic] = useState("");
-  const [generationId, setGenerationId] = useState<string | null>(null);
-  const [linkedGenerationId, setLinkedGenerationId] = useState<string | null>(null);
-
-  /* ── AI 폴링 ── */
-  const { data: generation } = useGenerationPolling(generationId);
-  const isGenerating = generationId !== null && generation?.status === "PENDING";
-  const isCompleted = generation?.status === "COMPLETED";
-  const isFailed = generation?.status === "FAILED";
 
   /* ── 파생 데이터 ── */
   const examTypes = subjectTree ? Object.keys(subjectTree) : [];
@@ -78,7 +55,7 @@ export function WorkbookBuilder() {
     );
   }, []);
 
-  /** 과목 선택 즉시 문제집을 조용히 만들고 바로 AI/에디터 선택 화면으로 넘어간다 — 제목/설명/공개 여부를 먼저 채우게 하지 않는다. */
+  /** 과목 선택 즉시 문제집을 조용히 만들고 바로 대화형 출제 캔버스(/edit)로 넘어간다 — 제목/설명/공개 여부를 먼저 채우게 하지 않는다. */
   const handleProceed = async () => {
     if (!canProceed || creatingWorkbook) return;
     setCreatingWorkbook(true);
@@ -86,31 +63,12 @@ export function WorkbookBuilder() {
       const title = `${examType} ${category} ${selectedSubjects.map((s) => s.name).join("·")} 문제집`;
       const wb = await createWorkbook.mutateAsync({ title, visibility: "PRIVATE" });
       setCreatedWorkbookId(wb.id);
+      router.push(`/edit?workbookId=${wb.id}`);
     } catch (e) {
       console.error("문제집 생성 실패:", e);
       toast.error(e instanceof Error ? e.message : "문제집 생성에 실패했습니다.");
     } finally {
       setCreatingWorkbook(false);
-    }
-  };
-
-  const handleAiGenerate = async () => {
-    if (!selectedSubjects.length || !createdWorkbookId) return;
-    try {
-      // AI 생성은 문항당 세부과목 하나만 받는다 — 다중 선택 시 첫 과목 기준으로 요청.
-      const gen = await createAiGen.mutateAsync({
-        subjectId: selectedSubjects[0].id,
-        prompt: aiTopic,
-        difficulty: aiSettings.difficulty,
-        questionCount: aiSettings.count,
-        questionType: aiSettings.questionType,
-        includePassage: aiSettings.includePassage,
-        ox: aiSettings.ox,
-      });
-      setGenerationId(gen.id);
-    } catch (e) {
-      console.error("AI 생성 요청 실패:", e);
-      toast.error(e instanceof Error ? e.message : "AI 생성 요청에 실패했습니다.");
     }
   };
 
@@ -120,42 +78,6 @@ export function WorkbookBuilder() {
       setExamType(examTypes[0]);
     }
   }, [subjectTree, examType, examTypes]);
-
-  /**
-   * AI 생성 완료 시 생성된 문항을 문제집에 자동 연결(generationId당 1회).
-   * AI가 만든 문항은 DRAFT 상태로 생성되는데, 문제집에 담으려면(POST
-   * /workbooks/:id/questions) 발행(PUBLISHED)돼 있어야 한다 — 안 그러면
-   * 백엔드가 조용히 거부해서 "생성은 됐는데 문제집엔 안 담기는" 현상이 난다.
-   * 그래서 담기 전에 먼저 발행부터 한다.
-   */
-  useEffect(() => {
-    if (
-      !isCompleted ||
-      !createdWorkbookId ||
-      !generationId ||
-      linkedGenerationId === generationId ||
-      !generation?.questions?.length
-    ) {
-      return;
-    }
-    setLinkedGenerationId(generationId);
-
-    (async () => {
-      let failed = 0;
-      for (const q of generation.questions) {
-        try {
-          await publishQuestion.mutateAsync(q.id);
-          await addQuestionToWorkbook.mutateAsync({ workbookId: createdWorkbookId, questionId: q.id });
-        } catch (e) {
-          failed += 1;
-          console.error(`문항 ${q.id} 문제집 연결 실패:`, e);
-        }
-      }
-      if (failed > 0) {
-        toast.error(`${failed}개 문항을 문제집에 담지 못했어요.`);
-      }
-    })();
-  }, [isCompleted, createdWorkbookId, generationId, linkedGenerationId, generation, addQuestionToWorkbook, publishQuestion]);
 
   return (
     <div className="mx-auto max-w-[980px] px-8 py-8">
@@ -254,45 +176,6 @@ export function WorkbookBuilder() {
               다음 <ArrowRight size={18} strokeWidth={2} />
             </Button>
           </div>
-        </section>
-      )}
-
-      {/* ── Step 2: AI 채팅 패널 중심 + 직접 출제는 보조 링크 ── */}
-      {createdWorkbookId && (
-        <section className="mt-2">
-          <div className="mb-5 flex items-end justify-between gap-4">
-            <div>
-              <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
-                {examType} · {category} · {selectedSubjects.map((s) => s.name).join(", ")}
-              </span>
-              <h2 className="mt-2 text-xl font-semibold tracking-tight">어떻게 문제집을 채울까요?</h2>
-            </div>
-            <Link
-              href={`/studio/editor?workbookId=${createdWorkbookId}`}
-              className="flex flex-none items-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-            >
-              <PencilLine size={14} strokeWidth={2} /> 직접 문항 만들기
-            </Link>
-          </div>
-
-          <AiGenerationChat
-            topic={aiTopic}
-            onTopicChange={setAiTopic}
-            settings={aiSettings}
-            onSettingsChange={setAiSettings}
-            isGenerating={isGenerating}
-            isCompleted={isCompleted}
-            isFailed={isFailed}
-            isSending={createAiGen.isPending}
-            generatedQuestions={generation?.questions}
-            onSend={handleAiGenerate}
-          />
-
-          {isCompleted && (
-            <Button className="mt-5" onClick={() => router.push(`/workbook/mine`)}>
-              문제집으로 이동 <ArrowRight size={18} strokeWidth={2} />
-            </Button>
-          )}
         </section>
       )}
     </div>
