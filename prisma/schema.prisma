@@ -15,6 +15,11 @@ generator client {
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
+  // TiDB는 Prisma가 기본으로 만드는 FK 제약조건 DDL을 온전히 지원하지 않는다
+  // (db push 시 "SQL syntax error near ')'" / P3014로 실패하는 원인).
+  // 공식 권장대로 관계 무결성을 DB FK 대신 Prisma 앱단에서 관리한다.
+  // 참고: https://www.prisma.io/docs/orm/overview/databases/tidb
+  relationMode = "prisma"
 }
 
 // ---------------------------------------------------------------------
@@ -213,6 +218,9 @@ model AiGeneration {
   questions   Question[]
   mediaAssets MediaAsset[]
 
+  // relationMode="prisma"에서는 FK가 암묵적으로 만들던 인덱스를 직접 선언해야 한다.
+  @@index([creatorId])
+  @@index([subjectId])
   @@map("ai_generations")
 }
 
@@ -233,6 +241,8 @@ model Passage {
   questions   Question[]
   mediaAssets MediaAsset[]
 
+  @@index([creatorId])
+  @@index([generationId])
   @@map("passages")
 }
 
@@ -295,6 +305,9 @@ model Question {
   @@index([subjectId, status])
   @@index([totalSolvedCount])
   @@index([viewCount])
+  @@index([creatorId])
+  @@index([generationId])
+  @@index([passageId])
   @@map("questions")
 }
 
@@ -319,6 +332,10 @@ model MediaAsset {
   generation AiGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
   uploader   User          @relation(fields: [uploaderId], references: [id])
 
+  @@index([passageId])
+  @@index([questionId])
+  @@index([generationId])
+  @@index([uploaderId])
   @@map("media_assets")
 }
 
@@ -333,6 +350,7 @@ model QuestionTag {
   tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([questionId, tagId])
+  @@index([tagId])
   @@map("question_tags")
 }
 
@@ -357,11 +375,15 @@ model ExamSession {
 
   user     User      @relation(fields: [userId], references: [id])
   subject  Subject?  @relation(fields: [subjectId], references: [id])
-  workbook Workbook? @relation(fields: [workbookId], references: [id], onDelete: SetNull)
+  // relationMode="prisma"에서 순환 캐스케이드 경로라 자동 처리 불가 — 문제집 삭제 시
+  // workbooks.service.remove()가 이 workbookId를 직접 null로 비운다(과거 SetNull과 동일 효과).
+  workbook Workbook? @relation(fields: [workbookId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   sessionQuestions ExamSessionQuestion[]
 
   @@index([workbookId, status])
+  @@index([userId])
+  @@index([subjectId])
   @@map("exam_sessions")
 }
 
@@ -378,7 +400,9 @@ model ExamSessionQuestion {
   isHintUsed    Boolean   @default(false) @map("is_hint_used")
   hintUsedAt    DateTime? @map("hint_used_at")
 
-  examSession ExamSession        @relation(fields: [examSessionId], references: [id], onDelete: Cascade)
+  // 프로덕션 코드는 ExamSession을 직접 삭제하지 않는다(제출/만료 상태로만 전이) —
+  // 순환 캐스케이드라 relationMode="prisma"가 자동 처리 못 해도 실사용에 영향 없다.
+  examSession ExamSession        @relation(fields: [examSessionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   question    Question           @relation(fields: [questionId], references: [id])
   answer      ExamSessionAnswer?
 
@@ -404,7 +428,8 @@ model ExamSessionAnswer {
   timeSpentSec          Int?      @map("time_spent_sec")
   answeredAt            DateTime? @map("answered_at")
 
-  examSessionQuestion ExamSessionQuestion @relation(fields: [examSessionQuestionId], references: [id], onDelete: Cascade)
+  // ExamSessionQuestion도 프로덕션에서 직접 삭제되지 않는다 — 위 ExamSessionQuestion.examSession과 같은 사유.
+  examSessionQuestion ExamSessionQuestion @relation(fields: [examSessionQuestionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("exam_session_answers")
 }
@@ -428,6 +453,7 @@ model QuestionReview {
   reviewer User     @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
 
   @@unique([questionId, reviewerId])
+  @@index([reviewerId])
   @@map("question_reviews")
 }
 
@@ -445,10 +471,14 @@ model QuestionComment {
 
   question Question          @relation(fields: [questionId], references: [id], onDelete: Cascade)
   author   User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  parent   QuestionComment?  @relation("CommentTree", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  // 자기참조 순환이라 relationMode="prisma"가 자동 캐스케이드 불가 — comments.service.remove()가
+  // 답글 트리를 직접 재귀 삭제한 뒤 이 행을 지운다(과거 onDelete:Cascade와 동일 효과).
+  parent   QuestionComment?  @relation("CommentTree", fields: [parentCommentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   replies  QuestionComment[] @relation("CommentTree")
 
   @@index([questionId, createdAt])
+  @@index([authorId])
+  @@index([parentCommentId])
   @@map("question_comments")
 }
 
@@ -485,6 +515,7 @@ model UserQuestionAnnotation {
   @@index([userId, questionId])
   @@index([userId, updatedAt])
   @@index([userId, reasonCode])
+  @@index([questionId])
   @@map("user_question_annotations")
 }
 
@@ -542,7 +573,9 @@ model Workbook {
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   owner      User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  forkedFrom Workbook?          @relation("WorkbookFork", fields: [forkedFromId], references: [id], onDelete: SetNull)
+  // 자기참조 순환 — workbooks.service.remove()가 이 문제집을 원본으로 둔 포크들의
+  // forkedFromId를 직접 null로 비운다(과거 SetNull과 동일 효과).
+  forkedFrom Workbook?          @relation("WorkbookFork", fields: [forkedFromId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   forks      Workbook[]         @relation("WorkbookFork")
   questions  WorkbookQuestion[]
   // 문항 단위 Pick의 출처로 참조된 기록
@@ -551,6 +584,7 @@ model Workbook {
 
   @@index([visibility, viewCount])
   @@index([ownerId, updatedAt])
+  @@index([forkedFromId])
   @@map("workbooks")
 }
 
@@ -567,11 +601,14 @@ model WorkbookQuestion {
   sourceWorkbookId String?  @map("source_workbook_id") @db.Char(36)
   addedAt          DateTime @default(now()) @map("added_at")
 
-  workbook       Workbook  @relation(fields: [workbookId], references: [id], onDelete: Cascade)
+  // 순환 캐스케이드(workbook 삭제 → workbookQuestion → 다시 workbook(sourceWorkbook)) —
+  // workbooks.service.remove()가 workbookQuestion 삭제/sourceWorkbookId null 처리를 직접 한다.
+  workbook       Workbook  @relation(fields: [workbookId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   question       Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  sourceWorkbook Workbook? @relation("WorkbookPickSource", fields: [sourceWorkbookId], references: [id], onDelete: SetNull)
+  sourceWorkbook Workbook? @relation("WorkbookPickSource", fields: [sourceWorkbookId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([workbookId, questionId])
   @@index([questionId])
+  @@index([sourceWorkbookId])
   @@map("workbook_questions")
 }

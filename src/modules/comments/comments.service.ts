@@ -66,8 +66,12 @@ export class CommentsService {
 
   async remove(id: string, userId: string) {
     await this.assertAuthor(id, userId);
-    // onDelete: Cascade로 답글도 함께 삭제된다.
-    await this.prisma.questionComment.delete({ where: { id } });
+    // relationMode="prisma"(TiDB — FK 미지원)라 자기참조 캐스케이드를 DB가 못 해준다.
+    // 1-depth 트리라 직접 답글부터 지우면 된다(과거 onDelete:Cascade와 동일 효과).
+    await this.prisma.$transaction([
+      this.prisma.questionComment.deleteMany({ where: { parentCommentId: id } }),
+      this.prisma.questionComment.delete({ where: { id } }),
+    ]);
     return { id, deleted: true };
   }
 

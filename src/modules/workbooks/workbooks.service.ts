@@ -181,9 +181,29 @@ export class WorkbooksService {
     });
   }
 
+  /**
+   * relationMode="prisma"(TiDB용 — DB가 FK를 못 만들어 앱단에서 참조 무결성을 관리한다)라서
+   * 이 문제집을 참조하는 행들을 DB가 자동으로 지우거나 null로 비워주지 않는다.
+   * 예전 FK CASCADE/SET NULL과 같은 효과를 트랜잭션으로 직접 흉내낸다.
+   */
   async remove(id: string, userId: string) {
     await this.assertOwner(id, userId);
-    await this.prisma.workbook.delete({ where: { id } });
+    await this.prisma.$transaction([
+      this.prisma.workbookQuestion.deleteMany({ where: { workbookId: id } }),
+      this.prisma.workbookQuestion.updateMany({
+        where: { sourceWorkbookId: id },
+        data: { sourceWorkbookId: null },
+      }),
+      this.prisma.workbook.updateMany({
+        where: { forkedFromId: id },
+        data: { forkedFromId: null },
+      }),
+      this.prisma.examSession.updateMany({
+        where: { workbookId: id },
+        data: { workbookId: null },
+      }),
+      this.prisma.workbook.delete({ where: { id } }),
+    ]);
     return { id, deleted: true };
   }
 
