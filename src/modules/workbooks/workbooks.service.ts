@@ -9,7 +9,11 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ExamSessionsService } from '@/modules/exam-sessions/exam-sessions.service';
 import { PaginatedResult } from '@/common/dto/pagination.dto';
-import { AUTHOR_PUBLISH_REWARD, resolveAuthorRewardQuota } from '@/common/constants/shop';
+import {
+  AUTHOR_PUBLISH_REWARD,
+  resolveAuthorRewardQuota,
+  rollForkCoins,
+} from '@/common/constants/shop';
 import { levelForXp, XP_REASON } from '@/common/constants/xp';
 import {
   AddQuestionDto,
@@ -453,6 +457,12 @@ export class WorkbooksService {
         where: { id: source.id },
         data: { forkCount: { increment: 1 } },
       });
+
+      // 원작자에게 포크 보상. 본인 문제집을 본인이 포크한 경우(셀프 포크)는 무지급.
+      if (source.ownerId !== userId) {
+        await this.awardForkReward(tx, source.ownerId, copy.id);
+      }
+
       // 사본은 attemptCount/scoreSumPercent 기본값 0에서 시작한다 —
       // 원본의 응시 성적을 물려받지 않는다.
       return withAvgScore(copy);
@@ -552,6 +562,34 @@ export class WorkbooksService {
     });
 
     return { rewarded: true };
+  }
+
+  /**
+   * 문제집이 포크될 때 원본 소유자에게 +5~10 코인.
+   * awardPublishReward와 달리 하루 캡·EXP는 없다(단순 코인 보상).
+   */
+  private async awardForkReward(
+    tx: Prisma.TransactionClient,
+    ownerUserId: string,
+    forkWorkbookId: string,
+    rng: () => number = Math.random,
+  ): Promise<void> {
+    const amount = rollForkCoins(rng);
+    const updatedUser = await tx.user.update({
+      where: { id: ownerUserId },
+      data: { coins: { increment: amount } },
+      select: { coins: true },
+    });
+
+    await tx.coinHistory.create({
+      data: {
+        userId: ownerUserId,
+        amount,
+        reason: 'WORKBOOK_FORK',
+        referenceId: forkWorkbookId,
+        balanceAfter: updatedUser.coins,
+      },
+    });
   }
 
   /** 담기 대상은 발행된 문항이어야 한다. 존재하지 않거나 미발행이면 거부. */
