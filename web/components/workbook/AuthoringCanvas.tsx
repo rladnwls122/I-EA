@@ -86,7 +86,7 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
   const [chatPrefill, setChatPrefill] = useState<string | null>(null);
 
   /* ── 문제집 제목 ── */
-  const { data: workbook } = useWorkbook(workbookId);
+  const { data: workbook, isError: workbookError } = useWorkbook(workbookId);
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
 
@@ -223,6 +223,11 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
       toast.error("과목 정보가 없습니다. 채팅에서 과목을 확인해주세요.");
       return;
     }
+    // 문제집 자체를 못 불러왔으면(삭제됐거나 남의 것) 담기는 100% 실패한다 — 미리 막는다.
+    if (workbookError || !workbook) {
+      toast.error("문제집을 불러오지 못했어요. 문제집 만들기에서 다시 시작해주세요.");
+      return;
+    }
     setSaving(true);
     try {
       // 1) 지문 영속화 — 같은 지문(평문 일치)은 한 번만 생성해 passageId를 공유한다.
@@ -241,7 +246,10 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
       }
 
       // 2) 문항 영속화 + 발행 + 문제집 연결.
+      //    발행 실패를 삼키고 담기를 강행하면 백엔드가 "발행되지 않은 문항" 404를
+      //    돌려줘 원인이 가려진다 — 단계별로 실패를 구분해 서버 메시지를 그대로 보여준다.
       let failed = 0;
+      let lastError = "";
       for (const c of cards) {
         if (!extractPlainText(c.stem).trim()) continue;
         const key = passageKey(c);
@@ -265,15 +273,19 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
               ? buildRichBlocks(extractPlainText(c.explanation))
               : undefined,
           } as any);
-          await publishQuestion(created.id).catch(() => null);
+          await publishQuestion(created.id); // 실패 시 담기 강행하지 않고 이 문항을 실패 처리
           await addQuestionToWorkbook(workbookId, { questionId: created.id });
         } catch (e) {
           failed += 1;
+          lastError = e instanceof Error ? e.message : String(e);
           console.error("문항 저장 실패:", e);
         }
       }
-      if (failed > 0) toast.error(`${failed}개 문항 저장에 실패했어요.`);
-      else toast.success(`${cards.length}개 문항을 문제집에 저장했어요.`);
+      if (failed > 0) {
+        toast.error(`${failed}개 문항 저장에 실패했어요.${lastError ? ` (${lastError})` : ""}`);
+      } else {
+        toast.success(`${cards.length}개 문항을 문제집에 저장했어요.`);
+      }
     } finally {
       setSaving(false);
     }
@@ -292,7 +304,11 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
               <ArrowLeft size={18} /> 뒤로가기
             </Link>
             {/* 문제집 제목 — 클릭해 인라인 편집 */}
-            {titleEditing ? (
+            {workbookError ? (
+              <span className="text-sm font-medium text-wrong">
+                문제집을 불러오지 못했어요 — 저장이 불가능합니다
+              </span>
+            ) : titleEditing ? (
               <input
                 autoFocus
                 value={titleDraft}
