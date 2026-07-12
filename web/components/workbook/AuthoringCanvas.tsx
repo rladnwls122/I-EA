@@ -13,6 +13,7 @@ import {
   createPassage,
   publishPassage,
   fetchQuestion,
+  fetchSubjects,
   fetchTags,
   createTag,
 } from "@/lib/api";
@@ -208,13 +209,29 @@ export function AuthoringCanvas({
   const [titleDraft, setTitleDraft] = useState("");
 
   // initialSubjectId가 없는 경우(예: 기존 문제집을 "수정"으로 열었을 때) —
-  // 이미 담긴 문항이 있으면 그 과목을 그대로 이어서 쓴다. AI 채팅이 엉뚱한
-  // 과목(구독 목록의 첫 번째)을 임의로 골라버리는 걸 막는다.
+  // 과목 결정은 여기(캔버스)가 단일 소유자다. 문제집 로딩을 기다렸다가
+  // ① 담긴 문항의 과목을 잇고, ② 빈 문제집일 때만 과목 목록 첫 번째로 fallback.
+  // (예전엔 ChatPanel이 마운트 즉시 목록 첫 번째로 확정해버려, 문제집 로딩이
+  // 끝나기 전에 엉뚱한 과목(예: NCS)으로 고정되는 레이스가 있었다.)
   useEffect(() => {
     if (initialSubjectId || subjectId) return;
-    const existingSubjectId = workbook?.questions?.find((q) => q.question?.subject?.id)
+    if (!workbook?.questions) return; // 문제집 로딩 전엔 결정하지 않는다
+    const existingSubjectId = workbook.questions.find((q) => q.question?.subject?.id)
       ?.question?.subject?.id;
-    if (existingSubjectId) setSubjectId(existingSubjectId);
+    if (existingSubjectId) {
+      setSubjectId(existingSubjectId);
+      return;
+    }
+    // 빈 문제집 — 최후의 fallback으로만 목록 첫 번째를 쓴다.
+    let cancelled = false;
+    fetchSubjects()
+      .then((list) => {
+        if (!cancelled && list[0]) setSubjectId((prev) => prev || list[0].id);
+      })
+      .catch(() => toast.error("과목 목록을 불러오지 못했습니다."));
+    return () => {
+      cancelled = true;
+    };
   }, [initialSubjectId, subjectId, workbook]);
 
   /* ── 기존 문항 복원 ──
@@ -694,7 +711,6 @@ export function AuthoringCanvas({
           settings={aiSettings}
           onSettingsChange={setAiSettings}
           resolvedSubjectId={subjectId}
-          onSubjectResolved={setSubjectId}
           onApplyQuestion={applyQuestion}
           prefill={chatPrefill}
           onPrefillConsumed={() => setChatPrefill(null)}

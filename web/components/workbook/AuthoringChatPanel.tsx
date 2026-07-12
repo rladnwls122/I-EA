@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
-import { fetchSubjects } from "@/lib/api";
 import { extractPlainText } from "@/lib/prosemirror";
 import {
   streamAuthoringChat,
@@ -33,7 +32,6 @@ export function AuthoringChatPanel({
   settings,
   onSettingsChange,
   resolvedSubjectId,
-  onSubjectResolved,
   onApplyQuestion,
   prefill,
   onPrefillConsumed,
@@ -49,7 +47,6 @@ export function AuthoringChatPanel({
    * 있으면 이걸 그대로 쓰고, 과목 목록을 다시 불러와 임의로 고르지 않는다.
    */
   resolvedSubjectId?: string;
-  onSubjectResolved: (subjectId: string) => void;
   onApplyQuestion: (q: ParsedQuestion) => void;
   /** 카드 ✨AI 버튼이 넣어주는 입력창 프리필(예: "문제 2 수정: "). */
   prefill?: string | null;
@@ -90,20 +87,9 @@ export function AuthoringChatPanel({
     if (resolvedSubjectId) setSubjectId(resolvedSubjectId);
   }, [resolvedSubjectId]);
 
-  // 최후의 fallback — 캔버스가 넘겨준 과목이 없을 때만(완전히 새 문제집을
-  // 과목 정보 없이 열었을 때) 과목 목록에서 첫 번째를 기본으로 쓴다.
-  useEffect(() => {
-    if (resolvedSubjectId) return;
-    fetchSubjects()
-      .then((list) => {
-        const first = list[0];
-        if (first) {
-          setSubjectId(first.id);
-          onSubjectResolved(first.id);
-        }
-      })
-      .catch(() => toast.error("과목 목록을 불러오지 못했습니다."));
-  }, [resolvedSubjectId, onSubjectResolved]);
+  // 과목 fallback은 캔버스(AuthoringCanvas)가 문제집 로딩을 기다렸다가 결정한다.
+  // 여기서 목록 첫 번째를 임의로 고르면 문제집 로딩 전에 엉뚱한 과목으로
+  // 고정되는 레이스가 생긴다(예: 영어 문제집인데 NCS로 대화) — 절대 재도입 금지.
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
