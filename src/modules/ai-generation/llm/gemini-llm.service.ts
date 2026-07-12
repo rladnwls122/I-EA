@@ -220,6 +220,9 @@ export class GeminiLlmService {
     }
 
     // SSE 프레임은 청크 경계에서 잘릴 수 있다. 버퍼에 모아 "\n\n" 단위로 끊어 파싱한다.
+    // ⚠ Gemini는 프레임을 CRLF("\r\n\r\n")로 구분한다 — 정규화하지 않으면 "\n\n"이
+    //   영원히 매치되지 않아 스트림 전체가 한 덩어리로 tail 처리되고, 여러 data JSON이
+    //   이어붙어 파싱에 실패해 "델타 0개"로 조용히 끝난다(실제 프로덕션에서 발생).
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -227,7 +230,8 @@ export class GeminiLlmService {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        // 청크 경계에서 "\r"과 "\n"이 갈라질 수 있어 누적 버퍼를 통째로 정규화한다.
+        buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, '\n');
         let sep: number;
         while ((sep = buffer.indexOf('\n\n')) !== -1) {
           const frame = buffer.slice(0, sep);
