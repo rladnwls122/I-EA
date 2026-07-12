@@ -124,10 +124,20 @@ export class QueryWorkbookDto extends PaginationQueryDto {
   @IsString()
   examCategory?: string;
 
-  @ApiPropertyOptional({ description: '소분류 subject ID' })
+  @ApiPropertyOptional({ description: '소분류 subject ID(단일, 레거시)' })
   @IsOptional()
   @IsUUID()
   subjectId?: string;
+
+  @ApiPropertyOptional({
+    description: '소분류 subject ID(콤마 구분 또는 반복 파라미터). 여러 개면 OR 매칭',
+    type: [String],
+  })
+  @IsOptional()
+  @Transform(({ value }) => (Array.isArray(value) ? value : String(value).split(',').filter(Boolean)))
+  @IsArray()
+  @IsUUID('4', { each: true })
+  subjectIds?: string[];
 
   @ApiPropertyOptional({ description: '정렬', enum: ['popular', 'recent'], default: 'popular' })
   @IsOptional()

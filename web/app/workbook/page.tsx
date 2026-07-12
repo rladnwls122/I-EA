@@ -22,13 +22,16 @@ export default function WorkbookPage() {
   const [keyword, setKeyword] = useState("");
   const [examType, setExamType] = useState("");
   const [category, setCategory] = useState("");
-  const [subjectId, setSubjectId] = useState("");
+  const [subjectIds, setSubjectIds] = useState<string[]>([]);
+  // "전체" — 개별 소과목 칩과 별개 상태. 활성화돼도 개별 칩은 안 눌린 채로 남지만,
+  // 쿼리에는 이 대분류 소과목 전체를 고른 것과 같은 효과를 낸다.
+  const [categoryAll, setCategoryAll] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: subjectsData } = useSubjects();
   const allSubjects: Subject[] = subjectsData || [];
 
-  // 3단 분류: 시험(examType) → 대분류(examCategory) → 세부과목(subject, 단일 — 백엔드가 subjectId 하나만 받는다).
+  // 3단 분류: 시험(examType) → 대분류(examCategory) → 세부과목(subject, 다중).
   const examTypes = useMemo(
     () => Array.from(new Set(allSubjects.map((s) => s.examType))),
     [allSubjects],
@@ -48,14 +51,27 @@ export default function WorkbookPage() {
     [allSubjects, examType, category],
   );
 
+  // 실제 쿼리에 쓸 소과목 ID — "전체"면 이 대분류의 소과목 전체, 아니면 직접 고른 것들.
+  const effectiveSubjectIds = categoryAll ? leafSubjects.map((s) => s.id) : subjectIds;
+
   const { data, isLoading } = useWorkbooks({
     search: keyword || undefined,
     examType: examType || undefined,
     examCategory: category || undefined,
-    subjectId: subjectId || undefined,
+    subjectIds: effectiveSubjectIds.length ? effectiveSubjectIds : undefined,
   });
   const { data: me } = useMe();
   const workbooks = data?.items || [];
+
+  const toggleSubject = (id: string) => {
+    setCategoryAll(false); // 개별 소과목을 직접 고르면 "전체"는 해제.
+    setSubjectIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  };
+
+  const clearSubjects = () => {
+    setSubjectIds([]);
+    setCategoryAll(false);
+  };
 
   return (
     <main className="mx-auto max-w-7xl p-4 md:p-8">
@@ -98,7 +114,7 @@ export default function WorkbookPage() {
           onClick={() => {
             setExamType("");
             setCategory("");
-            setSubjectId("");
+            clearSubjects();
           }}
           className={chip(examType === "")}
         >
@@ -110,7 +126,7 @@ export default function WorkbookPage() {
             onClick={() => {
               setExamType(examType === t ? "" : t);
               setCategory("");
-              setSubjectId("");
+              clearSubjects();
             }}
             className={chip(examType === t)}
           >
@@ -127,7 +143,7 @@ export default function WorkbookPage() {
               key={c}
               onClick={() => {
                 setCategory(category === c ? "" : c);
-                setSubjectId("");
+                clearSubjects();
               }}
               className={chip(category === c)}
             >
@@ -137,26 +153,39 @@ export default function WorkbookPage() {
         </div>
       )}
 
-      {/* 3단: 세부과목 단일 선택 — 대분류를 골라야 노출. "전체"는 이 대분류 전체(특정 세부과목 지정 없음). */}
+      {/* 3단: 세부과목 다중 선택 — 대분류를 골라야 노출.
+          "전체"는 개별 칩을 누르지 않고도 이 대분류 소과목 전체를 고른 효과를 낸다(배타 상태).
+          "취소"는 맨 끝 — 여러 개 골랐을 때 하나씩 해제하지 않고 한 번에 비운다. */}
       {category && leafSubjects.length > 0 && (
         <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-1">
           <button
-            onClick={() => setSubjectId("")}
-            aria-pressed={subjectId === ""}
-            className={chip(subjectId === "")}
+            onClick={() => {
+              setSubjectIds([]);
+              setCategoryAll((v) => !v);
+            }}
+            aria-pressed={categoryAll}
+            className={chip(categoryAll)}
           >
             전체
           </button>
           {leafSubjects.map((s) => (
             <button
               key={s.id}
-              onClick={() => setSubjectId(subjectId === s.id ? "" : s.id)}
-              aria-pressed={subjectId === s.id}
-              className={chip(subjectId === s.id)}
+              onClick={() => toggleSubject(s.id)}
+              aria-pressed={!categoryAll && subjectIds.includes(s.id)}
+              className={chip(!categoryAll && subjectIds.includes(s.id))}
             >
               {s.name}
             </button>
           ))}
+          {(categoryAll || subjectIds.length > 0) && (
+            <button
+              onClick={clearSubjects}
+              className="whitespace-nowrap rounded-full border border-destructive/40 px-3.5 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10"
+            >
+              취소
+            </button>
+          )}
         </div>
       )}
 

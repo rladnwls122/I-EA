@@ -407,6 +407,7 @@ export class WorkbooksService {
 
   /** 3단 분류 필터. 셋 다 없으면 undefined(필터 미적용). */
   private buildSubjectFilter(dto: QueryWorkbookDto): Prisma.SubjectWhereInput | undefined {
+    if (dto.subjectIds?.length) return { id: { in: dto.subjectIds } };
     if (dto.subjectId) return { id: dto.subjectId };
     if (!dto.examType && !dto.examCategory) return undefined;
     return {

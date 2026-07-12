@@ -176,6 +176,7 @@ export function useWorkbooks(params?: {
   examType?: string;
   examCategory?: string;
   subjectId?: string;
+  subjectIds?: string[];
 }, enabled = true) {
   return useQuery({
     queryKey: ['workbooks', params],
