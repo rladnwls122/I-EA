@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -8,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { QuestionKind } from '@/common/constants/question';
 import { rollBoxTier, type BoxTier } from '@/common/constants/shop';
+import { resolveHintQuota } from './hint-quota';
 import {
   XP_RULES,
   levelForXp,
@@ -276,10 +278,45 @@ export class ExamSessionsService {
 
     // 최초 열람 시각만 남긴다(이미 열람했으면 기존 값 유지).
     const hintUsedAt = sq.hintUsedAt ?? new Date();
+
     if (!sq.isHintUsed) {
-      await this.prisma.examSessionQuestion.update({
-        where: { id: sessionQuestionId },
-        data: { isHintUsed: true, hintUsedAt },
+      // 하루 무료 3회를 넘기면 힌트 토큰 1개를 소모한다. 토큰도 없으면 열람을 막는다.
+      const today = new Date();
+      const [user, tokenInv] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { hintFreeDate: true, hintFreeUsed: true },
+        }),
+        this.prisma.userInventory.findUnique({
+          where: { userId_itemKey: { userId, itemKey: 'HINT_TOKEN' } },
+          select: { quantity: true },
+        }),
+      ]);
+      const quota = resolveHintQuota(
+        user?.hintFreeDate ?? null,
+        user?.hintFreeUsed ?? 0,
+        tokenInv?.quantity ?? 0,
+        today,
+      );
+      if (!quota.allow) {
+        throw new ConflictException('오늘 무료 힌트를 다 썼어요. 힌트 토큰이 필요합니다.');
+      }
+
+      await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        await tx.examSessionQuestion.update({
+          where: { id: sessionQuestionId },
+          data: { isHintUsed: true, hintUsedAt },
+        });
+        await tx.user.update({
+          where: { id: userId },
+          data: { hintFreeDate: today, hintFreeUsed: quota.newFreeUsed },
+        });
+        if (quota.useToken) {
+          await tx.userInventory.update({
+            where: { userId_itemKey: { userId, itemKey: 'HINT_TOKEN' } },
+            data: { quantity: { decrement: 1 } },
+          });
+        }
       });
     }
 
