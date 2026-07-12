@@ -67,13 +67,12 @@ export class WorkbooksService {
         : {}),
     };
 
-    // mine=true — 담기 대상 선택(내 문제집에 추가) 등에서 공개 여부 무관하게 내 것만.
+    // mine=true — "내 문제집" 페이지: 공개 여부 무관하게 내 것만.
+    // mine=false — "탐색" 페이지: 소유자 무관하게 공개(PUBLIC)만. 예전엔 내 비공개
+    // 문제집까지 탐색 목록에 섞여 나와 "탐색"과 "내 문제집"의 목적이 불분명했다.
     const where: Prisma.WorkbookWhereInput = dto.mine
       ? { ...base, ownerId: userId ?? '__none__' }
-      : {
-          ...base,
-          OR: userId ? [{ visibility: 'PUBLIC' }, { ownerId: userId }] : [{ visibility: 'PUBLIC' }],
-        };
+      : { ...base, visibility: 'PUBLIC' };
 
     const orderBy: Prisma.WorkbookOrderByWithRelationInput =
       dto.sort === 'recent' ? { createdAt: 'desc' } : { viewCount: 'desc' };

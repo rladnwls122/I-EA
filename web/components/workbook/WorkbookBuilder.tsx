@@ -360,7 +360,7 @@ export function WorkbookBuilder() {
                   </div>
                 ))}
               </div>
-              <Button className="mt-5" onClick={() => router.push(`/workbook`)}>
+              <Button className="mt-5" onClick={() => router.push(`/workbook/mine`)}>
                 문제집으로 이동 <ArrowRight size={18} strokeWidth={2} />
               </Button>
             </div>

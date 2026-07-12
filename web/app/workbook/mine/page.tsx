@@ -9,11 +9,11 @@ import { WorkbookPreviewSidebar } from "@/components/workbook/WorkbookPreviewSid
 import { WorkbookCard } from "@/components/workbook/WorkbookCard";
 import { CartButton } from "@/components/cart/CartButton";
 
-/** 공개 문제집 탐색 — 소유자 무관하게 PUBLIC만. 내 문제집 관리는 /workbook/mine. */
-export default function WorkbookPage() {
+/** 내 문제집 — 공개/비공개 무관하게 내가 만든 것만. 공개 문제집 탐색은 /workbook. */
+export default function MyWorkbooksPage() {
   const [keyword, setKeyword] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { data, isLoading } = useWorkbooks({ search: keyword || undefined });
+  const { data, isLoading } = useWorkbooks({ search: keyword || undefined, mine: true });
   const workbooks = data?.items || [];
 
   return (
@@ -21,16 +21,16 @@ export default function WorkbookPage() {
       <div className="mb-9 flex items-end justify-between gap-6">
         <div>
           <span className="mb-2 block font-mono text-xs uppercase tracking-widest text-muted-foreground">
-            Workbook library
+            My workbooks
           </span>
-          <h1 className="text-3xl font-semibold tracking-tight">공개 문제집 탐색</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">내 문제집</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            다른 사람이 공개한 문제집을 둘러보고, 원하는 문항만 담아 풀어보세요.
+            내가 만든 문제집을 모아봅니다(공개·비공개 모두).
           </p>
         </div>
         <div className="flex gap-2">
           <Button asChild variant="outline">
-            <Link href="/workbook/mine">내 문제집</Link>
+            <Link href="/workbook">공개 탐색</Link>
           </Button>
           <Button asChild>
             <Link href="/workbook/create">문제집 만들기</Link>
@@ -46,7 +46,7 @@ export default function WorkbookPage() {
         <Input
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          placeholder="문제집 제목으로 검색"
+          placeholder="내 문제집 제목으로 검색"
           className="h-11 pl-10"
         />
       </div>
@@ -62,9 +62,12 @@ export default function WorkbookPage() {
         </div>
       ) : workbooks.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-20 text-center">
-          <p className="text-sm text-muted-foreground">
-            아직 공개된 문제집이 없습니다.
+          <p className="mb-4 text-sm text-muted-foreground">
+            아직 만든 문제집이 없습니다. 첫 문제집을 만들어보세요.
           </p>
+          <Button asChild>
+            <Link href="/workbook/create">문제집 만들기</Link>
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpenCheck, BrainCircuit, Lightbulb, User } from "lucide-react";
+import { BookmarkCheck, BookOpenCheck, BrainCircuit, Lightbulb, User } from "lucide-react";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -10,9 +10,15 @@ export function AppSidebar() {
   if (pathname.startsWith("/intro")) return null;
   const nav = [
     { href: "/questions", label: "문제 탐색", icon: BrainCircuit },
-    { href: "/workbook", label: "문제집", icon: BookOpenCheck },
+    { href: "/workbook", label: "문제집 탐색", icon: BookOpenCheck },
+    { href: "/workbook/mine", label: "내 문제집", icon: BookmarkCheck },
     { href: "/notes", label: "오답노트", icon: Lightbulb },
   ];
+  // 가장 구체적으로(길게) 일치하는 항목 하나만 활성 표시 — "/workbook"과
+  // "/workbook/mine"처럼 접두사가 겹치는 라우트가 동시에 활성화되는 것을 막는다.
+  const activeHref = nav
+    .filter((n) => pathname === n.href || pathname.startsWith(`${n.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 z-50 flex w-[64px] flex-col items-center border-r border-border bg-sidebar py-5">
@@ -26,7 +32,7 @@ export function AppSidebar() {
 
       <nav className="flex flex-col gap-1.5">
         {nav.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href);
+          const active = href === activeHref;
           return (
             <Link
               key={href}
