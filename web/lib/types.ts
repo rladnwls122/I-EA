@@ -458,6 +458,8 @@ export interface SubmitSessionResult {
   scorePercent: number;
   durationSec: number | null;
   reward: SubmitReward | null;
+  /** 제출 보상으로 드랍된 상자 — 드랍 없으면 null */
+  box: { id: string; tier: LootBoxTier } | null;
 }
 
 export interface SelfGradeReward {

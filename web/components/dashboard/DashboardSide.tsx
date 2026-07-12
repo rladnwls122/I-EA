@@ -1,8 +1,33 @@
 "use client";
 import Link from "next/link";
-import { ChevronRight, Flame, Lock, Trophy } from "lucide-react";
-import { useMilestones, useQuestions, useWorkbooks } from "@/lib/hooks";
+import { ChevronRight, Coins, Flame, Gift, Lock, Trophy } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { useMilestones, useQuestions, useWallet, useWorkbooks } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
+
+/** 코인 잔고 + 미개봉 상자 수 배지 — 사이드 컬럼 최상단(마일스톤 위)에 노출. */
+export function WalletSummary({ enabled }: { enabled: boolean }) {
+  const { data } = useWallet(enabled);
+  if (!enabled) return null;
+
+  return (
+    <section className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 md:p-5">
+      <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Coins size={16} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-mono text-base font-semibold text-foreground">{data?.coins ?? 0}</p>
+        <p className="text-[10px] text-muted-foreground">보유 코인</p>
+      </div>
+      {(data?.unopenedBoxCount ?? 0) > 0 && (
+        <Badge variant="secondary" className="flex items-center gap-1">
+          <Gift size={11} aria-hidden="true" />
+          {data?.unopenedBoxCount}
+        </Badge>
+      )}
+    </section>
+  );
+}
 
 /** 마일스톤 진행률 — 달성/진행/잠금. */
 export function MilestoneProgress({ enabled }: { enabled: boolean }) {

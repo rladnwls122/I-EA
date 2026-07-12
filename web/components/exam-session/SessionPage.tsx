@@ -13,6 +13,7 @@ import { SubmitDialog } from "./SubmitDialog";
 import { DrawingOverlay } from "./DrawingOverlay";
 import { ResultBanner } from "./ResultBanner";
 import { ResultQuestionCard } from "./ResultQuestionCard";
+import { BoxRewardCard } from "./BoxRewardCard";
 
 const Calculator = dynamic(
   () => import("./Calculator").then((m) => m.Calculator),
@@ -121,6 +122,10 @@ export function SessionPage({ id }: { id: string }) {
           durationSec={justSubmitted?.durationSec ?? session.durationSec}
           reward={justSubmitted?.reward}
         />
+
+        {/* 제출 보상으로 상자를 받았으면 결과 배너 바로 아래 노출 — 새로고침하면 justSubmitted가
+            비어 사라진다(이미 개봉했더라도 재조회 값엔 상자 여부가 없으므로 자연히 숨겨짐). */}
+        {justSubmitted?.box && <BoxRewardCard box={justSubmitted.box} />}
 
         {/* 시험지 느낌 — 2열 사이 중앙 hairline (md 이상) */}
         <div className="relative grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-x-10 md:before:absolute md:before:inset-y-0 md:before:left-1/2 md:before:w-px md:before:bg-border">

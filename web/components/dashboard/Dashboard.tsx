@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useMilestones, useActiveSession } from "@/lib/hooks";
 import { WrongNotesSummary, RecentSessions } from "./DashboardMain";
 import { SpotlightSearch } from "./SpotlightSearch";
-import { MilestoneProgress, PopularContent } from "./DashboardSide";
+import { MilestoneProgress, PopularContent, WalletSummary } from "./DashboardSide";
 
 /** 인사말 + 스트릭/레벨/XP 진행바 헤어로. */
 function StreakHero({ enabled, onBrowse }: { enabled: boolean; onBrowse: () => void }) {
@@ -148,6 +148,7 @@ export function Dashboard() {
               <RecentSessions enabled={loggedIn} />
             </div>
             <div className="space-y-4">
+              <WalletSummary enabled={loggedIn} />
               <MilestoneProgress enabled={loggedIn} />
             </div>
           </div>
