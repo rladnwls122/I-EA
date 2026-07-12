@@ -1,12 +1,12 @@
 'use client';
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Check, Loader2, Minus, X } from 'lucide-react';
 import { useAnnotations, useMyNotes, useQuestion, useSession } from '@/lib/hooks';
 import { extractPlainText } from '@/lib/prosemirror';
 import { resolveAnnotation, type AnchorStatus } from '@/lib/annotations';
-import { useTextSelection } from '@/lib/hooks/useTextSelection';
+import { useTextSelection, type AnnotationSelection } from '@/lib/hooks/useTextSelection';
 import { AnnotatedText } from '@/components/notes/AnnotatedText';
 import { AnnotationToolbar } from '@/components/notes/AnnotationToolbar';
 import { AnnotationPanel } from '@/components/notes/AnnotationPanel';
@@ -30,6 +30,11 @@ function NoteDetail() {
 
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const { selection, clear } = useTextSelection();
+  // 툴바에 넘길 동결 스냅샷 — selection이 collapse돼도(툴바 클릭/textarea 포커스)
+  // 툴바가 언마운트되지 않도록 라이브 selection과 분리한다.
+  const [pending, setPending] = useState<{ selection: AnnotationSelection; canonicalText: string } | null>(
+    null,
+  );
 
   const sq = useMemo(
     () => (session?.questions || []).find((q) => q.questionId === questionId) ?? null,
@@ -43,8 +48,17 @@ function NoteDetail() {
   const stemDoc = snapshot?.stem ?? question?.stem;
   const passageDoc = snapshot?.passage;
   const explanationDoc = snapshot?.explanation ?? question?.explanation;
-  // Question.choices는 그 자체가 선택지 배열(any) — snapshot.choices와 동일한 shape.
-  const choices = snapshot?.choices ?? question?.choices ?? null;
+  // snapshot 우선(SessionChoice[]). 원본 문항(question.choices)은 실제로는 항상
+  // 평문 배열([{id,content,isCorrect}] — questions.service.ts getById가 Json 컬럼을
+  // 그대로 반환)이라 snapshot과 동일한 shape이지만, 레거시 목업 등 {content:[...]}
+  // 형상 방어를 위해 두 형태 모두 정규화한다.
+  const choices =
+    snapshot?.choices ??
+    (Array.isArray((question as any)?.choices)
+      ? (question as any).choices
+      : Array.isArray((question as any)?.choices?.content)
+        ? (question as any).choices.content
+        : null);
   const questionType = snapshot?.questionType ?? question?.questionType;
   const difficulty = snapshot?.difficulty ?? question?.difficulty;
   const subjectName = session?.subject?.name ?? question?.subject?.name;
@@ -57,7 +71,8 @@ function NoteDetail() {
     if (explanationDoc) map.set('EXPLANATION', extractPlainText(explanationDoc));
     if (Array.isArray(choices)) {
       for (const c of choices) {
-        if (c?.id && c?.content) map.set(`CHOICES:${c.id}`, extractPlainText(c.content));
+        const cd = c?.content ?? c;
+        if (c?.id && cd) map.set(`CHOICES:${c.id}`, extractPlainText(cd));
       }
     }
     return map;
@@ -82,6 +97,13 @@ function NoteDetail() {
   const canonicalText = selection
     ? plainOf(selection.target, selection.targetId).slice(selection.start, selection.end)
     : '';
+
+  // 새 선택이 잡히면 스냅샷 갱신. null(collapse)일 땐 유지 → 툴바 안 닫힘.
+  useEffect(() => {
+    if (selection && canonicalText) {
+      setPending({ selection, canonicalText });
+    }
+  }, [selection, canonicalText]);
 
   if (sessionLoading || questionLoading) {
     return (
@@ -143,11 +165,15 @@ function NoteDetail() {
           {questionType === '객관식' && Array.isArray(choices) && choices.length > 0 && (
             <div className="mb-10 space-y-3">
               {choices.map((c: any, i: number) => {
-                const correct = c.isCorrect === true;
-                const selected = (answer?.selectedChoiceIds || []).includes(c.id);
+                const cd = c?.content ?? c;
+                // 정답/내 선택 배지는 세션 경로(snapshot)에서만 표시한다 — 세션 없는
+                // fallback 조회(question.choices)는 항상 isCorrect를 포함하므로,
+                // 배지를 그대로 켜면 아직 풀지 않은 문항의 정답이 노출된다.
+                const correct = Boolean(snapshot) && c?.isCorrect === true;
+                const selected = Boolean(snapshot) && (answer?.selectedChoiceIds || []).includes(c?.id);
                 return (
                   <div
-                    key={c.id ?? i}
+                    key={c?.id ?? i}
                     className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-sm font-medium transition-colors ${
                       correct
                         ? 'border-correct/30 bg-correct/10'
@@ -168,11 +194,11 @@ function NoteDetail() {
                       >
                         {correct ? <Check size={12} /> : selected ? <X size={12} /> : i + 1}
                       </span>
-                      {c.content ? (
+                      {cd ? (
                         <AnnotatedText
-                          doc={c.content}
+                          doc={cd}
                           target="CHOICES"
-                          targetId={c.id}
+                          targetId={c?.id}
                           annotations={anns}
                           onMarkClick={setFocusedId}
                           className="min-w-0 break-words"
@@ -262,13 +288,16 @@ function NoteDetail() {
         </aside>
       </div>
 
-      {/* 드래그 선택 → 주석 작성 툴바 */}
-      {selection && canonicalText && (
+      {/* 드래그 선택 → 주석 작성 툴바 — 동결된 스냅샷 기준으로 렌더 (라이브 selection과 분리) */}
+      {pending && (
         <AnnotationToolbar
           questionId={questionId}
-          selection={selection}
-          canonicalText={canonicalText}
-          onClose={clear}
+          selection={pending.selection}
+          canonicalText={pending.canonicalText}
+          onClose={() => {
+            setPending(null);
+            clear();
+          }}
         />
       )}
     </main>
