@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookmarkCheck, BookOpenCheck, BrainCircuit, Lightbulb, User } from "lucide-react";
+import { BookmarkCheck, BookOpenCheck, Lightbulb } from "lucide-react";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -9,7 +9,6 @@ export function AppSidebar() {
   // body의 pl-[64px]는 인트로 페이지가 -ml-[64px]로 상쇄한다(intro/page.tsx 참고).
   if (pathname.startsWith("/intro")) return null;
   const nav = [
-    { href: "/questions", label: "문제 탐색", icon: BrainCircuit },
     { href: "/workbook", label: "문제집 탐색", icon: BookOpenCheck },
     { href: "/workbook/mine", label: "내 문제집", icon: BookmarkCheck },
     { href: "/notes", label: "오답노트", icon: Lightbulb },
@@ -50,16 +49,7 @@ export function AppSidebar() {
           );
         })}
       </nav>
-
-      <div className="mt-auto">
-        <Link
-          href="/me"
-          aria-label="내 정보"
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground active:scale-95 motion-reduce:transition-none"
-        >
-          <User size={19} strokeWidth={2} />
-        </Link>
-      </div>
+      {/* 내 정보는 우측 하단 UserChip으로 이동(app/layout.tsx). */}
     </aside>
   );
 }

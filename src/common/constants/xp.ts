@@ -35,13 +35,14 @@ export type XpRule = keyof typeof XP_RULES;
  *    중간 티어가 필요해지면 이 배열에 행만 추가하면 된다.
  */
 export const LEVEL_TIERS: ReadonlyArray<{ level: number; minXp: number; title: string }> = [
-  { level: 1, minXp: 0, title: '국어 입문자' },
-  { level: 2, minXp: 100, title: '국어 견습생' },
-  { level: 3, minXp: 300, title: '국어 탐험가' },
-  { level: 4, minXp: 600, title: '국어 수련생' },
-  { level: 5, minXp: 1000, title: '국어 달인' },
-  { level: 10, minXp: 5000, title: '국어 마스터' },
-  { level: 20, minXp: 15000, title: '수능 정복자' },
+  // 타이틀은 과목 무관 — 어떤 과목을 풀든 통용되는 귀여운 성장 사다리.
+  { level: 1, minXp: 0, title: '자라나는 새싹' },
+  { level: 2, minXp: 100, title: '귀여운 병아리' },
+  { level: 3, minXp: 300, title: '씩씩한 토끼' },
+  { level: 4, minXp: 600, title: '날쌘 사슴' },
+  { level: 5, minXp: 1000, title: '지혜로운 부엉이' },
+  { level: 10, minXp: 5000, title: '늠름한 호랑이' },
+  { level: 20, minXp: 15000, title: '전설의 불사조' },
 ];
 
 /** XP 원장(xp_history)의 reason 값 — 적립 이벤트 종류. */

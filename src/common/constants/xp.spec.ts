@@ -42,13 +42,13 @@ describe('xp — levelForXp', () => {
 
 describe('xp — titleForLevel', () => {
   it('레벨에 맞는 타이틀', () => {
-    expect(titleForLevel(1)).toBe('국어 입문자');
-    expect(titleForLevel(5)).toBe('국어 달인');
-    expect(titleForLevel(20)).toBe('수능 정복자');
+    expect(titleForLevel(1)).toBe('자라나는 새싹');
+    expect(titleForLevel(5)).toBe('지혜로운 부엉이');
+    expect(titleForLevel(20)).toBe('전설의 불사조');
   });
 
   it('정의 안 된 레벨은 그 이하 최고 티어 타이틀', () => {
-    expect(titleForLevel(7)).toBe('국어 달인'); // 5~9는 레벨5 타이틀
+    expect(titleForLevel(7)).toBe('지혜로운 부엉이'); // 5~9는 레벨5 타이틀
   });
 });
 
