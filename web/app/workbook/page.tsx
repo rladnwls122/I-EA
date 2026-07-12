@@ -137,9 +137,16 @@ export default function WorkbookPage() {
         </div>
       )}
 
-      {/* 3단: 세부과목 단일 선택 — 대분류를 골라야 노출 */}
+      {/* 3단: 세부과목 단일 선택 — 대분류를 골라야 노출. "전체"는 이 대분류 전체(특정 세부과목 지정 없음). */}
       {category && leafSubjects.length > 0 && (
         <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-1">
+          <button
+            onClick={() => setSubjectId("")}
+            aria-pressed={subjectId === ""}
+            className={chip(subjectId === "")}
+          >
+            전체
+          </button>
           {leafSubjects.map((s) => (
             <button
               key={s.id}

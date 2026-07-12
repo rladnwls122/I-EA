@@ -154,11 +154,24 @@ export function WorkbookBuilder() {
                 </div>
               )}
 
-              {/* 소과목 — 다중 선택 */}
+              {/* 소과목 — 다중 선택. "전체"는 이 대분류의 소과목을 한 번에 다 담는다. */}
               {category && (
                 <div className="mt-5 flex flex-col gap-2">
                   <label className="text-sm font-medium text-foreground/80">소과목 (여러 개 선택 가능)</label>
                   <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() =>
+                        setSelectedSubjects(
+                          subjects.every((s) => selectedSubjects.some((p) => p.id === s.id))
+                            ? []
+                            : subjects,
+                        )
+                      }
+                      aria-pressed={subjects.every((s) => selectedSubjects.some((p) => p.id === s.id))}
+                      className={`${pillBase} ${subjects.every((s) => selectedSubjects.some((p) => p.id === s.id)) ? pillOn : pillOff}`}
+                    >
+                      전체
+                    </button>
                     {subjects.map((s) => (
                       <button key={s.id} onClick={() => toggleSubject(s)}
                         aria-pressed={selectedSubjects.some((p) => p.id === s.id)}

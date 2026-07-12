@@ -133,9 +133,22 @@ export default function QuestionsPage() {
           </div>
         )}
 
-        {/* 3단: 세부과목 다중 선택 — 대분류를 골라야 노출 */}
+        {/* 3단: 세부과목 다중 선택 — 대분류를 골라야 노출. "전체"는 이 대분류의 소과목을 한 번에 다 담는다. */}
         {category && leafSubjects.length > 0 && (
           <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-1">
+            <button
+              onClick={() =>
+                setSubjectIds(
+                  leafSubjects.every((s) => subjectIds.includes(s.id))
+                    ? []
+                    : leafSubjects.map((s) => s.id),
+                )
+              }
+              aria-pressed={leafSubjects.every((s) => subjectIds.includes(s.id))}
+              className={chip(leafSubjects.every((s) => subjectIds.includes(s.id)))}
+            >
+              전체
+            </button>
             {leafSubjects.map((s) => (
               <button
                 key={s.id}
