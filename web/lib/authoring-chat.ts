@@ -15,6 +15,8 @@ export interface ParsedQuestion {
   answerText?: string;
   explanation?: string;
   passage?: string;
+  /** AI가 제안한 핵심 개념 #키워드 — 오답노트 개념별 통계용. 사용자가 편집 가능. */
+  keywords?: string[];
 }
 
 /** 모델이 낸 questionType 변형("객관식(5지선다)" 등)을 정본 값으로 정규화. 실패 시 null. */
@@ -63,6 +65,9 @@ function normalizeQuestion(q: any): ParsedQuestion | null {
     answerText: typeof q.answerText === 'string' ? q.answerText : undefined,
     explanation: typeof q.explanation === 'string' ? q.explanation : undefined,
     passage: typeof q.passage === 'string' ? q.passage : undefined,
+    keywords: Array.isArray(q.keywords)
+      ? q.keywords.map((k: unknown) => String(k).trim()).filter(Boolean)
+      : undefined,
   };
 }
 

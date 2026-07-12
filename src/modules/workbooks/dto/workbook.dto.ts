@@ -48,6 +48,12 @@ export class CreateWorkbookDto {
   @IsArray()
   @IsUUID('4', { each: true })
   questionIds?: string[];
+
+  @ApiPropertyOptional({ description: '문제집 #키워드 태그 ID 목록', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  tagIds?: string[];
 }
 
 export class UpdateWorkbookDto {
@@ -73,6 +79,12 @@ export class UpdateWorkbookDto {
   @IsOptional()
   @IsIn(WORKBOOK_VISIBILITIES)
   visibility?: string;
+
+  @ApiPropertyOptional({ description: '문제집 #키워드 태그 ID 목록(전체 교체)', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  tagIds?: string[];
 }
 
 /** 문제집에 문항 담기(Pick). sourceWorkbookId는 어느 문제집에서 가져왔는지 추적용. */

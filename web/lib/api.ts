@@ -315,6 +315,8 @@ export function createWorkbook(data: {
   visibility?: string;
   /** 장바구니 일괄 담기 — 백엔드 CreateWorkbookDto가 벌크 지원 */
   questionIds?: string[];
+  /** 문제집 #키워드 태그 ID */
+  tagIds?: string[];
 }) {
   return apiFetch<Workbook>('/workbooks', {
     method: 'POST',
@@ -322,7 +324,7 @@ export function createWorkbook(data: {
   });
 }
 
-/** 문제집 수정 */
+/** 문제집 수정. tagIds를 주면 문제집 #키워드 매핑을 통째로 교체한다. */
 export function updateWorkbook(
   id: string,
   data: Partial<{
@@ -330,6 +332,7 @@ export function updateWorkbook(
     description: string;
     coverImageUrl: string;
     visibility: string;
+    tagIds: string[];
   }>,
 ) {
   return apiFetch<Workbook>(`/workbooks/${id}`, {

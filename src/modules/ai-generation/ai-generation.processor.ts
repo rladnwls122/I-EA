@@ -9,7 +9,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JsonWritable = any;
 import { buildRichBlocks, buildRichDoc, extractPlainText } from '@/common/prosemirror/prosemirror.util';
-import { QuestionKind } from '@/common/constants/question';
+import { KEYWORD_TAG_CATEGORY, QuestionKind } from '@/common/constants/question';
 import { GeminiLlmService } from './llm/gemini-llm.service';
 import { LlmGenerationContext, LlmQuestion } from './llm/llm.types';
 import { AI_GENERATION_QUEUE } from './ai-generation.constants';
@@ -80,9 +80,13 @@ export class AiGenerationProcessor extends WorkerHost {
           passageId = passage.id;
         }
 
+        // 이 생성 배치 안에서 같은 키워드가 여러 문항에 걸치면 한 번만 만들어 재사용한다.
+        const tagIdByName = new Map<string, string>();
+
         for (const q of result.questions) {
           const kind = this.normalizeType(q.questionType);
           const choices = this.buildChoices(q, kind);
+          const tagIds = await this.resolveKeywordTagIds(tx, tagIdByName, q.keywords ?? []);
           // 주관식 단답 정답(있으면 자동채점 근거). 서술형이면 null → 자기채점.
           const correctAnswerText =
             kind === '주관식' && q.answerText?.trim() ? q.answerText.trim() : null;
@@ -105,6 +109,7 @@ export class AiGenerationProcessor extends WorkerHost {
               ...(q.explanationText
                 ? { explanation: buildRichBlocks(q.explanationText) as JsonWritable }
                 : {}),
+              ...(tagIds.length ? { questionTags: { create: tagIds.map((tagId) => ({ tagId })) } } : {}),
               difficulty: this.clampDifficulty(q.difficulty ?? ctx.difficulty),
               status: 'DRAFT',
               searchText: this.buildSearchText(q, result.passage?.bodyText),
@@ -170,8 +175,40 @@ export class AiGenerationProcessor extends WorkerHost {
     for (const c of q.choices ?? []) parts.push(extractPlainText(buildRichBlocks(c.content)));
     if (q.answerText) parts.push(q.answerText);
     if (q.explanationText) parts.push(q.explanationText);
+    if (q.keywords?.length) parts.push(q.keywords.join(' '));
     if (passageBody) parts.push(passageBody);
     return parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 5000);
+  }
+
+  /**
+   * 키워드 문자열 배열 → "키워드" 카테고리 태그 ID 배열(find-or-create).
+   * cache는 이 생성 배치(트랜잭션) 안에서 같은 이름을 중복 생성하지 않게 막는다 —
+   * catalog.service.createTag의 find-or-create와 같은 이유(동시 요청 중복 방지).
+   */
+  private async resolveKeywordTagIds(
+    tx: Prisma.TransactionClient,
+    cache: Map<string, string>,
+    keywords: string[],
+  ): Promise<string[]> {
+    const ids: string[] = [];
+    for (const raw of keywords) {
+      const name = raw.trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      let id = cache.get(key);
+      if (!id) {
+        const existing = await tx.tag.findFirst({
+          where: { name, category: KEYWORD_TAG_CATEGORY },
+          select: { id: true },
+        });
+        id = existing
+          ? existing.id
+          : (await tx.tag.create({ data: { name, category: KEYWORD_TAG_CATEGORY } })).id;
+        cache.set(key, id);
+      }
+      ids.push(id);
+    }
+    return ids;
   }
 
   private normalizeType(t: string): QuestionKind {

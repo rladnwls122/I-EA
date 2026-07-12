@@ -23,6 +23,8 @@ export interface LlmQuestion {
   answerText?: string;
   /** 전체 해설(평문, 선택) */
   explanationText?: string;
+  /** 핵심 개념 #키워드(선택) — 오답노트 개념별 통계용. find-or-create로 태그화된다. */
+  keywords?: string[];
   difficulty: number;
 }
 

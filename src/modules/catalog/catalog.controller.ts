@@ -3,12 +3,16 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { UserRoleType } from '@prisma/client';
 import { Public } from '@/common/decorators/public.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
 import { RolesGuard } from '@/modules/auth/roles.guard';
 import { CatalogService } from './catalog.service';
 import { CreateSubjectDto, CreateTagDto } from './dto/catalog.dto';
 
 /**
- * 분류/태그 마스터. 조회는 모든 인증 사용자, 생성은 ADMIN/CREATOR로 제한한다.
+ * 분류/태그 마스터. 조회는 모든 인증 사용자. 소분류 생성은 ADMIN 전용.
+ * 태그 생성은 카테고리에 따라 갈린다 — "키워드"는 모든 유저, 그 외 큐레이션
+ * 카테고리는 ADMIN/CREATOR만(서비스 계층에서 분기, catalog.service 참고).
  * (단원 트리는 MVP에서 제거 — 문제는 3단 분류의 리프[subjects]에 직접 분류된다.)
  */
 @ApiTags('catalog')
@@ -42,9 +46,8 @@ export class CatalogController {
   }
 
   @Post('tags')
-  @Roles(UserRoleType.ADMIN, UserRoleType.CREATOR)
-  @ApiOperation({ summary: '태그 생성 (ADMIN/CREATOR)' })
-  createTag(@Body() dto: CreateTagDto) {
-    return this.service.createTag(dto);
+  @ApiOperation({ summary: '태그 생성 ("키워드" 카테고리는 모든 유저, 그 외는 ADMIN/CREATOR)' })
+  createTag(@Body() dto: CreateTagDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.service.createTag(dto, user);
   }
 }

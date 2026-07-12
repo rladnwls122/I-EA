@@ -13,8 +13,8 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
   // TiDB는 Prisma가 기본으로 만드는 FK 제약조건 DDL을 온전히 지원하지 않는다
   // (db push 시 "SQL syntax error near ')'" / P3014로 실패하는 원인).
   // 공식 권장대로 관계 무결성을 DB FK 대신 Prisma 앱단에서 관리한다.
@@ -66,12 +66,12 @@ enum ExamSessionStatus {
 // 1. users
 // ---------------------------------------------------------------------
 model User {
-  id           String   @id @default(uuid()) @db.Char(36)
-  email        String   @unique @db.VarChar(255)
+  id             String    @id @default(uuid()) @db.Char(36)
+  email          String    @unique @db.VarChar(255)
   // 이메일+비밀번호 가입: Bcrypt 해시만 저장(평문 금지)
-  passwordHash String   @map("password_hash") @db.VarChar(255)
-  nickname     String   @db.VarChar(100)
-  creatorBio   String?  @map("creator_bio") @db.Text
+  passwordHash   String    @map("password_hash") @db.VarChar(255)
+  nickname       String    @db.VarChar(100)
+  creatorBio     String?   @map("creator_bio") @db.Text
   // 게이미피케이션(미니멀 설계): 개인 성장 지표만 둔다. 랭킹/티어/리그 없음.
   //   xp    = 누적 경험치. 정답·복습·스트릭 등으로 적립(적립 규칙은 XP_RULES).
   //   level = xp에서 파생(levelForXp). 저장해두면 조회 시 재계산이 필요 없다.
@@ -183,6 +183,7 @@ model Tag {
   category String @db.VarChar(50)
 
   questionTags QuestionTag[]
+  workbookTags WorkbookTag[]
 
   @@map("tags")
 }
@@ -572,20 +573,36 @@ model Workbook {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  owner      User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner        User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   // 자기참조 순환 — workbooks.service.remove()가 이 문제집을 원본으로 둔 포크들의
   // forkedFromId를 직접 null로 비운다(과거 SetNull과 동일 효과).
-  forkedFrom Workbook?          @relation("WorkbookFork", fields: [forkedFromId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  forks      Workbook[]         @relation("WorkbookFork")
-  questions  WorkbookQuestion[]
+  forkedFrom   Workbook?          @relation("WorkbookFork", fields: [forkedFromId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  forks        Workbook[]         @relation("WorkbookFork")
+  questions    WorkbookQuestion[]
   // 문항 단위 Pick의 출처로 참조된 기록
-  pickedFrom WorkbookQuestion[] @relation("WorkbookPickSource")
-  sessions   ExamSession[]
+  pickedFrom   WorkbookQuestion[] @relation("WorkbookPickSource")
+  sessions     ExamSession[]
+  workbookTags WorkbookTag[]
 
   @@index([visibility, viewCount])
   @@index([ownerId, updatedAt])
   @@index([forkedFromId])
   @@map("workbooks")
+}
+
+// ---------------------------------------------------------------------
+// 17b. workbook_tags (M:N) — question_tags와 같은 패턴. 문제집 단위 #키워드.
+// ---------------------------------------------------------------------
+model WorkbookTag {
+  workbookId String @map("workbook_id") @db.Char(36)
+  tagId      String @map("tag_id") @db.Char(36)
+
+  workbook Workbook @relation(fields: [workbookId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([workbookId, tagId])
+  @@index([tagId])
+  @@map("workbook_tags")
 }
 
 // ---------------------------------------------------------------------

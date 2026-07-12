@@ -85,6 +85,91 @@ describe('WorkbooksService.addQuestion — displayOrder', () => {
   });
 });
 
+describe('WorkbooksService — 문제집 #키워드 태그(workbookTags)', () => {
+  it('create: tagIds가 있으면 workbookTags를 함께 생성하고 tags 배열로 노출한다', async () => {
+    const tag = { id: 't1', name: '이차방정식', category: '키워드' };
+    const prisma = {
+      workbook: {
+        create: jest.fn().mockResolvedValue({
+          id: 'w1',
+          attemptCount: 0,
+          scoreSumPercent: D(0),
+          workbookTags: [{ tag }],
+        }),
+      },
+      question: { findMany: jest.fn() },
+    } as unknown as PrismaService;
+    const module = await Test.createTestingModule({
+      providers: [
+        WorkbooksService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ExamSessionsService, useValue: {} },
+      ],
+    }).compile();
+    const service = module.get(WorkbooksService);
+
+    const result = await service.create({ title: 'WB', tagIds: ['t1'] }, 'user-1');
+
+    expect((prisma.workbook.create as jest.Mock).mock.calls[0][0].data.workbookTags).toEqual({
+      create: [{ tagId: 't1' }],
+    });
+    expect(result).not.toHaveProperty('workbookTags');
+    expect((result as Record<string, unknown>).tags).toEqual([tag]);
+  });
+
+  it('update: tagIds를 주면 기존 매핑을 전부 지우고 새로 만든다(전체 교체)', async () => {
+    const prisma = {
+      workbook: {
+        findUnique: jest.fn().mockResolvedValue({ ownerId: 'user-1' }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ visibility: 'PRIVATE', publishedAt: null }),
+        update: jest.fn().mockResolvedValue({ id: 'w1', workbookTags: [] }),
+      },
+    } as unknown as PrismaService;
+    const module = await Test.createTestingModule({
+      providers: [
+        WorkbooksService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ExamSessionsService, useValue: {} },
+      ],
+    }).compile();
+    const service = module.get(WorkbooksService);
+
+    await service.update('w1', { tagIds: ['t2'] }, 'user-1');
+
+    expect((prisma.workbook.update as jest.Mock).mock.calls[0][0].data.workbookTags).toEqual({
+      deleteMany: {},
+      create: [{ tagId: 't2' }],
+    });
+  });
+
+  it('remove: workbookTag도 트랜잭션에서 함께 지운다', async () => {
+    const prisma = {
+      workbook: {
+        findUnique: jest.fn().mockResolvedValue({ ownerId: 'user-1' }),
+        updateMany: jest.fn(),
+        delete: jest.fn(),
+      },
+      workbookQuestion: { deleteMany: jest.fn(), updateMany: jest.fn() },
+      workbookTag: { deleteMany: jest.fn() },
+      examSession: { updateMany: jest.fn() },
+      $transaction: jest.fn().mockResolvedValue([]),
+    } as unknown as PrismaService;
+
+    const module = await Test.createTestingModule({
+      providers: [
+        WorkbooksService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ExamSessionsService, useValue: {} },
+      ],
+    }).compile();
+    const service = module.get(WorkbooksService);
+
+    await service.remove('w1', 'user-1');
+
+    expect(prisma.workbookTag.deleteMany).toHaveBeenCalledWith({ where: { workbookId: 'w1' } });
+  });
+});
+
 describe('WorkbooksService — 평균 점수 캐시 환산', () => {
   it('avg = scoreSumPercent / attemptCount, 소수 1자리 반올림', async () => {
     // 3회 응시: 80 + 90 + 75 = 245 → 81.666… → 81.7

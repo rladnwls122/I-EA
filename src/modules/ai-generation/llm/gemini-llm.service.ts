@@ -468,6 +468,7 @@ export class GeminiLlmService {
       '      "choices": [ { "content": string, "isCorrect": boolean, "explanation": string(선택) } ](객관식 전용),',
       '      "answerText": string(주관식 단답 정답, 선택),',
       '      "explanationText": string(선택),',
+      '      "keywords": [string, ...] (이 문항의 핵심 개념/출제 포인트를 짧은 명사(구)로 2~4개),',
       '      "difficulty": 1~5',
       '    }',
       '  ]',
@@ -477,6 +478,7 @@ export class GeminiLlmService {
       '- 객관식은 choices를 제공하고 isCorrect:true가 1개 이상(단일정답이면 정확히 1개).',
       '- 주관식 단답형은 answerText에 정답을 넣는다(자동채점 대상).',
       '- 주관식 서술형은 answerText 없이 explanationText에 모범답안을 서술한다.',
+      '- keywords는 오답노트에서 "어느 개념에서 틀렸는지" 통계에 쓰인다 — 매 문항 반드시 채운다.',
       '- 모든 텍스트는 한국어. JSON 외 문자는 절대 출력하지 않는다.',
     ].join('\n');
   }

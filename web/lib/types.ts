@@ -116,6 +116,8 @@ export interface Workbook {
   questions?: WorkbookQuestion[];
   /** 작성자 — 목록/상세 응답에 include됨(id + nickname만). */
   owner?: { id: string; nickname: string };
+  /** 문제집 #키워드 태그 — 상세 조회(findOne)에서만 내려옴. */
+  tags?: Tag[];
 }
 
 export interface WorkbookQuestion {

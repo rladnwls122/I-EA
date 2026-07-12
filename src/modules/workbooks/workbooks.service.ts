@@ -33,6 +33,14 @@ function withAvgScore<T extends { attemptCount: number; scoreSumPercent: Prisma.
   return { ...rest, avgScorePercent: toAvgScorePercent(workbook.attemptCount, scoreSumPercent) };
 }
 
+/** workbookTags(M:N 조인 행) → tag 배열. questions.service의 questionTags 매핑과 같은 패턴. */
+function withTags<T extends { workbookTags: { tag: unknown }[] }>(
+  workbook: T,
+): Omit<T, 'workbookTags'> & { tags: unknown[] } {
+  const { workbookTags, ...rest } = workbook;
+  return { ...rest, tags: workbookTags.map((wt) => wt.tag) };
+}
+
 /**
  * workbooks — 문제집 탐색 / Pick & Mix / 포킹.
  *
@@ -97,6 +105,7 @@ export class WorkbooksService {
       where: { id },
       include: {
         owner: { select: OWNER_SELECT },
+        workbookTags: { include: { tag: { select: { id: true, name: true, category: true } } } },
         questions: {
           orderBy: { displayOrder: 'asc' },
           include: {
@@ -121,7 +130,7 @@ export class WorkbooksService {
 
     // 소유자가 자기 문제집을 여는 건 조회로 세지 않는다.
     // (편집하며 여러 번 열면 인기순 정렬이 자기 문제집으로 오염된다.)
-    if (workbook.ownerId === userId) return withAvgScore(workbook);
+    if (workbook.ownerId === userId) return withAvgScore(withTags(workbook));
 
     const { viewCount } = await this.prisma.workbook.update({
       where: { id },
@@ -130,7 +139,7 @@ export class WorkbooksService {
     });
 
     // 증가된 값을 응답에 반영한다(별도 update라 위 스냅샷은 1 뒤처져 있다).
-    return withAvgScore({ ...workbook, viewCount });
+    return withAvgScore(withTags({ ...workbook, viewCount }));
   }
 
   // --- 생성 / 수정 / 삭제 ----------------------------------------------
@@ -151,10 +160,16 @@ export class WorkbooksService {
         questions: {
           create: questionIds.map((questionId, i) => ({ questionId, displayOrder: i })),
         },
+        ...(dto.tagIds?.length
+          ? { workbookTags: { create: dto.tagIds.map((tagId) => ({ tagId })) } }
+          : {}),
       },
-      include: { owner: { select: OWNER_SELECT } },
+      include: {
+        owner: { select: OWNER_SELECT },
+        workbookTags: { include: { tag: { select: { id: true, name: true, category: true } } } },
+      },
     });
-    return withAvgScore(created);
+    return withAvgScore(withTags(created));
   }
 
   async update(id: string, dto: UpdateWorkbookDto, userId: string) {
@@ -168,7 +183,7 @@ export class WorkbooksService {
     const becomingPublic =
       dto.visibility === 'PUBLIC' && current.visibility !== 'PUBLIC' && !current.publishedAt;
 
-    return this.prisma.workbook.update({
+    const updated = await this.prisma.workbook.update({
       where: { id },
       data: {
         ...(dto.title !== undefined ? { title: dto.title } : {}),
@@ -176,8 +191,16 @@ export class WorkbooksService {
         ...(dto.coverImageUrl !== undefined ? { coverImageUrl: dto.coverImageUrl } : {}),
         ...(dto.visibility !== undefined ? { visibility: dto.visibility } : {}),
         ...(becomingPublic ? { publishedAt: new Date() } : {}),
+        // tagIds가 오면 전체 교체(문항 tagIds와 같은 규약) — 부분 추가/제거가 아니다.
+        ...(dto.tagIds !== undefined
+          ? { workbookTags: { deleteMany: {}, create: dto.tagIds.map((tagId) => ({ tagId })) } }
+          : {}),
+      },
+      include: {
+        workbookTags: { include: { tag: { select: { id: true, name: true, category: true } } } },
       },
     });
+    return withTags(updated);
   }
 
   /**
@@ -189,6 +212,7 @@ export class WorkbooksService {
     await this.assertOwner(id, userId);
     await this.prisma.$transaction([
       this.prisma.workbookQuestion.deleteMany({ where: { workbookId: id } }),
+      this.prisma.workbookTag.deleteMany({ where: { workbookId: id } }),
       this.prisma.workbookQuestion.updateMany({
         where: { sourceWorkbookId: id },
         data: { sourceWorkbookId: null },

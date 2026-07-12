@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Loader2, PencilLine, Plus } from "lucide-react";
+import { ArrowLeft, Check, Loader2, PencilLine, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { buildRichDoc, buildRichBlocks, extractPlainText } from "@/lib/prosemirror";
 import {
@@ -82,7 +82,9 @@ function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
       answerText: "",
       explanation: q.explanation ? buildRichDoc(q.explanation) : buildRichDoc(""),
       points: 1,
-      keywords: [],
+      // AI가 제안한 #키워드 — 카드에 채워두면 사용자가 그대로 두거나 수정할 수 있고,
+      // 저장 시 기존 resolveTagIds 로직이 그대로 태그로 만들어 붙인다.
+      keywords: q.keywords ?? [],
     };
   }
   return {
@@ -95,7 +97,7 @@ function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
     answerText: q.answerText ?? "",
     explanation: q.explanation ? buildRichDoc(q.explanation) : buildRichDoc(""),
     points: 1,
-    keywords: [],
+    keywords: q.keywords ?? [],
   };
 }
 
@@ -176,6 +178,24 @@ export function AuthoringCanvas({
 
   /* ── 문제집 공개 설정 — 최종 검토(저장) 시 함께 반영 ── */
   const [isPublic, setIsPublic] = useState(false);
+
+  /* ── 문제집 #키워드 — 문항 키워드와 별개로 문제집 전체에 붙는 태그.
+   * (오답노트 통계는 문항 키워드가 담당, 이건 문제집 탐색/분류용.) ── */
+  const [workbookKeywords, setWorkbookKeywords] = useState<string[]>([]);
+  const [workbookKeywordInput, setWorkbookKeywordInput] = useState("");
+  const addWorkbookKeyword = useCallback(() => {
+    setWorkbookKeywordInput((raw) => {
+      const name = raw.trim().replace(/^#/, "");
+      if (!name) return "";
+      setWorkbookKeywords((prev) =>
+        prev.some((k) => k.toLowerCase() === name.toLowerCase()) ? prev : [...prev, name],
+      );
+      return "";
+    });
+  }, []);
+  const removeWorkbookKeyword = useCallback((name: string) => {
+    setWorkbookKeywords((prev) => prev.filter((k) => k !== name));
+  }, []);
 
   /* ── 드래그&드롭 순서 변경 ── */
   const dragIndex = useRef<number | null>(null);
@@ -263,6 +283,22 @@ export function AuthoringCanvas({
     return () => {
       cancelled = true;
     };
+  }, [workbook]);
+
+  /* ── 문제집 #키워드 + 공개 설정 복원 — 한 번만 채운다.
+   * isPublic은 원래 workbook.visibility에서 채워지지 않아, 이미 공개인 문제집을
+   * "수정"으로 열고 그대로 저장하면 토글 기본값(false=비공개)이 강제 반영돼
+   * 조용히 비공개로 되돌아가는 버그가 있었다 — 태그 저장과 같은 저장 경로를
+   * 손보는 김에 같이 고친다(별도 커밋 사유로 기록). ── */
+  const tagsHydratedRef = useRef(false);
+  useEffect(() => {
+    if (tagsHydratedRef.current || !workbook) return;
+    tagsHydratedRef.current = true;
+    const names = (workbook.tags ?? [])
+      .filter((t) => t.category === KEYWORD_TAG_CATEGORY)
+      .map((t) => t.name);
+    if (names.length) setWorkbookKeywords(names);
+    setIsPublic(workbook.visibility === "PUBLIC");
   }, [workbook]);
 
   const commitTitle = async () => {
@@ -529,16 +565,22 @@ export function AuthoringCanvas({
         toast.success(`${cards.length}개 문항을 문제집에 저장했어요.`);
       }
 
-      // 3) 공개 설정 반영 — 헤더 토글 값으로 문제집 전체 공개/비공개를 확정.
+      // 4) 문제집 메타 반영 — 공개 설정(바뀐 경우만) + #키워드(항상 전체 교체).
+      //    문항 키워드와 같은 tagIdByName 캐시를 써서 겹치는 이름이면 태그를 재사용한다.
       const targetVisibility = isPublic ? "PUBLIC" : "PRIVATE";
-      if (workbook && workbook.visibility !== targetVisibility) {
-        try {
-          await updateWorkbook(workbookId, { visibility: targetVisibility });
+      const visibilityChanged = !!workbook && workbook.visibility !== targetVisibility;
+      try {
+        const workbookTagIds = await resolveTagIds(workbookKeywords);
+        await updateWorkbook(workbookId, {
+          tagIds: workbookTagIds,
+          ...(visibilityChanged ? { visibility: targetVisibility } : {}),
+        });
+        if (visibilityChanged) {
           toast.success(isPublic ? "문제집을 공개로 전환했어요." : "문제집을 비공개로 유지해요.");
-        } catch (e) {
-          console.error("공개 설정 변경 실패:", e);
-          toast.error("공개 설정 변경에 실패했어요.");
         }
+      } catch (e) {
+        console.error("문제집 설정 변경 실패:", e);
+        toast.error("문제집 설정 변경에 실패했어요.");
       }
     } finally {
       setSaving(false);
@@ -661,6 +703,39 @@ export function AuthoringCanvas({
             </button>
           </div>
         </header>
+        {/* 문제집 #키워드 — 문항 키워드와 별개, 문제집 전체 분류/탐색용. */}
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-6 py-2.5">
+          <span className="mr-1 flex-none text-[11px] font-medium text-muted-foreground">문제집 키워드</span>
+          {workbookKeywords.map((k) => (
+            <span
+              key={k}
+              className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+            >
+              #{k}
+              <button
+                type="button"
+                onClick={() => removeWorkbookKeyword(k)}
+                aria-label={`#${k} 삭제`}
+                className="text-primary/70 hover:text-primary"
+              >
+                <X size={10} strokeWidth={2.5} />
+              </button>
+            </span>
+          ))}
+          <input
+            value={workbookKeywordInput}
+            onChange={(e) => setWorkbookKeywordInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                addWorkbookKeyword();
+              }
+            }}
+            onBlur={addWorkbookKeyword}
+            placeholder="키워드 입력 후 Enter"
+            className="h-6 min-w-[100px] flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/60"
+          />
+        </div>
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {cards.map((c, i) => (
             <div
