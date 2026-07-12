@@ -19,6 +19,7 @@ import { AiGenerationModule } from './modules/ai-generation/ai-generation.module
 import { MeModule } from './modules/me/me.module';
 import { TutorModule } from './modules/tutor/tutor.module';
 import { LootBoxesModule } from './modules/loot-boxes/loot-boxes.module';
+import { ShopModule } from './modules/shop/shop.module';
 import { RedisModule } from './redis/redis.module';
 
 @Module({
@@ -59,6 +60,7 @@ import { RedisModule } from './redis/redis.module';
     MeModule,
     TutorModule,
     LootBoxesModule,
+    ShopModule,
   ],
   providers: [
     // 전역 인증 가드 — @Public() 라우트만 우회한다.
