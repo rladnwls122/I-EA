@@ -46,12 +46,16 @@ export function SolveQuestionCard({
   }, [debouncedText]);
 
   // ── 힌트 ──
+  // 한 번 받은 힌트는 hintText에 남겨 재클릭 시 재호출하지 않는다(문항당 1회, 비용 절약).
   const [hintText, setHintText] = useState<string | null>(null);
-  const [hintUnavailable, setHintUnavailable] = useState(false);
+  const [hintError, setHintError] = useState<string | null>(null);
   const openHint = () => {
+    if (hintText) return; // 이미 받은 힌트 있으면 재호출 안 함
+    setHintError(null);
     revealHint.mutate(item.sessionQuestionId, {
       onSuccess: (res) => setHintText(res.hint),
-      onError: () => setHintUnavailable(true),
+      onError: (e: unknown) =>
+        setHintError(e instanceof Error ? e.message : "힌트를 불러오지 못했어요. 다시 시도해 주세요."),
     });
   };
 
@@ -115,29 +119,33 @@ export function SolveQuestionCard({
       )}
 
       <div className="mt-3 flex items-center gap-2">
-        {!hintUnavailable && (
-          <button
-            type="button"
-            onClick={openHint}
-            disabled={revealHint.isPending}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-primary disabled:opacity-50"
-          >
-            {revealHint.isPending ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <Lightbulb size={13} />
-            )}
-            힌트
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={openHint}
+          disabled={revealHint.isPending}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-primary disabled:opacity-50"
+        >
+          {revealHint.isPending ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <Lightbulb size={13} />
+          )}
+          힌트
+        </button>
         {submitAnswer.isPending && (
           <span className="text-[10px] text-muted-foreground">저장 중…</span>
         )}
       </div>
 
       {hintText && (
-        <p className="mt-2 rounded-lg bg-primary/5 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-          💡 {hintText}
+        <div className="mt-2 flex items-start gap-2 rounded-lg bg-primary/5 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+          <Lightbulb size={13} className="mt-0.5 flex-none text-primary" aria-hidden="true" />
+          <p>{hintText}</p>
+        </div>
+      )}
+      {hintError && (
+        <p className="mt-2 text-xs text-destructive" role="alert">
+          {hintError}
         </p>
       )}
     </article>
