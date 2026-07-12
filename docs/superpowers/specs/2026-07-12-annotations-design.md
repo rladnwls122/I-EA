@@ -27,25 +27,37 @@
 - `target=CHOICES`일 때 `targetId` = choice id → 블록을 선지 하나로 좁힘
 - `target=GENERAL` = 문항 전체 일반 메모, 앵커 없음 (백엔드 이미 지원)
 
-**복구 전략** (주석은 question 원본에 붙는데 문항이 나중에 수정될 수 있음):
+**복구 전략** (주석은 question 원본에 붙는데 문항이 나중에 수정될 수 있음) — 렌더 단계에서 **status를 계산**해 렌더러·패널이 동일한 상태값을 공유한다:
 
-1. 렌더 시 오프셋 위치의 텍스트가 `selectedText`와 일치하면 그대로 마크
-2. 다르면 블록 평문에서 `selectedText` 첫 매치를 재검색해 그 위치에 마크
-3. 그것도 실패하면 마크 생략, 주석은 패널에 "위치 유실" 배지로만 표시. **데이터는 삭제하지 않는다.**
+| status | 조건 | 처리 |
+|---|---|---|
+| `NORMAL` | 오프셋 위치 텍스트 === `selectedText` | 그대로 마크 |
+| `RECOVERED` | 불일치 → 블록 평문에서 `selectedText` 첫 매치 재검색 성공 | 재검색 위치에 마크 |
+| `LOST` | 재검색도 실패 | 마크 생략, 패널에 "위치 유실" 배지 |
+
+**데이터는 삭제하지 않는다.** status는 저장하지 않고 렌더 시 계산 (`resolveAnnotation` 유틸).
+
+**겹치는 주석 우선순위**: `createdAt ASC` 정렬 → 나중에 생성된 것이 위에 렌더.
 
 ## 2. 경량 렌더러
 
-### `web/lib/prosemirror.ts` 확장
+### `web/lib/prosemirror.ts` 확장 — visitor 공통화
 
-- `walkTextSegments(doc)` 추가 — ProseMirror JSON을 순회하며 텍스트 세그먼트와 평문 오프셋 매핑을 산출. **`extractPlainText`와 동일한 순회 규칙**(블록 사이 `\n` 등)을 써서 오프셋이 항상 일치하도록 보장한다. 이 일치가 앵커 모델의 전제.
+- 내부 `visitTextNodes(doc, visit)` visitor를 추가하고, **`extractPlainText`와 신규 `walkTextSegments`가 같은 visitor를 사용**하도록 리팩터. 줄바꿈(`\n`)·hardBreak·공백 처리가 두 함수에서 항상 동일 → 오프셋 불일치 원천 차단.
+- `walkTextSegments(doc)` — 텍스트 세그먼트 배열 `{ text, start, end }` 산출 (start/end = 평문 오프셋).
 
-### 신규 `web/components/notes/AnnotatedText.tsx`
+### 신규 `web/lib/annotations.ts` — 앵커 해석·공통 유틸
 
-- 읽기 전용. props: `{ doc, annotations, onSelect, onMarkClick }`
-- 세그먼트를 주석 오프셋 경계로 분할해 span 렌더. 각 span에 `data-start` 속성(평문 오프셋).
-- 마크 스타일: 하이라이트 = 배경색(알파 낮춤), 밑줄 = `border-bottom` 2px. 겹치는 주석은 뒤에 만든 것이 위에 겹쳐 렌더(겹침 금지 안 함).
-- 마크 클릭 → `onMarkClick(annotationId)` → 패널 해당 항목 포커스.
-- 선택 캡처: 컨테이너 `onMouseUp`/`onTouchEnd` → `window.getSelection()` → 앵커 노드가 컨테이너 내부인지 확인 → span의 `data-start`로 평문 오프셋 환산 → `onSelect({ target, targetId, start, end, selectedText })`.
+- `resolveAnnotation(plain, ann)` → `{ start, end, status: 'NORMAL' | 'RECOVERED' | 'LOST' }` — 복구 전략 구현. 렌더러·패널이 공유.
+- `getReasonLabel(reasonCode)` — REASON_LABELS 접근 공통 유틸 (중복 제거, 향후 다국어 대비).
+- 색 팔레트 상수, `ANNOTATION_TARGETS`/`MARK_STYLES`/`REASON_CODES` 프론트 미러 상수.
+
+### 역할 분리 — 렌더링 / 선택 / 오프셋 변환
+
+- **`web/components/notes/AnnotatedText.tsx`** — **렌더링 전용.** props: `{ doc, annotations, onMarkClick }`. 세그먼트를 주석 오프셋 경계로 분할해 span 렌더. 각 span에 `data-start` **+ `data-end`** 속성(DOM↔오프셋 변환 단순화). 마크 클릭 → `onMarkClick(annotationId)`.
+- **`web/lib/hooks/useTextSelection.ts`** — 드래그/Selection 계산 훅. `onMouseUp`/`onTouchEnd` **+ `selectionchange`(debounce ~150ms)** 처리 — Safari·모바일 선택 핸들 이동 안정성. 컨테이너 ref 내부 선택만 인정, `data-start`/`data-end`로 평문 오프셋 환산 → `{ target, targetId, start, end, selectedText, rect }` 반환.
+- 효과: 렌더러 재사용(리뷰 화면 확장 용이), 선택 로직 독립 테스트 가능.
+- 마크 스타일: 하이라이트 = 배경색(알파 낮춤), 밑줄 = `border-bottom` 2px.
 - Tiptap 의존 없음.
 
 ### 색 팔레트 (기존 토큰 재사용, 신규 색 없음)
@@ -63,18 +75,20 @@
 
 - 드래그 종료 직후 선택 영역 위에 플로팅(데스크톱). 모바일(`md` 미만)은 하단 고정 시트.
 - 구성: 마크 스타일 2종(하이라이트/밑줄) + 색 4개 + 원인태그 4개(개념부족/실수/시간부족/기타, `REASON_CODES`) + 메모 입력(선택).
-- 저장 → `useCreateAnnotation` → 쿼리 invalidate로 즉시 마크 반영.
+- **Esc 키로 툴바 닫기** (선택 해제 포함).
+- 저장 → `useCreateAnnotation` → 쿼리 invalidate로 즉시 마크 반영. (Optimistic update는 이번 범위 아님 — 추후 UX 개선 시 setQueryData+rollback으로 전환 가능.)
 
 ### 신규 `web/components/notes/AnnotationPanel.tsx`
 
-- 상세 페이지 우측(모바일: 아래 스택). 주석 목록: `selectedText` 인용 + 원인 배지(**`REASON_LABELS` 한글 매핑** — 목록 페이지와 일치) + 메모.
+- 상세 페이지 우측(모바일: 아래 스택). **두 섹션으로 분리**: ① 문항 메모(`target=GENERAL`) ② 텍스트 주석 목록 — 앵커 유무의 의미 구분.
+- 텍스트 주석 항목: `selectedText` 인용 + 원인 배지(`getReasonLabel` — 목록 페이지와 일치) + 메모 + `resolveAnnotation` status가 LOST면 "위치 유실" 배지.
 - 인라인 수정(`useUpdateAnnotation`) / 삭제(`useDeleteAnnotation`).
-- 패널 상단 + 버튼 → `target=GENERAL` 문항 전체 메모 생성.
+- 문항 메모 섹션 + 버튼 → `target=GENERAL` 생성.
 - 기존 죽은 textarea(147-150행)를 이 패널로 대체.
 
 ## 4. 상세 페이지 실데이터화 — `web/app/notes/[questionId]/page.tsx`
 
-- 진입 경로: `/notes/[questionId]?sessionId=...`. `NotesDashboard` 오답 링크에 `sessionId` 쿼리 부여(`/me/notes`의 `wrongQuestions[].sessionId` 사용). 쿼리 없으면 `useMyNotes`에서 해당 문항의 최신 오답 세션으로 fallback.
+- 진입 경로: `/notes/[questionId]?sessionId=...`. `NotesDashboard` 오답 링크에 `sessionId` 쿼리 부여(`/me/notes`의 `wrongQuestions[].sessionId` 사용). 쿼리 없으면 `useMyNotes`의 `wrongQuestions`에서 해당 문항 첫 항목의 sessionId로 fallback (**목록이 이미 채점 답안 조회 순서 — 명시적으로는 wrongQuestions 배열 첫 매치 사용으로 고정**, 해석 차이 제거).
 - `fetchExamSession(sessionId)`(기존 `lib/api.ts:527`, 제출 후 unmask됨) → 해당 questionId의 snapshot으로:
   - 선지 렌더: snapshot의 `isCorrect` 플래그로 정답 표시, 내 답안 레코드로 내 선택 표시 (**i===0/i===1 하드코딩 제거**)
   - "이번 풀이 결과": 실제 `isCorrect` 값
@@ -106,9 +120,11 @@
 
 | 파일 | 작업 |
 |---|---|
-| `web/lib/prosemirror.ts` | `walkTextSegments` 추가 |
-| `web/components/notes/AnnotatedText.tsx` | 신규 — 렌더러 + 선택 캡처 |
-| `web/components/notes/AnnotationToolbar.tsx` | 신규 — 플로팅 툴바/모바일 시트 |
-| `web/components/notes/AnnotationPanel.tsx` | 신규 — 목록/수정/삭제/GENERAL 메모 |
+| `web/lib/prosemirror.ts` | `visitTextNodes` visitor 공통화 + `walkTextSegments` 추가, `extractPlainText`를 visitor 기반으로 리팩터 |
+| `web/lib/annotations.ts` | 신규 — `resolveAnnotation`(status), `getReasonLabel`, 팔레트·상수 미러 |
+| `web/lib/hooks/useTextSelection.ts` | 신규 — 선택 계산 훅 (mouseup/touchend + selectionchange debounce) |
+| `web/components/notes/AnnotatedText.tsx` | 신규 — 렌더링 전용 (data-start/data-end) |
+| `web/components/notes/AnnotationToolbar.tsx` | 신규 — 플로팅 툴바/모바일 시트, Esc 닫기 |
+| `web/components/notes/AnnotationPanel.tsx` | 신규 — 문항 메모/텍스트 주석 2섹션, 수정/삭제 |
 | `web/app/notes/[questionId]/page.tsx` | mock 제거, 실데이터 + AnnotatedText 통합 |
 | `web/components/notes/NotesDashboard.tsx` | 오답 링크에 sessionId 쿼리 부여 |
