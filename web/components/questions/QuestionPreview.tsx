@@ -35,6 +35,7 @@ export function QuestionPreview({
   const toggleCart = () => {
     if (inCart) {
       remove(question.id);
+      toast.success("장바구니에서 뺐어요.");
       return;
     }
     add({
@@ -43,6 +44,7 @@ export function QuestionPreview({
       subjectName: question.subject?.name,
       questionType: q.questionType,
     });
+    toast.success("문제를 담았어요.");
   };
 
   const solveNow = () => {

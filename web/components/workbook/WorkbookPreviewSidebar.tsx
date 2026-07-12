@@ -161,17 +161,21 @@ export function WorkbookPreviewSidebar({
                     <button
                       type="button"
                       aria-label={inCart ? "담김 — 빼려면 클릭" : "이 문항만 담기"}
-                      onClick={() =>
-                        inCart
-                          ? remove(wq.questionId)
-                          : wq.question &&
-                            add({
-                              id: wq.questionId,
-                              stemText: extractPlainText(wq.question.stem),
-                              subjectName: wq.question.subject?.name,
-                              questionType: wq.question.questionType,
-                            })
-                      }
+                      onClick={() => {
+                        if (inCart) {
+                          remove(wq.questionId);
+                          toast.success("장바구니에서 뺐어요.");
+                          return;
+                        }
+                        if (!wq.question) return;
+                        add({
+                          id: wq.questionId,
+                          stemText: extractPlainText(wq.question.stem),
+                          subjectName: wq.question.subject?.name,
+                          questionType: wq.question.questionType,
+                        });
+                        toast.success("문제를 담았어요.");
+                      }}
                       className={`flex h-7 w-7 flex-none items-center justify-center rounded-md border transition-colors ${
                         inCart
                           ? "border-primary bg-primary/10 text-primary"
