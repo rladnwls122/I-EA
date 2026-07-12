@@ -7,6 +7,9 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { QuestionKind } from '@/common/constants/question';
+import { extractPlainText, PMNode } from '@/common/prosemirror/prosemirror.util';
+import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
+import { LlmHintContext } from '@/modules/ai-generation/llm/llm.types';
 import {
   XP_RULES,
   levelForXp,
@@ -31,7 +34,10 @@ type JsonWritable = any;
 
 @Injectable()
 export class ExamSessionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly geminiLlm: GeminiLlmService,
+  ) {}
 
   /**
    * 필터 조건으로 PUBLISHED 문제를 뽑아 세션을 조립한다.
@@ -262,7 +268,18 @@ export class ExamSessionsService {
         id: true,
         isHintUsed: true,
         hintUsedAt: true,
-        question: { select: { hintContent: true } },
+        question: {
+          select: {
+            hintContent: true,
+            questionType: true,
+            stem: true,
+            choices: true,
+            correctAnswerText: true,
+            explanation: true,
+            difficulty: true,
+            subject: { select: { name: true, examCategory: true, examType: true } },
+          },
+        },
         examSession: { select: { userId: true, status: true } },
       },
     });
@@ -271,7 +288,14 @@ export class ExamSessionsService {
     if (sq.examSession.status !== 'IN_PROGRESS') {
       throw new BadRequestException('이미 제출된 세션입니다.');
     }
-    if (!sq.question.hintContent) throw new NotFoundException('이 문항에는 힌트가 없습니다.');
+
+    // 출제자 작성 힌트가 있으면 그대로(빠른 경로), 없으면 AI로 즉석 생성(휘발).
+    let hint: string;
+    if (sq.question.hintContent) {
+      hint = sq.question.hintContent;
+    } else {
+      hint = (await this.geminiLlm.generateHint(this.buildHintContext(sq.question))).hint;
+    }
 
     // 최초 열람 시각만 남긴다(이미 열람했으면 기존 값 유지).
     const hintUsedAt = sq.hintUsedAt ?? new Date();
@@ -282,7 +306,38 @@ export class ExamSessionsService {
       });
     }
 
-    return { sessionQuestionId, hint: sq.question.hintContent, isHintUsed: true, hintUsedAt };
+    return { sessionQuestionId, hint, isHintUsed: true, hintUsedAt };
+  }
+
+  /**
+   * 라이브 question(스냅샷 아님 — 힌트는 채점 근거가 아니다)에서 힌트 생성 컨텍스트를 만든다.
+   * ProseMirror JSON(stem/choices[].content)은 extractPlainText로 평문화한다.
+   */
+  private buildHintContext(q: {
+    questionType: string;
+    stem: unknown;
+    choices: unknown;
+    correctAnswerText: string | null;
+    explanation: unknown;
+    difficulty: number;
+    subject: { name: string; examCategory: string; examType: string };
+  }): LlmHintContext {
+    const rawChoices = Array.isArray(q.choices) ? (q.choices as Array<Record<string, unknown>>) : [];
+    const choices = rawChoices.map((c) => ({
+      content: extractPlainText(c.content as PMNode | PMNode[] | null | undefined),
+      isCorrect: c.isCorrect === true,
+    }));
+    return {
+      questionType: q.questionType as QuestionKind,
+      stemText: extractPlainText(q.stem as PMNode | PMNode[] | null | undefined),
+      choices: choices.length ? choices : undefined,
+      correctAnswerText: q.correctAnswerText ?? undefined,
+      explanationText: extractPlainText(q.explanation as PMNode | PMNode[] | null | undefined) || undefined,
+      difficulty: q.difficulty,
+      subjectName: q.subject.name,
+      examCategory: q.subject.examCategory,
+      examType: q.subject.examType,
+    };
   }
 
   /**

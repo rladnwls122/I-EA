@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { ExamSessionsService } from './exam-sessions.service';
 import { PrismaService } from '@/prisma/prisma.service';
+import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
 import { XP_RULES } from '@/common/constants/xp';
 
 /**
@@ -12,7 +13,7 @@ describe('ExamSessionsService.readChoiceIds', () => {
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
-      providers: [ExamSessionsService, { provide: PrismaService, useValue: {} }],
+      providers: [ExamSessionsService, { provide: PrismaService, useValue: {} }, { provide: GeminiLlmService, useValue: {} }],
     }).compile();
     const service = module.get(ExamSessionsService);
     // private 헬퍼 — 분포 집계의 유일한 입력 정제 지점이라 직접 검증한다.
@@ -53,7 +54,7 @@ describe('ExamSessionsService.awardForSubmit — 데일리 챌린지 게이트',
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       // awardForSubmit은 tx를 인자로 받으므로 PrismaService 자체는 쓰지 않는다 → 빈 스텁.
-      providers: [ExamSessionsService, { provide: PrismaService, useValue: {} }],
+      providers: [ExamSessionsService, { provide: PrismaService, useValue: {} }, { provide: GeminiLlmService, useValue: {} }],
     }).compile();
     service = module.get(ExamSessionsService);
   });
