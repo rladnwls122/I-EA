@@ -86,3 +86,29 @@ export interface LlmGenerationContext {
    */
   existingKeywords?: string[];
 }
+
+/**
+ * 응시 중 힌트 즉석 생성 컨텍스트 (동기 호출).
+ * 정답 정보(정답 선지/정답 텍스트)를 모델에 주되, 시스템 프롬프트에서
+ * "정답을 힌트에 노출하지 말라"고 지시한다 — 좋은 넛지를 만들기 위한 근거일 뿐이다.
+ */
+export interface LlmHintContext {
+  questionType: QuestionKind; // "객관식" | "주관식"
+  /** 발문 평문 */
+  stemText: string;
+  /** 객관식 선지(평문 + 정답 여부). 주관식이면 생략. */
+  choices?: { content: string; isCorrect: boolean }[];
+  /** 주관식 단답 정답(평문, 있으면). */
+  correctAnswerText?: string;
+  /** 전체 해설 평문(있으면 힌트 근거로 활용). */
+  explanationText?: string;
+  difficulty?: number;
+  subjectName?: string;
+  examCategory?: string;
+  examType?: string;
+}
+
+/** 힌트 생성 결과 — 산문 한 덩어리를 JSON으로 감싸 받는다. */
+export interface LlmHintResult {
+  hint: string;
+}
