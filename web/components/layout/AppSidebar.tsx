@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BookmarkCheck, BookOpenCheck, Lightbulb, User } from "lucide-react";
+import { Logo } from "@/components/brand/Logo";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -27,9 +28,9 @@ export function AppSidebar() {
         <Link
           href="/"
           aria-label="홈"
-          className="mb-8 flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground transition-transform active:scale-95"
+          className="mb-8 flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-transform active:scale-95"
         >
-          IΔ
+          <Logo className="h-6 w-6" />
         </Link>
 
         <nav className="flex flex-col gap-1.5">
