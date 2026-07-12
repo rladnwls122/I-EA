@@ -62,6 +62,22 @@ enum ExamSessionStatus {
   EXPIRED
 }
 
+enum LootBoxTier {
+  COMMON
+  RARE
+  LEGENDARY
+}
+
+enum PurchaseStatus {
+  PENDING
+  FULFILLED
+}
+
+enum CoinHistoryReason {
+  BOX_OPEN
+  PURCHASE
+}
+
 // ---------------------------------------------------------------------
 // 1. users
 // ---------------------------------------------------------------------
@@ -84,6 +100,12 @@ model User {
   currentStreak  Int       @default(0) @map("current_streak")
   longestStreak  Int       @default(0) @map("longest_streak")
   xpBoostUntil   DateTime? @map("xp_boost_until")
+  coins          Int       @default(0)
+  equippedTitle  String?   @map("equipped_title") @db.VarChar(60)
+  nameColor      String?   @map("name_color") @db.VarChar(20)
+  // 힌트 하루 무료 소진 카운트(날짜 바뀌면 리셋). D-3 게이팅용.
+  hintFreeDate   DateTime? @map("hint_free_date") @db.Date
+  hintFreeUsed   Int       @default(0) @map("hint_free_used")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
@@ -99,6 +121,10 @@ model User {
   workbooks        Workbook[]
   xpHistory        XpHistory[]
   milestones       MilestoneAchievement[]
+  lootBoxes        LootBox[]
+  inventory        UserInventory[]
+  purchases        Purchase[]
+  coinHistory      CoinHistory[]
 
   @@map("users")
 }
@@ -628,4 +654,73 @@ model WorkbookQuestion {
   @@index([questionId])
   @@index([sourceWorkbookId])
   @@map("workbook_questions")
+}
+
+// ---------------------------------------------------------------------
+// 19. loot_boxes — 상자(가챠). 세션 결과 등으로 지급되고, 개봉 시 보상 코인이 확정된다.
+// ---------------------------------------------------------------------
+model LootBox {
+  id            String      @id @default(uuid()) @db.Char(36)
+  userId        String      @map("user_id") @db.Char(36)
+  tier          LootBoxTier
+  examSessionId String?     @map("exam_session_id") @db.Char(36)
+  rewardCoins   Int?        @map("reward_coins")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  openedAt      DateTime?   @map("opened_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, openedAt])
+  @@map("loot_boxes")
+}
+
+// ---------------------------------------------------------------------
+// 20. user_inventory — 유저가 보유한 상점 아이템(수량). itemKey는 상점 카탈로그 키.
+// ---------------------------------------------------------------------
+model UserInventory {
+  userId   String @map("user_id") @db.Char(36)
+  itemKey  String @map("item_key") @db.VarChar(50)
+  quantity Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, itemKey])
+  @@map("user_inventory")
+}
+
+// ---------------------------------------------------------------------
+// 21. purchases — 코인 상점 구매 내역.
+// ---------------------------------------------------------------------
+model Purchase {
+  id        String         @id @default(uuid()) @db.Char(36)
+  userId    String         @map("user_id") @db.Char(36)
+  itemKey   String         @map("item_key") @db.VarChar(50)
+  coinCost  Int            @map("coin_cost")
+  status    PurchaseStatus @default(FULFILLED)
+  note      String?        @db.VarChar(500)
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("purchases")
+}
+
+// ---------------------------------------------------------------------
+// 22. coin_history — 코인 증감 원장(ledger). xp_history와 같은 패턴.
+// ---------------------------------------------------------------------
+model CoinHistory {
+  id           String            @id @default(uuid()) @db.Char(36)
+  userId       String            @map("user_id") @db.Char(36)
+  amount       Int
+  reason       CoinHistoryReason
+  referenceId  String?           @map("reference_id") @db.Char(36)
+  balanceAfter Int               @map("balance_after")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("coin_history")
 }
