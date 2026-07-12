@@ -406,6 +406,8 @@ export interface SessionQuestionItem {
 export interface SessionDetail {
   id: string;
   subject: { id: string; name: string } | null;
+  /** 문제집 응시면 그 문제집 ID, 아니면 null. 결과 추천에서 자기 자신 제외에 사용. */
+  workbookId: string | null;
   status: SessionStatus;
   startedAt: string | null;
   submittedAt: string | null;
@@ -458,6 +460,8 @@ export interface SubmitSessionResult {
   scorePercent: number;
   durationSec: number | null;
   reward: SubmitReward | null;
+  /** 제출 보상으로 드랍된 상자 — 드랍 없으면 null */
+  box: { id: string; tier: LootBoxTier } | null;
 }
 
 export interface SelfGradeReward {
