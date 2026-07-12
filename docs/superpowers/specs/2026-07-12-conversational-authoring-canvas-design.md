@@ -39,13 +39,15 @@ AI가 이전 대화를 기억하지 못해 "한 문제씩 신중히 소통하며
 
 /edit?workbookId=<id>  (신규 캔버스 페이지)
   ├─ 좌: 문제집 캔버스
-  │    - 편집 가능 제목 + 과목 뱃지
-  │    - 문항 카드 목록 (Tiptap 수동 편집 — 기존 QuestionEditor 카드 재사용)
-  │    - "+" 수동 문항 추가
-  │    - 하단 저장 툴바 (기존 handleSave 로직 재사용)
+  │    - 편집 가능 제목 + 과목 뱃지, 우상단 "최종 검토"(저장/발행 진입)
+  │    - 문항 카드 목록 — 카드별 액션 ✨AI수정 / ✏️수동편집 / 🗑삭제
+  │    - "정답 및 해설" 접이식, "+" 수동 문항 추가
+  │    - 하단 툴바(추가/정렬/저장/복사 — 기존 handleSave 로직 재사용)
   └─ 우: 멀티턴 채팅
+       - 헤더에 "한번에 N개씩" 배치 크기 선택기
        - 스레드(기억 O), 스트리밍 델타 렌더
-       - AI가 문항 제시 → "추가/교체" 버튼 → 좌측 카드 반영
+       - 제안 카드(문항별): 유형 뱃지·본문·선지(정답 강조)·해설 + "문제집에 적용하기"
+       - 적용 후 "✓ 문제집에 추가되었어요" 상태 + 버튼 제거(제안별 멱등)
 ```
 
 라우트는 `/edit?workbookId=<id>` 로 신설한다. 캔버스 내부는 기존 `QuestionEditor`의 카드/저장 로직을 재사용하되 우측 패널을 멀티턴 채팅으로 교체한다. 기존 `/studio/editor` 는 남겨두거나(하위 호환) `/edit` 로 리다이렉트 — 구현 계획에서 확정.
@@ -58,7 +60,8 @@ AI가 이전 대화를 기억하지 못해 "한 문제씩 신중히 소통하며
 - `workbookId: string` — 히스토리 키 + 컨텍스트.
 - `message: string` — 이번 사용자 발화.
 - `subjectId: string` — 생성 문항 분류(NOT NULL 요건).
-- `currentQuestions?: {index, questionType, stem, choices?, answer?, explanation?}[]` — 좌측 캔버스 현재 상태(교체 대상 참조용, 평문 요약).
+- `batchSize?: number` — "한번에 N개씩". 시스템 프롬프트에 목표 생성 개수로 주입(기본 1). AI가 이 수만큼 문항 방출.
+- `currentQuestions?: {index, questionType, stem, choices?, answer?, explanation?}[]` — 좌측 캔버스 현재 상태(교체/수정 대상 참조용, 평문 요약).
 
 **히스토리**: Redis 키 `authoring:{workbookId}:{userId}`. tutor의 `loadHistory`/`trimTurns`/append 패턴 재사용. TTL·턴 수 상한 동일 정책.
 
@@ -101,7 +104,12 @@ AI가 이전 대화를 기억하지 못해 "한 문제씩 신중히 소통하며
 - 클릭 → `buildRichBlocks`/`buildRichDoc`로 평문을 ProseMirror JSON 조립 → 좌측 draft 상태 add 또는 replace[index].
 - 미저장 draft는 로컬 id, 저장 시 `POST /questions` → 발행 → 문제집 연결(기존 `WorkbookBuilder`/`QuestionEditor` handleSave 로직 재사용).
 
-**수동 편집**: 좌측 카드의 Tiptap 편집은 기존 그대로 유지.
+**적용 상태**: 제안 카드는 적용되면 "✓ 문제집에 추가되었어요"로 잠기고 버튼 제거(같은 제안 중복 추가 방지 — 클라 로컬 플래그).
+
+**카드별 액션(좌측)**:
+- ✏️ 수동 편집 — 기존 Tiptap 편집 토글.
+- 🗑 삭제 — draft 제거(기존 removeQuestion).
+- ✨ AI 수정 — **채팅으로 라우팅**. 클릭 시 채팅 입력창에 "문제 N 수정: " 프리필 + `currentQuestions`에 해당 카드 포함 → 사용자가 지시 추가해 전송하면 AI가 `target=replace:N`으로 재생성. 별도 refine 엔드포인트 없음.
 
 ## 데이터 흐름 (한 턴)
 
