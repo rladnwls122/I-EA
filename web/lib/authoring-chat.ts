@@ -27,7 +27,13 @@ export function parseQuestionBlocks(text: string): ParsedQuestion[] {
       const arr = JSON.parse(m[1].trim());
       if (Array.isArray(arr)) {
         for (const q of arr) {
-          if (q && typeof q.stem === 'string' && typeof q.questionType === 'string') {
+          // questionType은 허용값을 조기 검증 — 임의 문자열이 카드/저장까지 흘러가
+          // 원인 불명의 저장 실패로 보이는 것을 막는다.
+          if (
+            q &&
+            typeof q.stem === 'string' &&
+            (q.questionType === '객관식' || q.questionType === '주관식')
+          ) {
             out.push(q as ParsedQuestion);
           }
         }
