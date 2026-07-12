@@ -9,6 +9,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ExamSessionsService } from '@/modules/exam-sessions/exam-sessions.service';
 import { PaginatedResult } from '@/common/dto/pagination.dto';
+import { AUTHOR_PUBLISH_REWARD, resolveAuthorRewardQuota } from '@/common/constants/shop';
+import { levelForXp, XP_REASON } from '@/common/constants/xp';
 import {
   AddQuestionDto,
   CreateWorkbookDto,
@@ -183,22 +185,40 @@ export class WorkbooksService {
     const becomingPublic =
       dto.visibility === 'PUBLIC' && current.visibility !== 'PUBLIC' && !current.publishedAt;
 
-    const updated = await this.prisma.workbook.update({
-      where: { id },
-      data: {
-        ...(dto.title !== undefined ? { title: dto.title } : {}),
-        ...(dto.description !== undefined ? { description: dto.description } : {}),
-        ...(dto.coverImageUrl !== undefined ? { coverImageUrl: dto.coverImageUrl } : {}),
-        ...(dto.visibility !== undefined ? { visibility: dto.visibility } : {}),
-        ...(becomingPublic ? { publishedAt: new Date() } : {}),
-        // tagIds가 오면 전체 교체(문항 tagIds와 같은 규약) — 부분 추가/제거가 아니다.
-        ...(dto.tagIds !== undefined
-          ? { workbookTags: { deleteMany: {}, create: dto.tagIds.map((tagId) => ({ tagId })) } }
-          : {}),
-      },
-      include: {
-        workbookTags: { include: { tag: { select: { id: true, name: true, category: true } } } },
-      },
+    // becomingPublic이면 문항 저자 보상 지급까지 한 트랜잭션으로 묶어야 원자적이다
+    // (문제집은 공개됐는데 보상만 누락되는 상황을 막는다).
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.workbook.update({
+        where: { id },
+        data: {
+          ...(dto.title !== undefined ? { title: dto.title } : {}),
+          ...(dto.description !== undefined ? { description: dto.description } : {}),
+          ...(dto.coverImageUrl !== undefined ? { coverImageUrl: dto.coverImageUrl } : {}),
+          ...(dto.visibility !== undefined ? { visibility: dto.visibility } : {}),
+          ...(becomingPublic ? { publishedAt: new Date() } : {}),
+          // tagIds가 오면 전체 교체(문항 tagIds와 같은 규약) — 부분 추가/제거가 아니다.
+          ...(dto.tagIds !== undefined
+            ? { workbookTags: { deleteMany: {}, create: dto.tagIds.map((tagId) => ({ tagId })) } }
+            : {}),
+        },
+        include: {
+          workbookTags: { include: { tag: { select: { id: true, name: true, category: true } } } },
+        },
+      });
+
+      // PRIVATE → PUBLIC 최초 전환: 안의 모든 문항 저자에게 발행 보상(캡 초과분은 헬퍼가 알아서 무보상).
+      if (becomingPublic) {
+        const questions = await tx.workbookQuestion.findMany({
+          where: { workbookId: id },
+          select: { question: { select: { creatorId: true } } },
+        });
+        const now = new Date();
+        for (const wq of questions) {
+          await this.awardPublishReward(tx, wq.question.creatorId, id, now);
+        }
+      }
+
+      return result;
     });
     return withTags(updated);
   }
@@ -234,7 +254,7 @@ export class WorkbooksService {
 
   /** 문항 담기. displayOrder 생략 시 맨 뒤에 붙인다. */
   async addQuestion(workbookId: string, dto: AddQuestionDto, userId: string) {
-    await this.assertOwner(workbookId, userId);
+    const workbook = await this.assertOwner(workbookId, userId);
     await this.assertQuestionsPublished([dto.questionId]);
 
     try {
@@ -271,6 +291,18 @@ export class WorkbooksService {
           where: { id: workbookId },
           data: { questionCount: { increment: 1 } },
         });
+
+        // 대상 문제집이 이미 공개 상태면, 담기는 그 즉시 "발행"과 같다 — 문항 저자에게 보상.
+        if (workbook.visibility === 'PUBLIC') {
+          const question = await tx.question.findUnique({
+            where: { id: dto.questionId },
+            select: { creatorId: true },
+          });
+          if (question) {
+            await this.awardPublishReward(tx, question.creatorId, workbookId, new Date());
+          }
+        }
+
         return row;
       });
     } catch (e) {
@@ -447,15 +479,79 @@ export class WorkbooksService {
     }
   }
 
-  private async assertOwner(id: string, userId: string): Promise<void> {
+  /**
+   * 소유자 검증. visibility도 함께 돌려준다 — addQuestion이 "이미 공개된 문제집에
+   * 담기 = 즉시 발행"을 판정할 때 별도 조회 없이 재사용한다(다른 호출부는 반환값을 무시해도 무방).
+   */
+  private async assertOwner(id: string, userId: string): Promise<{ ownerId: string; visibility: string }> {
     const workbook = await this.prisma.workbook.findUnique({
       where: { id },
-      select: { ownerId: true },
+      select: { ownerId: true, visibility: true },
     });
     if (!workbook) throw new NotFoundException('문제집을 찾을 수 없습니다.');
     if (workbook.ownerId !== userId) {
       throw new ForbiddenException('본인 문제집만 수정할 수 있습니다.');
     }
+    return workbook;
+  }
+
+  /**
+   * 공개 문제집에 문항이 포함되는 순간(=발행) 문항 저자에게 +20 EXP·+20 코인.
+   * 하루 캡(AUTHOR_PUBLISH_DAILY_CAP)을 넘기면 아무것도 하지 않는다.
+   *
+   * EXP 지급은 exam-sessions.service.ts의 awardXp/awardForSubmit과 동일한 메커니즘을 재사용한다:
+   *   xp를 증가시키고 xp에서 level을 다시 계산해 저장(User.level은 파생값이지만 캐시 컬럼),
+   *   xp_history에 원장 1행을 남긴다. 단, 그 메서드들이 함께 하는 마일스톤(milestone_achievements)
+   *   재계산은 여기서는 하지 않는다 — 저자 보상은 세션 제출/자기채점과 달리 스트릭·콤보 문맥이 없어
+   *   묶어서 재사용하기보다 최소 구현으로 남기고, 필요해지면 별도로 붙인다.
+   */
+  private async awardPublishReward(
+    tx: Prisma.TransactionClient,
+    authorUserId: string,
+    referenceId: string,
+    now: Date,
+  ): Promise<{ rewarded: boolean }> {
+    const user = await tx.user.findUnique({
+      where: { id: authorUserId },
+      select: { coins: true, xp: true, authorRewardDate: true, authorRewardCount: true },
+    });
+    if (!user) return { rewarded: false };
+
+    const quota = resolveAuthorRewardQuota(user.authorRewardDate, user.authorRewardCount, now);
+    if (!quota.allow) return { rewarded: false };
+
+    const nextXp = (user.xp ?? 0) + AUTHOR_PUBLISH_REWARD.exp;
+    const updatedUser = await tx.user.update({
+      where: { id: authorUserId },
+      data: {
+        coins: { increment: AUTHOR_PUBLISH_REWARD.coins },
+        xp: { increment: AUTHOR_PUBLISH_REWARD.exp },
+        level: levelForXp(nextXp),
+        authorRewardDate: now,
+        authorRewardCount: quota.newCount,
+      },
+      select: { coins: true, xp: true },
+    });
+
+    await tx.coinHistory.create({
+      data: {
+        userId: authorUserId,
+        amount: AUTHOR_PUBLISH_REWARD.coins,
+        reason: 'AUTHOR_PUBLISH',
+        referenceId,
+        balanceAfter: updatedUser.coins,
+      },
+    });
+    await tx.xpHistory.create({
+      data: {
+        userId: authorUserId,
+        amount: AUTHOR_PUBLISH_REWARD.exp,
+        reason: XP_REASON.AUTHOR_PUBLISH,
+        balanceAfter: updatedUser.xp,
+      },
+    });
+
+    return { rewarded: true };
   }
 
   /** 담기 대상은 발행된 문항이어야 한다. 존재하지 않거나 미발행이면 거부. */

@@ -118,12 +118,17 @@ describe('WorkbooksService — 문제집 #키워드 태그(workbookTags)', () =>
   });
 
   it('update: tagIds를 주면 기존 매핑을 전부 지우고 새로 만든다(전체 교체)', async () => {
-    const prisma = {
+    const tx = {
       workbook: {
-        findUnique: jest.fn().mockResolvedValue({ ownerId: 'user-1' }),
-        findUniqueOrThrow: jest.fn().mockResolvedValue({ visibility: 'PRIVATE', publishedAt: null }),
         update: jest.fn().mockResolvedValue({ id: 'w1', workbookTags: [] }),
       },
+    };
+    const prisma = {
+      workbook: {
+        findUnique: jest.fn().mockResolvedValue({ ownerId: 'user-1', visibility: 'PRIVATE' }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ visibility: 'PRIVATE', publishedAt: null }),
+      },
+      $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
     } as unknown as PrismaService;
     const module = await Test.createTestingModule({
       providers: [
@@ -136,7 +141,7 @@ describe('WorkbooksService — 문제집 #키워드 태그(workbookTags)', () =>
 
     await service.update('w1', { tagIds: ['t2'] }, 'user-1');
 
-    expect((prisma.workbook.update as jest.Mock).mock.calls[0][0].data.workbookTags).toEqual({
+    expect((tx.workbook.update as jest.Mock).mock.calls[0][0].data.workbookTags).toEqual({
       deleteMany: {},
       create: [{ tagId: 't2' }],
     });
