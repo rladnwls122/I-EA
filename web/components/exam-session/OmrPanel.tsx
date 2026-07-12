@@ -41,7 +41,8 @@ export function OmrPanel({
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="fixed inset-x-0 bottom-16 z-30 mx-auto max-w-[960px] px-3 md:px-6">
+      {/* 모바일: 하단바(64px)+전역 네비(56px)를 모두 비켜 위에 뜬다. 데스크톱: 하단바(64px)만 비키면 된다. */}
+      <div className="fixed inset-x-0 bottom-[7.5rem] z-30 mx-auto max-w-[960px] px-3 md:bottom-16 md:px-6">
         <div className="flex max-h-[58vh] flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl">
           <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
             <div className="flex items-baseline gap-2">
@@ -54,7 +55,7 @@ export function OmrPanel({
               type="button"
               onClick={onClose}
               aria-label="답안지 닫기"
-              className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background md:h-8 md:w-8"
             >
               <X size={15} />
             </button>
@@ -102,7 +103,7 @@ function OmrRow({
       <button
         type="button"
         onClick={onJump}
-        className={`flex h-6 w-6 flex-none items-center justify-center rounded-md font-mono text-[11px] tabular-nums transition-colors duration-150 ease-swift hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card ${
+        className={`flex h-10 w-10 flex-none items-center justify-center rounded-md font-mono text-[11px] tabular-nums transition-colors duration-150 ease-swift hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card md:h-6 md:w-6 ${
           answered ? "font-semibold text-foreground" : "text-muted-foreground"
         }`}
         title="문항으로 이동"
@@ -111,7 +112,7 @@ function OmrRow({
       </button>
 
       {isObjective ? (
-        <div className="flex flex-1 gap-1">
+        <div className="flex flex-1 flex-wrap gap-1">
           {item.choiceIds.map((cid, i) => {
             const on = item.selectedChoiceId === cid;
             return (
@@ -121,7 +122,7 @@ function OmrRow({
                 onClick={() => mark(cid)}
                 aria-pressed={on}
                 aria-label={`${item.order}번 ${i + 1}번 선택`}
-                className={`flex h-7 w-7 flex-none items-center justify-center rounded-full border font-mono text-[11px] transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card ${
+                className={`flex h-10 w-10 flex-none items-center justify-center rounded-full border font-mono text-[11px] transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-card md:h-7 md:w-7 ${
                   on
                     ? "border-primary bg-primary font-semibold text-primary-foreground"
                     : "border-border text-muted-foreground hover:border-primary/50 hover:bg-primary/5"
@@ -136,7 +137,7 @@ function OmrRow({
         <button
           type="button"
           onClick={onJump}
-          className="flex flex-1 items-center gap-1.5 text-left text-[11px] text-muted-foreground"
+          className="flex min-h-10 flex-1 items-center gap-1.5 text-left text-[11px] text-muted-foreground md:min-h-0"
         >
           <span
             className={`h-2 w-2 flex-none rounded-full ${

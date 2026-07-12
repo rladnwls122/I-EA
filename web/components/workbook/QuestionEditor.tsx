@@ -180,6 +180,9 @@ export function QuestionEditor() {
   const [isSaving, setIsSaving] = useState(false);
   // 생성옵션(과목/유형/난이도/문항수) 접이식 — 기본 접힘, 톱니로 펼침.
   const [optionsOpen, setOptionsOpen] = useState(false);
+  // 모바일 전용 탭 전환 — md 이상에서는 항상 편집/AI 패널이 나란히 보인다.
+  // AuthoringCanvas.tsx의 mobileTab 패턴을 그대로 따른다.
+  const [mobileTab, setMobileTab] = useState<"editor" | "chat">("editor");
   // 생성 직후 바로 초안에 꽂지 않고, 검토(정답/해설 확인) 후 명시적으로 적용할 대기열.
   const [pendingPreview, setPendingPreview] = useState<Draft[]>([]);
 
@@ -463,9 +466,41 @@ export function QuestionEditor() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh)] overflow-hidden">
+    <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden md:h-screen md:flex-row">
+      {/* 모바일 전용 탭 전환 — md 이상에서는 좌우 나란히 보이므로 숨긴다. AuthoringCanvas.tsx와 동일 패턴. */}
+      <div className="flex border-b border-border md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileTab("editor")}
+          aria-pressed={mobileTab === "editor"}
+          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+            mobileTab === "editor" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground"
+          }`}
+        >
+          편집
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab("chat")}
+          aria-pressed={mobileTab === "chat"}
+          className={`relative flex-1 py-2.5 text-sm font-medium transition-colors ${
+            mobileTab === "chat" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground"
+          }`}
+        >
+          AI
+          {/* AI가 생성 중인 동안에도 편집 탭을 보고 있으면 알려주는 신호 */}
+          {isGenerating && mobileTab !== "chat" && (
+            <span className="absolute right-[calc(50%-2.75rem)] top-2 h-1.5 w-1.5 animate-pulse rounded-full bg-purple" />
+          )}
+        </button>
+      </div>
+
       {/* ═══ 좌측 패널: 문항 에디터 ═══ */}
-      <section className="flex-1 flex flex-col min-w-0 border-r border-border relative">
+      <section
+        className={`flex-1 min-w-0 flex-col border-r border-border relative md:flex ${
+          mobileTab === "editor" ? "flex" : "hidden"
+        }`}
+      >
         {/* 헤더 — 모바일에서 제목/버튼이 한 줄에 안 들어가면 아래로 감싸도록 flex-wrap */}
         <header className="flex flex-wrap items-center justify-between gap-3 px-4 md:px-6 py-3 md:py-4 border-b border-border bg-background sticky top-0 z-10">
           <div className="flex items-center gap-3 min-w-0">
@@ -686,8 +721,12 @@ export function QuestionEditor() {
       </section>
 
       {/* ═══ 우측 패널: AI 채팅 (글래스) ═══ */}
-      {/* 모바일: 좌측 에디터와 세로로 남은 공간을 나눠 갖도록 flex-1(둘 다) — lg 이상에선 고정폭으로 나란히 */}
-      <aside className="glass-panel w-full flex-1 lg:w-[360px] lg:flex-none flex flex-col border-l relative z-20">
+      {/* 모바일: 탭 선택 시에만 표시(한 번에 한 패널) — md 이상에선 고정폭으로 나란히. AuthoringCanvas.tsx와 동일 패턴 */}
+      <aside
+        className={`glass-panel w-full flex-1 min-w-0 flex-col border-l relative z-20 md:flex md:w-[360px] md:flex-none ${
+          mobileTab === "chat" ? "flex" : "hidden"
+        }`}
+      >
         {/* ambient glow — 유리 뒤에 비칠 빛. 콘텐츠 아래(-z-10), 인터랙션 차단 없음 */}
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
           <div className="absolute -top-24 -right-20 h-64 w-64 rounded-full bg-primary/[0.08] blur-3xl" />

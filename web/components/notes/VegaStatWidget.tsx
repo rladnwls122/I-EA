@@ -10,9 +10,18 @@ const VegaEmbed = dynamic(() => import('react-vega').then(mod => mod.VegaEmbed),
 
 export function VegaStatWidget() {
   const [mounted, setMounted] = useState(false);
+  // 모바일 폭에서는 우측 범례가 도넛과 나란히 놓이며 크로우딩/줄바꿈 없는 가로 초과가 생기므로
+  // 범례를 하단으로 내려 가로 폭 안에서 자연스럽게 줄바꿈되게 한다.
+  const [isNarrow, setIsNarrow] = useState(false);
 
   useEffect(() => {
     setMounted(true);
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 640px)');
+    setIsNarrow(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsNarrow(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
   }, []);
 
   const spec: any = {
@@ -37,7 +46,9 @@ export function VegaStatWidget() {
         field: 'reason',
         type: 'nominal',
         legend: {
-          orient: 'right',
+          orient: isNarrow ? 'bottom' : 'right',
+          direction: isNarrow ? 'horizontal' : 'vertical',
+          columns: isNarrow ? 3 : undefined,
           title: null,
           labelColor: 'var(--foreground)',
         },
@@ -62,9 +73,10 @@ export function VegaStatWidget() {
     return <div className="h-[180px] w-full animate-pulse bg-surface-raised rounded-lg" />;
   }
 
-  // 브라우저 환경에서만 렌더링되도록 한 번 더 보장
+  // 브라우저 환경에서만 렌더링되도록 한 번 더 보장. overflow-x-auto는 폭이 매우 좁을 때
+  // 범례/차트가 컨테이너를 넘겨도 페이지 전체가 가로로 밀리지 않도록 하는 안전장치.
   return (
-    <div className="w-full">
+    <div className="w-full overflow-x-auto">
       {typeof window !== 'undefined' && <VegaEmbed spec={spec} options={{ actions: false }} />}
     </div>
   );

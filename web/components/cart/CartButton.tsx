@@ -25,7 +25,7 @@ export function CartButton() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="장바구니"
-        className="fixed bottom-6 right-6 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-popover text-foreground shadow-lg transition-colors duration-150 ease-swift hover:border-primary/40 hover:bg-accent"
+        className="fixed bottom-20 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-popover text-foreground shadow-lg transition-colors duration-150 ease-swift hover:border-primary/40 hover:bg-accent md:bottom-6 md:right-6"
       >
         <ShoppingBasket size={18} />
         {count > 0 && (

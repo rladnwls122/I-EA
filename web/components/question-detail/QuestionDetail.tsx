@@ -83,17 +83,17 @@ export function QuestionDetail({
 
   return (
     <div className="min-h-screen">
-      {/* 헤더 */}
-      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/90 px-4 backdrop-blur">
+      {/* 헤더 — 모바일에서는 [뒤로+제목] 1행, [수정/삭제+토글] 2행으로 줄바꿈. md 이상은 기존 한 줄 유지. */}
+      <header className="sticky top-0 z-30 flex flex-wrap items-center gap-3 border-b border-border bg-background/90 px-4 py-2 backdrop-blur md:h-14 md:flex-nowrap md:py-0">
         <button
           type="button"
           onClick={() => router.back()}
           aria-label="뒤로"
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="flex h-10 w-10 flex-none items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <ArrowLeft size={15} />
         </button>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 md:flex-initial">
           <span className="truncate font-mono text-xs text-muted-foreground">
             {question.subject
               ? `${question.subject.examCategory} · ${question.subject.name}`
@@ -101,57 +101,59 @@ export function QuestionDetail({
           </span>
         </div>
 
-        <div className="flex-1" />
+        <div className="hidden md:block md:flex-1" />
 
-        {isOwner && !editing && (
-          <div className="flex gap-1">
+        <div className="flex w-full items-center justify-end gap-2 md:w-auto">
+          {isOwner && !editing && (
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="flex h-10 items-center gap-1 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors duration-150 ease-swift hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                <Pencil size={13} /> 수정
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleteQuestion.isPending}
+                className="flex h-10 items-center gap-1 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors duration-150 ease-swift hover:border-destructive/50 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
+              >
+                {deleteQuestion.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} 삭제
+              </button>
+            </div>
+          )}
+
+          <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
             <button
               type="button"
-              onClick={() => setEditing(true)}
-              className="flex h-10 items-center gap-1 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors duration-150 ease-swift hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              onClick={() => solved && setReveal(true)}
+              disabled={!solved}
+              aria-pressed={reveal}
+              title={solved ? undefined : "문제를 풀어야 채점 결과를 볼 수 있어요"}
+              className={`rounded-md px-3 py-1.5 text-xs transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                reveal
+                  ? "bg-primary/10 font-semibold text-primary"
+                  : solved
+                    ? "font-medium text-muted-foreground hover:text-foreground"
+                    : "cursor-not-allowed font-medium text-muted-foreground/40"
+              }`}
             >
-              <Pencil size={13} /> 수정
+              채점 결과
             </button>
             <button
               type="button"
-              onClick={handleDelete}
-              disabled={deleteQuestion.isPending}
-              className="flex h-10 items-center gap-1 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors duration-150 ease-swift hover:border-destructive/50 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
+              onClick={() => setReveal(false)}
+              aria-pressed={!reveal}
+              className={`rounded-md px-3 py-1.5 text-xs transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                !reveal
+                  ? "bg-primary/10 font-semibold text-primary"
+                  : "font-medium text-muted-foreground hover:text-foreground"
+              }`}
             >
-              {deleteQuestion.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} 삭제
+              문제 탐색
             </button>
           </div>
-        )}
-
-        <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
-          <button
-            type="button"
-            onClick={() => solved && setReveal(true)}
-            disabled={!solved}
-            aria-pressed={reveal}
-            title={solved ? undefined : "문제를 풀어야 채점 결과를 볼 수 있어요"}
-            className={`rounded-md px-3 py-1.5 text-xs transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-              reveal
-                ? "bg-primary/10 font-semibold text-primary"
-                : solved
-                  ? "font-medium text-muted-foreground hover:text-foreground"
-                  : "cursor-not-allowed font-medium text-muted-foreground/40"
-            }`}
-          >
-            채점 결과
-          </button>
-          <button
-            type="button"
-            onClick={() => setReveal(false)}
-            aria-pressed={!reveal}
-            className={`rounded-md px-3 py-1.5 text-xs transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-              !reveal
-                ? "bg-primary/10 font-semibold text-primary"
-                : "font-medium text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            문제 탐색
-          </button>
         </div>
       </header>
 

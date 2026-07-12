@@ -241,7 +241,7 @@ export function SessionPage({ id }: { id: string }) {
           onClose={() => setRecPreviewId(null)}
         />
 
-        <div className="fixed bottom-6 right-6 z-40 flex gap-2">
+        <div className="fixed bottom-20 right-4 z-40 flex gap-2 md:bottom-6 md:right-6">
           <button
             type="button"
             onClick={() => setDrawingEnabled((v) => !v)}
@@ -312,7 +312,7 @@ export function SessionPage({ id }: { id: string }) {
       </div>
 
       {/* 문항 2열 배치(md 이상). 답안지는 하단 드로어로 분리 → 본문은 전체 폭 사용. */}
-      <div className="mx-auto w-full max-w-[960px] flex-1 p-4 pb-24 md:p-6 md:pb-28">
+      <div className="mx-auto w-full max-w-[960px] flex-1 p-4 pb-40 md:p-6 md:pb-28">
         <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
           {session.questions
             .slice()

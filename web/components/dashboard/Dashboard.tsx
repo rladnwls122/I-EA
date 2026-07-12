@@ -36,8 +36,8 @@ function StreakHero({ enabled, onBrowse }: { enabled: boolean; onBrowse: () => v
           <p className="text-xs text-muted-foreground">{s?.title ?? "레벨"}</p>
         </div>
 
-        <div className="w-full min-w-0 flex-1 md:w-auto md:min-w-[160px]">
-          <div className="mb-1 flex items-center justify-between">
+        <div className="w-full min-w-0 shrink-0 md:w-auto md:min-w-[160px] md:flex-1">
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
             <span className="font-mono text-xs text-muted-foreground">XP {s?.xp ?? 0}</span>
             {s?.xpToNextTier != null && (
               <span className="font-mono text-[10px] text-muted-foreground">

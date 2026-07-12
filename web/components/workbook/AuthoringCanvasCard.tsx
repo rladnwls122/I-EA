@@ -94,13 +94,15 @@ export function AuthoringCanvasCard({
               {card.points}점
             </span>
           </div>
-          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          {/* 모바일(<md)에서는 hover가 없어 group-hover로는 도달 불가 — 항상 노출 + 40px 탭 타깃.
+              md 이상(마우스)에서는 기존 hover/focus-within 노출 동작을 유지한다. */}
+          <div className="flex items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
             <button
               type="button"
               onClick={onAskAi}
               aria-label="AI에게 이 문항 수정 요청"
               title="AI에게 수정 요청"
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-swift hover:bg-purple/10 hover:text-purple"
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-swift hover:bg-purple/10 hover:text-purple md:h-7 md:w-7"
             >
               <Sparkles size={14} strokeWidth={2} />
             </button>
@@ -109,7 +111,7 @@ export function AuthoringCanvasCard({
               onClick={onStartEdit}
               aria-label="직접 수정"
               title="직접 수정"
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground"
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground md:h-7 md:w-7"
             >
               <PencilLine size={14} strokeWidth={2} />
             </button>
@@ -118,7 +120,7 @@ export function AuthoringCanvasCard({
               onClick={onRemove}
               aria-label="문항 삭제"
               title="문항 삭제"
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-wrong/10 hover:text-wrong"
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-wrong/10 hover:text-wrong md:h-7 md:w-7"
             >
               <Trash2 size={14} strokeWidth={2} />
             </button>

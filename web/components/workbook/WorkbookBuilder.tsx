@@ -95,7 +95,7 @@ export function WorkbookBuilder() {
   }, [subjectTree, examType, examTypes]);
 
   return (
-    <div className="mx-auto max-w-[980px] px-8 py-8">
+    <div className="mx-auto max-w-[980px] px-4 py-8 md:px-8">
       {/* ── 헤더 ── */}
       <div className="mb-10">
         <span className="mb-2 block font-mono text-xs uppercase tracking-widest text-muted-foreground">

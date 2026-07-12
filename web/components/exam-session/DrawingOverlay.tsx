@@ -67,7 +67,8 @@ export function DrawingOverlay({ onClose }: { onClose: () => void }) {
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       />
-      <div className="fixed bottom-20 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-border bg-popover px-3 py-2 shadow-lg surface-sheen">
+      {/* 모바일: 전역 하단 네비(56px)를 비키도록 bottom-20. 데스크톱: 네비가 없으므로 화면 하단에 더 붙인다. */}
+      <div className="fixed bottom-20 left-1/2 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl border border-border bg-popover px-3 py-2 shadow-lg surface-sheen md:bottom-6">
         {COLORS.map((c) => (
           <button
             key={c}
@@ -78,7 +79,7 @@ export function DrawingOverlay({ onClose }: { onClose: () => void }) {
             }}
             aria-label={`색상 ${c}`}
             aria-pressed={!erasing && color === c}
-            className={`h-8 w-8 rounded-full border-2 transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover ${
+            className={`h-10 w-10 flex-none rounded-full border-2 transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover md:h-8 md:w-8 ${
               !erasing && color === c ? "border-foreground" : "border-transparent"
             }`}
             style={{ backgroundColor: c }}
@@ -88,7 +89,7 @@ export function DrawingOverlay({ onClose }: { onClose: () => void }) {
           type="button"
           onClick={() => setErasing(true)}
           aria-pressed={erasing}
-          className={`flex h-8 w-8 items-center justify-center rounded-md border transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover ${
+          className={`flex h-10 w-10 flex-none items-center justify-center rounded-md border transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover md:h-8 md:w-8 ${
             erasing ? "border-primary text-primary" : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
           }`}
           title="지우개"
@@ -98,16 +99,16 @@ export function DrawingOverlay({ onClose }: { onClose: () => void }) {
         <button
           type="button"
           onClick={clearAll}
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-wrong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover"
+          className="flex h-10 w-10 flex-none items-center justify-center rounded-md border border-border text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-wrong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover md:h-8 md:w-8"
           title="전체 지우기"
         >
           <Trash2 size={14} />
         </button>
-        <span className="mx-1 h-4 w-px bg-border" />
+        <span className="mx-1 h-4 w-px flex-none bg-border" />
         <button
           type="button"
           onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover"
+          className="flex h-10 w-10 flex-none items-center justify-center rounded-md border border-border text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover md:h-8 md:w-8"
           title="화면필기 끄기"
         >
           <X size={14} />
