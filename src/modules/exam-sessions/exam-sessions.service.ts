@@ -634,8 +634,12 @@ export class ExamSessionsService {
     const boostActive = isBoostActive(user.xpBoostUntil, now);
     const grindXp = (solveXp + comboXp + weakXp) * (boostActive ? BOOST_MULTIPLIER : 1);
 
-    // 2) 스트릭 전이 + 마일스톤(부스터 미적용)
-    const st = computeStreak(user.lastActiveDate, user.currentStreak, now);
+    // 2) 스트릭 전이 + 마일스톤(부스터 미적용). 보유한 '연속학습 보호권' 수량을 조회해 하루 결석 방어에 사용.
+    const shield = await tx.userInventory.findUnique({
+      where: { userId_itemKey: { userId, itemKey: 'STREAK_SHIELD' } },
+      select: { quantity: true },
+    });
+    const st = computeStreak(user.lastActiveDate, user.currentStreak, now, shield?.quantity ?? 0);
     const milestone = st.counted ? streakMilestoneXp(st.currentStreak) : { xp: 0, grantBoost: false };
 
     // 3) 데일리 챌린지 보너스(부스터 미적용) — 그날 첫 채점 제출에만 +50, 하루 1회.
@@ -661,6 +665,14 @@ export class ExamSessionsService {
         xpBoostUntil,
       },
     });
+
+    // 보호권으로 스트릭을 방어했으면 인벤토리에서 1개 소모.
+    if (st.shieldConsumed) {
+      await tx.userInventory.update({
+        where: { userId_itemKey: { userId, itemKey: 'STREAK_SHIELD' } },
+        data: { quantity: { decrement: 1 } },
+      });
+    }
 
     const breakdown = { solveXp, comboXp, weakXp, streakXp: milestone.xp, dailyXp, boostActive };
     // 원장 기록 + 마일스톤 감지(제출 후 xp/최장스트릭 기준).

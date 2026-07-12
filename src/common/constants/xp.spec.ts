@@ -76,13 +76,18 @@ describe('xp — computeStreak', () => {
   const d = (s: string) => new Date(s + 'T12:00:00');
 
   it('첫 학습이면 streak 1', () => {
-    expect(computeStreak(null, 0, d('2026-07-11'))).toEqual({ currentStreak: 1, counted: true });
+    expect(computeStreak(null, 0, d('2026-07-11'))).toEqual({
+      currentStreak: 1,
+      counted: true,
+      shieldConsumed: false,
+    });
   });
 
   it('어제 학습했으면 +1', () => {
     expect(computeStreak(d('2026-07-10'), 3, d('2026-07-11'))).toEqual({
       currentStreak: 4,
       counted: true,
+      shieldConsumed: false,
     });
   });
 
@@ -90,6 +95,7 @@ describe('xp — computeStreak', () => {
     expect(computeStreak(d('2026-07-11'), 4, d('2026-07-11'))).toEqual({
       currentStreak: 4,
       counted: false,
+      shieldConsumed: false,
     });
   });
 
@@ -97,6 +103,7 @@ describe('xp — computeStreak', () => {
     expect(computeStreak(d('2026-07-08'), 9, d('2026-07-11'))).toEqual({
       currentStreak: 1,
       counted: true,
+      shieldConsumed: false,
     });
   });
 });

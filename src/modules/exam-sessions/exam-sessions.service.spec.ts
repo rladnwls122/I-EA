@@ -66,12 +66,16 @@ describe('ExamSessionsService.awardForSubmit — 데일리 챌린지 게이트',
     const update = jest.fn().mockResolvedValue({});
     const xpHistoryCreate = jest.fn().mockResolvedValue({});
     const milestoneCreateMany = jest.fn().mockResolvedValue({ count: 0 });
+    // 보호권 미보유(quantity 조회 null) — 스트릭 방어 분기는 별도 스펙에서 검증.
+    const inventoryFindUnique = jest.fn().mockResolvedValue(null);
+    const inventoryUpdate = jest.fn().mockResolvedValue({});
     const tx = {
       user: { findUnique: jest.fn().mockResolvedValue(user), update },
       xpHistory: { create: xpHistoryCreate },
       milestoneAchievement: { createMany: milestoneCreateMany },
+      userInventory: { findUnique: inventoryFindUnique, update: inventoryUpdate },
     };
-    return { tx, update, xpHistoryCreate, milestoneCreateMany };
+    return { tx, update, xpHistoryCreate, milestoneCreateMany, inventoryFindUnique, inventoryUpdate };
   }
 
   /** private 메서드 직접 호출. solve/combo/weak = 0으로 두어 gained == dailyXp가 되게 한다. */

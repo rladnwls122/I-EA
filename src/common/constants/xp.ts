@@ -184,18 +184,25 @@ function dayIndex(d: Date): number {
  * 스트릭 전이. 오늘 학습(채점)이 일어났을 때 새 연속일수를 구한다.
  *   - 오늘 이미 학습함(diff<=0): 변화 없음(counted=false).
  *   - 어제 학습함(diff===1): +1.
- *   - 그 외(첫 학습이거나 하루 이상 공백): 1로 리셋.
+ *   - 하루 공백(diff===2)이고 shieldCount>0: '연속학습 보호권' 1개 소모해 스트릭 유지 + 오늘 +1.
+ *   - 그 외(첫 학습이거나 이틀 이상 공백/shield 없음): 1로 리셋.
+ * shieldCount는 기본값 0 — 기존 3-인자 호출부는 shieldConsumed:false로 동일하게 동작(하위호환).
  */
 export function computeStreak(
   lastActive: Date | null | undefined,
   currentStreak: number,
   today: Date,
-): { currentStreak: number; counted: boolean } {
-  if (!lastActive) return { currentStreak: 1, counted: true };
+  shieldCount = 0,
+): { currentStreak: number; counted: boolean; shieldConsumed: boolean } {
+  if (!lastActive) return { currentStreak: 1, counted: true, shieldConsumed: false };
   const diff = dayIndex(today) - dayIndex(lastActive);
-  if (diff <= 0) return { currentStreak, counted: false };
-  if (diff === 1) return { currentStreak: currentStreak + 1, counted: true };
-  return { currentStreak: 1, counted: true };
+  if (diff <= 0) return { currentStreak, counted: false, shieldConsumed: false };
+  if (diff === 1) return { currentStreak: currentStreak + 1, counted: true, shieldConsumed: false };
+  // diff >= 2: 하루 이상 공백. shield 1개로 1일 결석만 방어(스트릭 유지 + 오늘 +1).
+  if (diff === 2 && shieldCount > 0) {
+    return { currentStreak: currentStreak + 1, counted: true, shieldConsumed: true };
+  }
+  return { currentStreak: 1, counted: true, shieldConsumed: false };
 }
 
 /** 스트릭 마일스톤 보너스. 정확히 7일·30일에 도달한 날에만 발동(+부스터 부여). */
