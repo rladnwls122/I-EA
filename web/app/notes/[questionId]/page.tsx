@@ -11,6 +11,9 @@ import { AnnotatedText } from '@/components/notes/AnnotatedText';
 import { AnnotationToolbar } from '@/components/notes/AnnotationToolbar';
 import { AnnotationPanel } from '@/components/notes/AnnotationPanel';
 
+/** 필기 툴바를 띄울 대상 — 발문·지문·선지만. 해설(EXPLANATION) 드래그로는 안 뜬다. */
+const ANNOTATABLE_TARGETS = new Set(['STEM', 'PASSAGE', 'CHOICES']);
+
 function NoteDetail() {
   const { questionId } = useParams() as { questionId: string };
   const searchParams = useSearchParams();
@@ -44,9 +47,9 @@ function NoteDetail() {
   const answer = sq?.answer ?? null;
 
   // 렌더에 쓸 doc들 — snapshot 우선, 없으면 원본 문항
-  // Question 타입에는 passage 필드가 없다(지문은 세션 스냅샷 컨텍스트에서만 내려온다) — 원본 문항 fallback 없음.
+  // 지문은 세션 스냅샷 우선, 세션 없이 진입하면 원본 문항의 passage.content(getById가 함께 내려줌)로 fallback.
   const stemDoc = snapshot?.stem ?? question?.stem;
-  const passageDoc = snapshot?.passage;
+  const passageDoc = snapshot?.passage ?? question?.passage?.content;
   const explanationDoc = snapshot?.explanation ?? question?.explanation;
   // snapshot 우선(SessionChoice[]). 원본 문항(question.choices)은 실제로는 항상
   // 평문 배열([{id,content,isCorrect}] — questions.service.ts getById가 Json 컬럼을
@@ -98,9 +101,10 @@ function NoteDetail() {
     ? plainOf(selection.target, selection.targetId).slice(selection.start, selection.end)
     : '';
 
-  // 새 선택이 잡히면 스냅샷 갱신. null(collapse)일 땐 유지 → 툴바 안 닫힘.
+  // 새 선택이 잡히면 스냅샷 갱신. 발문·지문·선지 대상만 툴바를 띄운다(해설 제외).
+  // null(collapse)일 땐 유지 → 툴바 안 닫힘.
   useEffect(() => {
-    if (selection && canonicalText) {
+    if (selection && canonicalText && ANNOTATABLE_TARGETS.has(selection.target)) {
       setPending({ selection, canonicalText });
     }
   }, [selection, canonicalText]);

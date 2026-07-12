@@ -13,8 +13,8 @@ export interface AnnotationSelection {
   /** target 블록 평문 기준 오프셋 (end exclusive) */
   start: number;
   end: number;
-  /** 툴바 배치용 — 페이지 좌표 (선택 영역 상단 중앙) */
-  rect: { top: number; left: number };
+  /** 툴바 배치용 — 뷰포트 좌표. left=선택 영역 가로 중앙, top/bottom=선택 상·하단. */
+  rect: { top: number; bottom: number; left: number };
 }
 
 function closestEl(node: Node | null): HTMLElement | null {
@@ -51,8 +51,9 @@ function readSelection(): AnnotationSelection | null {
     start,
     end,
     rect: {
-      top: r.top + window.scrollY,
-      left: r.left + r.width / 2 + window.scrollX,
+      top: r.top,
+      bottom: r.bottom,
+      left: r.left + r.width / 2,
     },
   };
 }

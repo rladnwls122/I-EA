@@ -5,7 +5,7 @@
  * 데스크톱: 선택 영역 위 플로팅 / 모바일(md 미만): 하단 고정 시트.
  * Esc로 닫기(선택 해제 포함).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Highlighter, Underline, X } from 'lucide-react';
 import { useCreateAnnotation } from '@/lib/hooks';
 import {
@@ -31,6 +31,27 @@ export function AnnotationToolbar({ questionId, selection, canonicalText, onClos
   const [reasonCode, setReasonCode] = useState<ReasonCode | null>(null);
   const [memoText, setMemoText] = useState('');
   const create = useCreateAnnotation();
+
+  // 데스크톱 플로팅 위치 — 측정 후 뷰포트 안으로 클램핑(화면 밖으로 안 나가게).
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined' || window.innerWidth < 768) {
+      setPos(null); // 모바일은 하단 시트(클래스)로
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const M = 8; // 가장자리 여백
+    let left = selection.rect.left - w / 2;
+    left = Math.max(M, Math.min(left, window.innerWidth - w - M));
+    let top = selection.rect.top - h - M; // 기본: 선택 위
+    if (top < M) top = selection.rect.bottom + M; // 위 공간 없으면 아래로
+    top = Math.max(M, Math.min(top, window.innerHeight - h - M));
+    setPos({ top, left });
+  }, [selection]);
 
   // Esc → 닫기
   useEffect(() => {
@@ -62,15 +83,12 @@ export function AnnotationToolbar({ questionId, selection, canonicalText, onClos
 
   return (
     <div
-      // 데스크톱: 선택 위 플로팅 / 모바일: 하단 시트(탭바 위)
+      ref={ref}
+      // 데스크톱: 선택 근처 플로팅(뷰포트 클램핑) / 모바일: 하단 시트(탭바 위)
       className="z-50 w-72 rounded-xl border border-border bg-popover p-3 shadow-2xl
                  max-md:fixed max-md:inset-x-3 max-md:bottom-16 max-md:w-auto
-                 md:absolute md:-translate-x-1/2"
-      style={
-        typeof window !== 'undefined' && window.innerWidth >= 768
-          ? { top: selection.rect.top - 8, left: selection.rect.left, transform: 'translate(-50%, -100%)' }
-          : undefined
-      }
+                 md:fixed"
+      style={pos ? { top: pos.top, left: pos.left } : undefined}
     >
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1">

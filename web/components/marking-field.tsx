@@ -5,8 +5,8 @@ import { useEffect, useRef } from "react";
 /**
  * 마킹 필드 — 인트로 앰비언트 배경.
  *
- * OMR 답안지의 마킹 점 격자를 깔고, 천천히 움직이는 "이해의 커서"(에메랄드 광원)가
- * 지나가며 빈 동그라미를 정답처럼 채운다 → 커서가 지나면 서서히 비워진다.
+ * OMR 답안지의 마킹 점 격자를 깔고, "이해의 커서"(에메랄드 광원)가 마우스 포인터를
+ * 부드럽게 따라가며 근처 빈 동그라미를 정답처럼 채운다 → 지나가면 서서히 비워진다.
  * 히어로 카피 "틀린 이유가 다음 정답이 되는 곳"의 루프를 배경이 그대로 연기한다.
  *
  * 순수 2D canvas라 SSR 안전(클라이언트 전용 마운트) + WebGL 라이브러리 없이 가볍다.
@@ -65,31 +65,23 @@ export function MarkingField() {
       }
     };
 
-    /** 커서(광원) 두 개 — 리사주 경로로 유기적으로 유영. */
-    const cursors = [
-      { ax: 0.55, ay: 0.42, fx: 0.00007, fy: 0.00011, px: 0, py: 1.7 },
-      { ax: 0.42, ay: 0.6, fx: 0.00009, fy: 0.00006, px: 2.3, py: 0.4 },
-    ];
+    /** 이해의 커서 — 마우스 포인터를 향해 lerp로 부드럽게 이동. 첫 이동 전엔 화면 중앙. */
+    const mouse = { x: 0, y: 0, tx: 0, ty: 0, seen: false };
+    const centerIfUnseen = () => {
+      if (!mouse.seen) {
+        mouse.x = mouse.tx = w / 2;
+        mouse.y = mouse.ty = h / 2;
+      }
+    };
 
-    const cursorAt = (c: (typeof cursors)[number], t: number) => ({
-      x: (0.5 + c.ax * 0.5 * Math.sin(t * c.fx + c.px)) * w,
-      y: (0.5 + c.ay * 0.5 * Math.sin(t * c.fy + c.py)) * h,
-    });
-
-    const draw = (t: number) => {
+    const draw = () => {
       ctx.clearRect(0, 0, w, h);
-      const pts = cursors.map((c) => cursorAt(c, t));
+      const px = mouse.x;
+      const py = mouse.y;
 
       for (const b of bubbles) {
-        // 가장 가까운 커서의 영향도.
-        let infl = 0;
-        for (const p of pts) {
-          const d = Math.hypot(b.x - p.x, b.y - p.y);
-          if (d < CURSOR_R) {
-            const v = 1 - d / CURSOR_R;
-            if (v > infl) infl = v;
-          }
-        }
+        const d = Math.hypot(b.x - px, b.y - py);
+        const infl = d < CURSOR_R ? 1 - d / CURSOR_R : 0;
         const target = infl * infl; // ease-in — 가장자리는 은은, 중심은 또렷
         // 채워질 땐 빠르게, 빠질 땐 느리게 → 잔광이 뒤따른다.
         b.a += (target - b.a) * (target > b.a ? 0.12 : 0.03);
@@ -122,8 +114,11 @@ export function MarkingField() {
 
     let raf = 0;
     let running = false;
-    const loop = (t: number) => {
-      draw(t);
+    const loop = () => {
+      // 커서를 마우스 타깃으로 부드럽게 이동(lerp).
+      mouse.x += (mouse.tx - mouse.x) * 0.15;
+      mouse.y += (mouse.ty - mouse.y) * 0.15;
+      draw();
       raf = requestAnimationFrame(loop);
     };
     const start = () => {
@@ -136,20 +131,32 @@ export function MarkingField() {
       cancelAnimationFrame(raf);
     };
 
-    // 정적 폴백 — 커서가 멈춘 한 장이되, activation을 수렴시켜 마킹이 실제로 채워지게 한다.
+    // 정적 폴백(reduced-motion) — 커서를 중앙에 두고 activation을 수렴시킨다.
     const drawStatic = () => {
-      for (let i = 0; i < 40; i++) draw(4200);
+      mouse.x = mouse.tx = w / 2;
+      mouse.y = mouse.ty = h / 2;
+      for (let i = 0; i < 40; i++) draw();
     };
 
     build();
+    centerIfUnseen();
     if (reduce) {
       drawStatic();
     } else {
       start();
     }
 
+    // 마우스 포인터 추적 — 커서가 따라갈 타깃 갱신.
+    const onMove = (e: PointerEvent) => {
+      mouse.tx = e.clientX;
+      mouse.ty = e.clientY;
+      mouse.seen = true;
+    };
+    if (!reduce) window.addEventListener("pointermove", onMove, { passive: true });
+
     const ro = new ResizeObserver(() => {
       build();
+      centerIfUnseen();
       if (reduce) drawStatic();
     });
     ro.observe(document.documentElement);
@@ -160,6 +167,7 @@ export function MarkingField() {
     return () => {
       stop();
       ro.disconnect();
+      window.removeEventListener("pointermove", onMove);
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
