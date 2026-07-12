@@ -63,7 +63,9 @@ export function WorkbookBuilder() {
       const title = `${examType} ${category} ${selectedSubjects.map((s) => s.name).join("·")} 문제집`;
       const wb = await createWorkbook.mutateAsync({ title, visibility: "PRIVATE" });
       setCreatedWorkbookId(wb.id);
-      router.push(`/edit?workbookId=${wb.id}`);
+      // 여기서 고른 과목을 캔버스로 넘긴다 — 안 넘기면 AI 채팅이 과목 목록에서
+      // 임의로(첫 번째로) 골라버려 방금 고른 과목과 다른 문항이 만들어질 수 있다.
+      router.push(`/edit?workbookId=${wb.id}&subjectId=${selectedSubjects[0].id}`);
     } catch (e) {
       console.error("문제집 생성 실패:", e);
       toast.error(e instanceof Error ? e.message : "문제집 생성에 실패했습니다.");

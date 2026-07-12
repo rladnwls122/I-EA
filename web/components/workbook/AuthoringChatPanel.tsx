@@ -32,6 +32,7 @@ export function AuthoringChatPanel({
   cards,
   settings,
   onSettingsChange,
+  resolvedSubjectId,
   onSubjectResolved,
   onApplyQuestion,
   prefill,
@@ -43,6 +44,11 @@ export function AuthoringChatPanel({
   /** AI 생성 설정 — 채팅창(스레드/입력)과 분리된 독립 패널이 조작. */
   settings: AiSettings;
   onSettingsChange: (s: AiSettings) => void;
+  /**
+   * 캔버스가 이미 확정한 과목(URL의 initialSubjectId 또는 기존 문항의 과목).
+   * 있으면 이걸 그대로 쓰고, 과목 목록을 다시 불러와 임의로 고르지 않는다.
+   */
+  resolvedSubjectId?: string;
   onSubjectResolved: (subjectId: string) => void;
   onApplyQuestion: (q: ParsedQuestion) => void;
   /** 카드 ✨AI 버튼이 넣어주는 입력창 프리필(예: "문제 2 수정: "). */
@@ -51,7 +57,7 @@ export function AuthoringChatPanel({
   /** 모바일 탭바가 "지금 AI가 응답 중"임을 표시할 수 있게 스트리밍 상태를 올려준다. */
   onStreamingChange?: (streaming: boolean) => void;
 }) {
-  const [subjectId, setSubjectId] = useState("");
+  const [subjectId, setSubjectId] = useState(resolvedSubjectId ?? "");
   const [input, setInput] = useState("");
   const [streaming, setStreamingState] = useState(false);
   const setStreaming = (v: boolean) => {
@@ -78,8 +84,16 @@ export function AuthoringChatPanel({
     });
   }, [prefill, onPrefillConsumed]);
 
-  // 첫 과목을 기본 선택해 subjectId를 캔버스에 올린다(저장에 필요).
+  // 캔버스가 이미 과목을 확정해 넘겨주면(URL의 initialSubjectId, 또는 기존
+  // 문항의 과목) 그대로 따른다 — 목록을 다시 불러와 임의로 고르지 않는다.
   useEffect(() => {
+    if (resolvedSubjectId) setSubjectId(resolvedSubjectId);
+  }, [resolvedSubjectId]);
+
+  // 최후의 fallback — 캔버스가 넘겨준 과목이 없을 때만(완전히 새 문제집을
+  // 과목 정보 없이 열었을 때) 과목 목록에서 첫 번째를 기본으로 쓴다.
+  useEffect(() => {
+    if (resolvedSubjectId) return;
     fetchSubjects()
       .then((list) => {
         const first = list[0];
@@ -89,7 +103,7 @@ export function AuthoringChatPanel({
         }
       })
       .catch(() => toast.error("과목 목록을 불러오지 못했습니다."));
-  }, [onSubjectResolved]);
+  }, [resolvedSubjectId, onSubjectResolved]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });

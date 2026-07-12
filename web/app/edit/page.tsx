@@ -8,6 +8,7 @@ import { AuthoringCanvas } from "@/components/workbook/AuthoringCanvas";
 function EditPageInner() {
   const params = useSearchParams();
   const workbookId = params.get("workbookId");
+  const initialSubjectId = params.get("subjectId");
   if (!workbookId) {
     return (
       <main className="p-8 text-sm text-muted-foreground">
@@ -15,7 +16,15 @@ function EditPageInner() {
       </main>
     );
   }
-  return <AuthoringCanvas workbookId={workbookId} />;
+  // key={workbookId} — 다른 문제집으로 이동해도(같은 라우트 안에서 client 전환) 컴포넌트를
+  // 강제로 새로 마운트한다. 그렇지 않으면 이전 문제집의 채팅 세션·선택 과목이 그대로 남는다.
+  return (
+    <AuthoringCanvas
+      key={workbookId}
+      workbookId={workbookId}
+      initialSubjectId={initialSubjectId || undefined}
+    />
+  );
 }
 
 export default function EditPage() {

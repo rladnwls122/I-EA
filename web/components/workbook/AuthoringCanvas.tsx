@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Loader2, PencilLine, Plus } from "lucide-react";
 import Link from "next/link";
@@ -103,9 +103,16 @@ function passageKey(card: CanvasCard): string | null {
   return text ? text : null;
 }
 
-export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
+export function AuthoringCanvas({
+  workbookId,
+  initialSubjectId,
+}: {
+  workbookId: string;
+  /** 문제집 만들기(Step 1)에서 고른 과목 — URL로 넘어온다. 있으면 최우선. */
+  initialSubjectId?: string;
+}) {
   const [cards, setCards] = useState<CanvasCard[]>([]);
-  const [subjectId, setSubjectId] = useState<string>("");
+  const [subjectId, setSubjectId] = useState<string>(initialSubjectId ?? "");
   const [saving, setSaving] = useState(false);
 
   /* ── AI 생성 설정 — 채팅창 밖 독립 패널(우측 상단)이 조작 ── */
@@ -148,6 +155,16 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
   const { data: workbook, isError: workbookError } = useWorkbook(workbookId);
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+
+  // initialSubjectId가 없는 경우(예: 기존 문제집을 "수정"으로 열었을 때) —
+  // 이미 담긴 문항이 있으면 그 과목을 그대로 이어서 쓴다. AI 채팅이 엉뚱한
+  // 과목(구독 목록의 첫 번째)을 임의로 골라버리는 걸 막는다.
+  useEffect(() => {
+    if (initialSubjectId || subjectId) return;
+    const existingSubjectId = workbook?.questions?.find((q) => q.question?.subject?.id)
+      ?.question?.subject?.id;
+    if (existingSubjectId) setSubjectId(existingSubjectId);
+  }, [initialSubjectId, subjectId, workbook]);
 
   const commitTitle = async () => {
     setTitleEditing(false);
@@ -571,6 +588,7 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
           cards={cards}
           settings={aiSettings}
           onSettingsChange={setAiSettings}
+          resolvedSubjectId={subjectId}
           onSubjectResolved={setSubjectId}
           onApplyQuestion={applyQuestion}
           prefill={chatPrefill}
