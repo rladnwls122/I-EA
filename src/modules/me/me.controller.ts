@@ -42,4 +42,10 @@ export class MeController {
   milestones(@CurrentUser() user: CurrentUserPayload) {
     return this.service.milestones(user.id);
   }
+
+  @Get('wallet')
+  @ApiOperation({ summary: '내 지갑(코인·인벤토리·상자수)' })
+  wallet(@CurrentUser() user: CurrentUserPayload) {
+    return this.service.wallet(user.id);
+  }
 }

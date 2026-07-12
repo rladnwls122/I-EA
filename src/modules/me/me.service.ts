@@ -286,4 +286,32 @@ export class MeService {
       wrongQuestions,
     };
   }
+
+  /** 지갑 — 코인·XP부스터·인벤토리(보호권/힌트)·코스메틱 보유·칭호·이름색·미개봉 상자 수. */
+  async wallet(userId: string) {
+    const [user, inv, unopenedBoxCount] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { coins: true, xpBoostUntil: true, equippedTitle: true, nameColor: true },
+      }),
+      this.prisma.userInventory.findMany({
+        where: { userId },
+        select: { itemKey: true, quantity: true },
+      }),
+      this.prisma.lootBox.count({ where: { userId, openedAt: null } }),
+    ]);
+    if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+    const qty = (k: string) => inv.find((i) => i.itemKey === k)?.quantity ?? 0;
+    return {
+      coins: user.coins,
+      xpBoostUntil: user.xpBoostUntil,
+      inventory: { STREAK_SHIELD: qty('STREAK_SHIELD'), HINT_TOKEN: qty('HINT_TOKEN') },
+      cosmetics: {
+        owned: inv.filter((i) => i.itemKey.startsWith('COSMETIC_') && i.quantity > 0).map((i) => i.itemKey),
+        equippedTitle: user.equippedTitle,
+        nameColor: user.nameColor,
+      },
+      unopenedBoxCount,
+    };
+  }
 }
