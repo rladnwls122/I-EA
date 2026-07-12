@@ -97,7 +97,12 @@ export function AuthoringChatPanel({
 
   const send = async () => {
     const msg = input.trim();
-    if (!msg || streaming || !subjectId) return;
+    if (!msg || streaming) return;
+    if (!subjectId) {
+      // 과목 목록을 아직 못 불러왔을 때(로딩 중/실패) 조용히 무시하지 않고 알려준다.
+      toast.error("과목 정보를 아직 불러오는 중이에요. 잠시 후 다시 시도해주세요.");
+      return;
+    }
     setInput("");
     setMessages((p) => [...p, { role: "user", text: msg }, { role: "ai", text: "" }]);
     setStreaming(true);
