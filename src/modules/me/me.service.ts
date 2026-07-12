@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import {
   KEYWORD_TAG_CATEGORY,
@@ -12,6 +12,7 @@ import {
   titleForLevel,
   xpToNextTier,
 } from '@/common/constants/xp';
+import { getShopItem, ShopItemKey } from '@/common/constants/shop';
 
 export interface WrongStat {
   key: string;
@@ -313,5 +314,24 @@ export class MeService {
       },
       unopenedBoxCount,
     };
+  }
+
+  /** 코스메틱 장착 — 소유 검증 후 칭호/이름색 세팅. 미소유·비코스메틱이면 BadRequest. */
+  async equipCosmetic(userId: string, itemKey: string) {
+    const item = getShopItem(itemKey as ShopItemKey);
+    if (!item || item.effect.type !== 'COSMETIC') {
+      throw new BadRequestException('꾸미기 아이템이 아닙니다.');
+    }
+    const owned = await this.prisma.userInventory.findUnique({
+      where: { userId_itemKey: { userId, itemKey } },
+      select: { quantity: true },
+    });
+    if (!owned || owned.quantity < 1) throw new BadRequestException('보유하지 않은 아이템입니다.');
+    const eff = item.effect;
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { [eff.field]: eff.value },
+    });
+    return { equipped: itemKey };
   }
 }

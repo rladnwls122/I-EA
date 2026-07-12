@@ -1,9 +1,10 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { QueryNotesDto } from './dto/query-notes.dto';
+import { EquipCosmeticDto } from './dto/equip-cosmetic.dto';
 import { MeService } from './me.service';
 
 @ApiTags('me')
@@ -47,5 +48,11 @@ export class MeController {
   @ApiOperation({ summary: '내 지갑(코인·인벤토리·상자수)' })
   wallet(@CurrentUser() user: CurrentUserPayload) {
     return this.service.wallet(user.id);
+  }
+
+  @Post('cosmetics/equip')
+  @ApiOperation({ summary: '코스메틱 장착 (칭호/이름색)' })
+  equipCosmetic(@CurrentUser() user: CurrentUserPayload, @Body() dto: EquipCosmeticDto) {
+    return this.service.equipCosmetic(user.id, dto.itemKey);
   }
 }
