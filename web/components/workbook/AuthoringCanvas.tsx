@@ -20,16 +20,38 @@ export interface CanvasCard {
   explanation: any;
 }
 
-/** ParsedQuestion(평문) → CanvasCard(ProseMirror 조립). */
-function toCard(q: ParsedQuestion, id: string): CanvasCard {
+/**
+ * ParsedQuestion(평문) → CanvasCard(ProseMirror 조립).
+ * 객관식인데 선지가 2개 미만이거나 correctIndex가 범위를 벗어나면
+ * 임의로 0번을 정답 확정하지 않고 카드 생성을 거부한다(F4).
+ */
+function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
   const isObjective = q.questionType === "객관식";
+  if (isObjective) {
+    const choices = q.choices ?? [];
+    const correct = q.correctIndex;
+    if (choices.length < 2 || typeof correct !== "number" || correct < 0 || correct >= choices.length) {
+      toast.error("선지가 부족하거나 정답 위치가 이상한 문항은 건너뛰었어요.");
+      return null;
+    }
+    return {
+      id,
+      type: q.questionType,
+      stem: buildRichDoc(q.stem),
+      passage: q.passage ? buildRichDoc(q.passage) : null,
+      choices,
+      correct,
+      answerText: "",
+      explanation: q.explanation ? buildRichDoc(q.explanation) : buildRichDoc(""),
+    };
+  }
   return {
     id,
     type: q.questionType,
     stem: buildRichDoc(q.stem),
     passage: q.passage ? buildRichDoc(q.passage) : null,
-    choices: isObjective ? q.choices ?? [] : [],
-    correct: isObjective ? q.correctIndex ?? 0 : -1,
+    choices: [],
+    correct: -1,
     answerText: q.answerText ?? "",
     explanation: q.explanation ? buildRichDoc(q.explanation) : buildRichDoc(""),
   };
@@ -41,19 +63,24 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
   const [saving, setSaving] = useState(false);
 
   // 채팅 제안 → 좌측 반영. target이 replace:N이면 그 자리 교체, 아니면 append.
+  // toCard가 검증 실패로 null을 반환하면 카드에 담지 않는다(F4).
   const applyQuestion = useCallback((q: ParsedQuestion) => {
     setCards((prev) => {
       const m = /^replace:(\d+)$/.exec(q.target ?? "new");
-      const id = `local-${prev.length}-${q.stem.slice(0, 8)}`;
       if (m) {
         const idx = Number(m[1]) - 1;
         if (idx >= 0 && idx < prev.length) {
+          const card = toCard(q, prev[idx].id);
+          if (!card) return prev;
           const copy = [...prev];
-          copy[idx] = toCard(q, prev[idx].id);
+          copy[idx] = card;
           return copy;
         }
       }
-      return [...prev, toCard(q, id)];
+      const id = `local-${prev.length}-${q.stem.slice(0, 8)}`;
+      const card = toCard(q, id);
+      if (!card) return prev;
+      return [...prev, card];
     });
   }, []);
 
@@ -65,6 +92,11 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
     if (!subjectId) {
       toast.error("과목 정보가 없습니다. 채팅에서 과목을 확인해주세요.");
       return;
+    }
+    // 지문(passage)은 별도 엔티티 생성 API 연동이 범위 밖이라 아직 영속화되지 않는다.
+    // 조용히 사라지지 않도록 1회 경고만 한다(F3b).
+    if (cards.some((c) => c.passage)) {
+      toast.warning("일부 문항의 지문은 아직 저장되지 않아요.");
     }
     setSaving(true);
     try {
@@ -127,6 +159,12 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
                 <span className="font-mono">문제 {i + 1}</span>
                 <span className="rounded bg-surface-raised px-1.5 py-0.5 text-muted-foreground">{c.type}</span>
               </div>
+              {c.passage && (
+                <div className="mb-2 rounded-lg bg-surface-raised px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground/70">지문 (아직 저장되지 않음)</span>
+                  <p className="mt-1 whitespace-pre-wrap">{extractPlainText(c.passage)}</p>
+                </div>
+              )}
               <p className="text-sm text-foreground">{extractPlainText(c.stem)}</p>
               {c.type === "객관식" && (
                 <ol className="mt-2 space-y-1 text-sm text-muted-foreground">

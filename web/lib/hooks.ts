@@ -13,7 +13,6 @@ import {
   fetchQuestions,
   fetchQuestion,
   fetchQuestionStats,
-  fetchAiGeneration,
   fetchWorkbooks,
   fetchWorkbook,
   fetchComments,
@@ -23,10 +22,8 @@ import {
   createQuestion,
   updateQuestion,
   deleteQuestion,
-  publishQuestion,
   createWorkbook,
   addQuestionToWorkbook,
-  createAiGeneration,
   createComment,
   createAnnotation,
   updateAnnotation,
@@ -166,20 +163,6 @@ export function useDeleteQuestion() {
   });
 }
 
-/** 문제 출판 뮤테이션 */
-export function usePublishQuestion() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: publishQuestion,
-    onSuccess: (_result, id) => {
-      queryClient.invalidateQueries({ queryKey: ['questions'] });
-      queryClient.invalidateQueries({
-        queryKey: ['question', id],
-      });
-    },
-  });
-}
-
 // ─── 문제집 ─────────────────────────────────────────────────────────
 
 /** 문제집 목록 */
@@ -235,38 +218,6 @@ export function useAddQuestionToWorkbook() {
       queryClient.invalidateQueries({
         queryKey: ['workbook', variables.workbookId],
       });
-    },
-  });
-}
-
-// ─── AI 생성 ────────────────────────────────────────────────────────
-
-/** AI 문제 생성 요청 뮤테이션 */
-export function useCreateAiGeneration() {
-  return useMutation({
-    mutationFn: createAiGeneration,
-  });
-}
-
-/**
- * AI 생성 폴링 (3초 간격, COMPLETED/FAILED에서 정지)
- *
- * 사용법:
- * ```tsx
- * const { data } = useGenerationPolling(generationId);
- * // data?.status === 'COMPLETED' → 결과 표시
- * // data?.status === 'FAILED' → 에러 처리
- * ```
- */
-export function useGenerationPolling(genId: string | null) {
-  return useQuery({
-    queryKey: ['ai-generation', genId],
-    queryFn: () => fetchAiGeneration(genId!),
-    enabled: !!genId,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      if (status === 'COMPLETED' || status === 'FAILED') return false;
-      return 3000;
     },
   });
 }
