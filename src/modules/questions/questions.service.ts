@@ -33,7 +33,9 @@ export class QuestionsService {
         : query.subjectId
           ? { subjectId: query.subjectId }
           : {}),
-      ...(query.status ? { status: query.status } : {}),
+      // 상태 미지정이면 PUBLISHED만 — 이 라우트는 @Public()이라 지정 안 하면
+      // 남의 DRAFT(작성 중인 문항)까지 전부 노출되는 사고가 난다(실측 확인).
+      status: query.status ?? 'PUBLISHED',
       ...(query.questionType ? { questionType: query.questionType } : {}),
       ...(query.difficulty ? { difficulty: query.difficulty } : {}),
       ...(query.q ? { searchText: { contains: query.q } } : {}),

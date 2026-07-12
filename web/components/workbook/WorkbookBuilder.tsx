@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useSubjectTree, useGenerationPolling, useCreateWorkbook, useCreateAiGeneration, useAddQuestionToWorkbook } from "@/lib/hooks";
+import { useSubjectTree, useGenerationPolling, useCreateWorkbook, useCreateAiGeneration, useAddQuestionToWorkbook, usePublishQuestion } from "@/lib/hooks";
 import type { Subject } from "@/lib/types";
 
 /** 선택 pill 공통 스타일 — 선택 시 emerald, 미선택 시 hairline. */
@@ -25,6 +25,7 @@ export function WorkbookBuilder() {
   const createWorkbook = useCreateWorkbook();
   const createAiGen = useCreateAiGeneration();
   const addQuestionToWorkbook = useAddQuestionToWorkbook();
+  const publishQuestion = usePublishQuestion();
 
   /* ── 과목 선택 (다중) ── */
   const [examType, setExamType] = useState<string>("");
@@ -116,7 +117,13 @@ export function WorkbookBuilder() {
     }
   }, [subjectTree, examType, examTypes]);
 
-  /* ── AI 생성 완료 시 생성된 문항을 문제집에 자동 연결 (generationId당 1회) ── */
+  /**
+   * AI 생성 완료 시 생성된 문항을 문제집에 자동 연결(generationId당 1회).
+   * AI가 만든 문항은 DRAFT 상태로 생성되는데, 문제집에 담으려면(POST
+   * /workbooks/:id/questions) 발행(PUBLISHED)돼 있어야 한다 — 안 그러면
+   * 백엔드가 조용히 거부해서 "생성은 됐는데 문제집엔 안 담기는" 현상이 난다.
+   * 그래서 담기 전에 먼저 발행부터 한다.
+   */
   useEffect(() => {
     if (
       !isCompleted ||
@@ -128,13 +135,23 @@ export function WorkbookBuilder() {
       return;
     }
     setLinkedGenerationId(generationId);
-    generation.questions.forEach((q) => {
-      addQuestionToWorkbook.mutate({
-        workbookId: createdWorkbookId,
-        questionId: q.id,
-      });
-    });
-  }, [isCompleted, createdWorkbookId, generationId, linkedGenerationId, generation, addQuestionToWorkbook]);
+
+    (async () => {
+      let failed = 0;
+      for (const q of generation.questions) {
+        try {
+          await publishQuestion.mutateAsync(q.id);
+          await addQuestionToWorkbook.mutateAsync({ workbookId: createdWorkbookId, questionId: q.id });
+        } catch (e) {
+          failed += 1;
+          console.error(`문항 ${q.id} 문제집 연결 실패:`, e);
+        }
+      }
+      if (failed > 0) {
+        toast.error(`${failed}개 문항을 문제집에 담지 못했어요.`);
+      }
+    })();
+  }, [isCompleted, createdWorkbookId, generationId, linkedGenerationId, generation, addQuestionToWorkbook, publishQuestion]);
 
   return (
     <div className="mx-auto max-w-[980px] px-8 py-8">
