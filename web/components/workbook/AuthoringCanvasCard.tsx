@@ -50,6 +50,21 @@ export function AuthoringCanvasCard({
   onAskAi: () => void;
 }) {
   const [showAnswer, setShowAnswer] = useState(false);
+  const [keywordInput, setKeywordInput] = useState("");
+
+  /** "#" 유무 관계없이 입력받아 정규화된 이름만 저장(표시할 때 #를 붙인다). */
+  const addKeyword = () => {
+    const name = keywordInput.trim().replace(/^#/, "");
+    if (!name) return;
+    if (card.keywords.some((k) => k.toLowerCase() === name.toLowerCase())) {
+      setKeywordInput("");
+      return; // 중복 무시
+    }
+    onChange({ keywords: [...card.keywords, name] });
+    setKeywordInput("");
+  };
+  const removeKeyword = (name: string) =>
+    onChange({ keywords: card.keywords.filter((k) => k !== name) });
 
   const explanationText = extractPlainText(card.explanation).trim();
 
@@ -175,6 +190,20 @@ export function AuthoringCanvasCard({
                 {explanationText && <p className="whitespace-pre-wrap leading-relaxed">{explanationText}</p>}
               </div>
             )}
+          </div>
+        )}
+
+        {/* #키워드 칩 — 있을 때만 */}
+        {card.keywords.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {card.keywords.map((k) => (
+              <span
+                key={k}
+                className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+              >
+                #{k}
+              </span>
+            ))}
           </div>
         )}
       </article>
@@ -406,6 +435,40 @@ export function AuthoringCanvasCard({
         onChange={(json) => onChange({ explanation: json })}
         placeholder="해설을 입력하세요 (선택)."
       />
+
+      {/* #키워드 — 자유 태깅. 저장 시 태그로 자동 등록/연결된다. */}
+      <label className="mb-1.5 mt-4 block text-xs font-medium text-muted-foreground">키워드</label>
+      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input px-2 py-1.5">
+        {card.keywords.map((k) => (
+          <span
+            key={k}
+            className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+          >
+            #{k}
+            <button
+              type="button"
+              onClick={() => removeKeyword(k)}
+              aria-label={`#${k} 삭제`}
+              className="text-primary/70 hover:text-primary"
+            >
+              <X size={10} strokeWidth={2.5} />
+            </button>
+          </span>
+        ))}
+        <input
+          value={keywordInput}
+          onChange={(e) => setKeywordInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault();
+              addKeyword();
+            }
+          }}
+          onBlur={addKeyword}
+          placeholder="키워드 입력 후 Enter"
+          className="h-7 min-w-[100px] flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/60"
+        />
+      </div>
     </article>
   );
 }

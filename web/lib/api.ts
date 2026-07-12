@@ -507,6 +507,14 @@ export function fetchTags(category?: string) {
   return apiFetch<Tag[]>(`/tags${qs}`);
 }
 
+/** 태그 생성 — CREATOR/ADMIN 허용. 문항 #키워드 자유 태깅에 쓴다. */
+export function createTag(name: string, category: string) {
+  return apiFetch<Tag>('/tags', {
+    method: 'POST',
+    body: JSON.stringify({ name, category }),
+  });
+}
+
 /** 내 시험 세션 이력 조회 */
 export function fetchMyExamSessions() {
   return apiFetch<MyExamSession[]>('/me/exam-sessions');

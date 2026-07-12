@@ -11,8 +11,11 @@ import {
   updateWorkbook,
   createPassage,
   publishPassage,
+  fetchTags,
+  createTag,
 } from "@/lib/api";
 import { useWorkbook } from "@/lib/hooks";
+import type { Tag } from "@/lib/types";
 import type { ParsedQuestion } from "@/lib/authoring-chat";
 import { AuthoringChatPanel } from "./AuthoringChatPanel";
 import { AuthoringCanvasCard } from "./AuthoringCanvasCard";
@@ -37,7 +40,12 @@ export interface CanvasCard {
   explanation: any;
   /** 배점 — 생성 단계부터 지정 가능. */
   points: number;
+  /** #키워드 — 자유 태깅. 저장 시 태그로 find-or-create 후 tagIds로 연결. */
+  keywords: string[];
 }
+
+/** 문항 #키워드용 태그 카테고리 — 과목/유형 등 큐레이션 태그와 구분. */
+const KEYWORD_TAG_CATEGORY = "키워드";
 
 /** AI 생성 설정(채팅창 밖 독립 패널) — null 유형은 "자동"(힌트 없음). */
 export interface AiSettings {
@@ -71,6 +79,7 @@ function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
       answerText: "",
       explanation: q.explanation ? buildRichDoc(q.explanation) : buildRichDoc(""),
       points: 1,
+      keywords: [],
     };
   }
   return {
@@ -83,6 +92,7 @@ function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
     answerText: q.answerText ?? "",
     explanation: q.explanation ? buildRichDoc(q.explanation) : buildRichDoc(""),
     points: 1,
+    keywords: [],
   };
 }
 
@@ -258,6 +268,7 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
         answerText: "",
         explanation: buildRichDoc(""),
         points: 1,
+        keywords: [],
       },
     ]);
   }, []);
@@ -293,7 +304,34 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
         }
       }
 
-      // 2) 문항 영속화 + 발행 + 문제집 연결.
+      // 2) #키워드 → 태그 find-or-create. 같은 이름은 한 번만 조회/생성해 재사용.
+      const existingTags = await fetchTags(KEYWORD_TAG_CATEGORY).catch(() => [] as Tag[]);
+      const tagIdByName = new Map<string, string>(
+        existingTags.map((t) => [t.name.trim().toLowerCase(), t.id]),
+      );
+      const resolveTagIds = async (keywords: string[]): Promise<string[]> => {
+        const ids: string[] = [];
+        for (const raw of keywords) {
+          const name = raw.trim();
+          if (!name) continue;
+          const key = name.toLowerCase();
+          let id = tagIdByName.get(key);
+          if (!id) {
+            try {
+              const created = await createTag(name, KEYWORD_TAG_CATEGORY);
+              id = created.id;
+              tagIdByName.set(key, id);
+            } catch (e) {
+              console.error(`키워드 태그 생성 실패(${name}):`, e);
+              continue; // 이 키워드만 건너뛰고 나머지는 계속
+            }
+          }
+          ids.push(id);
+        }
+        return ids;
+      };
+
+      // 3) 문항 영속화 + 발행 + 문제집 연결.
       //    발행 실패를 삼키고 담기를 강행하면 백엔드가 "발행되지 않은 문항" 404를
       //    돌려줘 원인이 가려진다 — 단계별로 실패를 구분해 서버 메시지를 그대로 보여준다.
       let failed = 0;
@@ -302,10 +340,12 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
         if (!extractPlainText(c.stem).trim()) continue;
         const key = passageKey(c);
         try {
+          const tagIds = await resolveTagIds(c.keywords);
           const created = await createQuestion({
             subjectId,
             questionType: c.type,
             points: c.points,
+            ...(tagIds.length ? { tagIds } : {}),
             ...(key && passageIdByKey.has(key) ? { passageId: passageIdByKey.get(key) } : {}),
             stem: c.stem,
             choices:
