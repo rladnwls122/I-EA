@@ -126,6 +126,29 @@ label {
   }
 }
 
+/* 마킹 필드 오로라 — 캔버스 뒤 은은한 에메랄드 글로우. 극저 opacity + 느린 drift. */
+.marking-aurora {
+  position: fixed;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 42% at 22% 28%, rgba(52, 211, 153, 0.16), transparent 70%),
+    radial-gradient(34% 40% at 82% 68%, rgba(52, 211, 153, 0.1), transparent 72%),
+    radial-gradient(46% 50% at 60% 12%, rgba(96, 165, 250, 0.055), transparent 75%);
+  filter: blur(30px);
+  animation: aurora-drift 26s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+@keyframes aurora-drift {
+  0% { transform: translate3d(-3%, -2%, 0) scale(1); opacity: 0.85; }
+  50% { transform: translate3d(2%, 3%, 0) scale(1.08); opacity: 1; }
+  100% { transform: translate3d(4%, -1%, 0) scale(1.03); opacity: 0.9; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marking-aurora { animation: none; transform: none; }
+}
+
 /* 애니메이션 */
 @keyframes fade {
   from { opacity: 0; }
