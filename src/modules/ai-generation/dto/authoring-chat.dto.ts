@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -59,6 +60,23 @@ export class AuthoringChatDto {
   @Min(1)
   @Max(10)
   batchSize?: number;
+
+  /** 설정 패널의 유형 힌트 — 지정하면 이번 턴 생성 문항의 유형을 강제. */
+  @IsOptional()
+  @IsIn(QUESTION_KINDS)
+  questionType?: string;
+
+  /** OX(참/거짓) 2지선다 스타일 힌트. 저장 유형은 객관식 그대로. */
+  @IsOptional()
+  @IsBoolean()
+  ox?: boolean;
+
+  /** 설정 패널의 난이도(1~5) 힌트. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  difficulty?: number;
 
   @IsOptional()
   @IsArray()

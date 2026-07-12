@@ -7,6 +7,12 @@ interface PromptCtx {
   subjectName?: string;
   examCategory?: string;
   batchSize: number;
+  /** 설정 패널의 유형 힌트 — 있으면 이번 턴 생성 문항 유형을 강제. */
+  questionType?: string;
+  /** OX(참/거짓) 스타일 힌트 — questionType이 객관식일 때 2지선다로. */
+  ox?: boolean;
+  /** 난이도 1(쉬움)~5(어려움). */
+  difficulty?: number;
   currentQuestions?: CurrentQuestionRef[];
 }
 
@@ -28,9 +34,23 @@ export function buildAuthoringSystemPrompt(ctx: PromptCtx): string {
           .join('\n')
       : '(아직 없음)';
 
+  // 설정 패널 힌트 — 지정된 것만 지시문으로 넣는다.
+  const constraints: string[] = [];
+  if (ctx.questionType) {
+    constraints.push(
+      ctx.questionType === '객관식' && ctx.ox
+        ? `문항 유형: OX(참/거짓) — questionType은 "객관식"으로 하되 선지는 "O(맞다)"/"X(틀리다)" 2개만.`
+        : `문항 유형: ${ctx.questionType}만 만드세요.`,
+    );
+  }
+  if (ctx.difficulty) {
+    constraints.push(`난이도: 5단계 중 ${ctx.difficulty} (1=매우 쉬움, 5=매우 어려움)에 맞추세요.`);
+  }
+
   return [
     `당신은 한국 시험 대비 문항 출제를 돕는 AI 도우미입니다. 대상 과목은 "${subject}"입니다.`,
     `사용자와 자연스러운 한국어로 대화하며, 필요하면 되묻고, 한 번에 최대 ${ctx.batchSize}개 문항을 만들어 제시하세요.`,
+    ...constraints,
     ``,
     `현재 문제집에 담긴 문항(교체/수정 참조용):`,
     current,

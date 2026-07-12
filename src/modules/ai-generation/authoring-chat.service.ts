@@ -74,6 +74,9 @@ export class AuthoringChatService {
       subjectName: subject?.name,
       examCategory: subject?.examCategory,
       batchSize: dto.batchSize ?? 1,
+      questionType: dto.questionType,
+      ox: dto.ox,
+      difficulty: dto.difficulty,
       currentQuestions: dto.currentQuestions,
     });
     const history = await this.loadHistory(dto.workbookId);
