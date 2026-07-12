@@ -8,7 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { QuestionKind } from '@/common/constants/question';
-import { rollBoxTier, type BoxTier } from '@/common/constants/shop';
+import { rollBoxTier, type BoxTier, SOLVE_MILESTONE_THRESHOLD, SOLVE_MILESTONE_COINS } from '@/common/constants/shop';
 import { resolveHintQuota } from './hint-quota';
 import {
   XP_RULES,
@@ -180,6 +180,8 @@ export class ExamSessionsService {
     return {
       id: session.id,
       subject: session.subject,
+      // 결과 화면 추천에서 방금 푼 문제집 자체를 제외하는 데 쓴다(문제집 응시가 아니면 null).
+      workbookId: session.workbookId,
       status: session.status,
       startedAt: session.startedAt,
       submittedAt: session.submittedAt,
@@ -407,14 +409,17 @@ export class ExamSessionsService {
       }
 
       // 문항별 정답률 캐시 갱신(같은 문항이 여러 번 나오는 경우는 없다고 가정).
+      // 증가 후 값으로 누적 10솔브 저자 보너스를 함께 판정한다.
       for (const g of gradedQuestionIds) {
-        await tx.question.update({
+        const updatedQuestion = await tx.question.update({
           where: { id: g.id },
           data: {
             totalSolvedCount: { increment: 1 },
             ...(g.correct ? { correctSolvedCount: { increment: 1 } } : {}),
           },
+          select: { id: true, creatorId: true, totalSolvedCount: true, solveBonusAwarded: true },
         });
+        await this.maybeAwardSolveMilestone(tx, updatedQuestion, now);
       }
 
       // 평균 풀이시간 캐시(avg = totalTimeSpentSec / timedSolvedCount).
@@ -504,14 +509,17 @@ export class ExamSessionsService {
       await tx.examSessionAnswer.update({ where: { id: answerId }, data: { isCorrect } });
 
       // 정답률 캐시 델타: 최초 확정이면 total+1(+정답 시 correct+1), 재채점이면 correct만 보정.
+      // 최초 확정(=totalSolvedCount 증가) 시에만 증가 후 값으로 누적 10솔브 저자 보너스를 판정한다.
       if (prev === null || prev === undefined) {
-        await tx.question.update({
+        const updatedQuestion = await tx.question.update({
           where: { id: sq.questionId },
           data: {
             totalSolvedCount: { increment: 1 },
             ...(isCorrect ? { correctSolvedCount: { increment: 1 } } : {}),
           },
+          select: { id: true, creatorId: true, totalSolvedCount: true, solveBonusAwarded: true },
         });
+        await this.maybeAwardSolveMilestone(tx, updatedQuestion, new Date());
       } else if (prev !== isCorrect) {
         await tx.question.update({
           where: { id: sq.questionId },
@@ -528,6 +536,46 @@ export class ExamSessionsService {
     });
 
     return { sessionQuestionId, isCorrect, reward };
+  }
+
+  /**
+   * 문항이 누적 SOLVE_MILESTONE_THRESHOLD(10)회 풀리면 저자에게 1회성 +20코인.
+   * solveBonusAwarded 플래그로 최초 1회만 지급 — 매 풀이마다 재발동하지 않도록 방어.
+   * 자기 문제를 자기가 풀어 임계에 도달해도 저자 보상이므로 지급한다(계정당 최초 1회뿐이라 반복 악용은 안 되지만,
+   * 자작 문제로 셀프 임계 유도 여지는 있어 보고서에 별도로 남긴다).
+   * totalSolvedCount는 호출 전에 이미 증가된 값을 넘겨받는다.
+   */
+  private async maybeAwardSolveMilestone(
+    tx: Prisma.TransactionClient,
+    question: { id: string; creatorId: string; totalSolvedCount: number; solveBonusAwarded: boolean },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- coinHistory.createdAt은 DB default(now())를 쓴다. 인터페이스는 플랜과 맞춰 유지.
+    _now: Date,
+  ): Promise<{ awarded: boolean }> {
+    if (question.solveBonusAwarded) return { awarded: false };
+    if (question.totalSolvedCount < SOLVE_MILESTONE_THRESHOLD) return { awarded: false };
+
+    const updatedUser = await tx.user.update({
+      where: { id: question.creatorId },
+      data: { coins: { increment: SOLVE_MILESTONE_COINS } },
+      select: { coins: true },
+    });
+
+    await tx.coinHistory.create({
+      data: {
+        userId: question.creatorId,
+        amount: SOLVE_MILESTONE_COINS,
+        reason: 'SOLVE_MILESTONE',
+        referenceId: question.id,
+        balanceAfter: updatedUser.coins,
+      },
+    });
+
+    await tx.question.update({
+      where: { id: question.id },
+      data: { solveBonusAwarded: true },
+    });
+
+    return { awarded: true };
   }
 
   /**
