@@ -1,9 +1,26 @@
 "use client";
 import { useState } from "react";
-import { Check, ChevronDown, ChevronUp, Link2, PencilLine, Plus, Sparkles, Trash2, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  EyeOff,
+  GripVertical,
+  Link2,
+  PencilLine,
+  Plus,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { TiptapEditor } from "@/components/editor/TiptapEditor";
 import { buildRichDoc, extractPlainText } from "@/lib/prosemirror";
-import type { CanvasCard } from "./AuthoringCanvas";
+import type { CanvasCard, CanvasChoice } from "./AuthoringCanvas";
+
+/** 유형 전환 시 선지/정답 필드를 유실 없이 맞춰주는 기본값. */
+const DEFAULT_CHOICES = (): CanvasChoice[] =>
+  Array.from({ length: 4 }, () => ({ text: "", explanation: "", showExplanation: false }));
 
 /**
  * 캔버스 문항 카드 — 읽기/편집 두 모드.
@@ -51,8 +68,16 @@ export function AuthoringCanvasCard({
         {/* 헤더 */}
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-semibold">
+            <GripVertical
+              size={14}
+              className="cursor-grab text-muted-foreground"
+              aria-label="드래그해서 순서 변경"
+            />
             <span className="font-mono">문제 {index + 1}</span>
             <span className="rounded bg-surface-raised px-1.5 py-0.5 text-muted-foreground">{card.type}</span>
+            <span className="rounded bg-surface-raised px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
+              {card.points}점
+            </span>
           </div>
           <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
             <button
@@ -99,21 +124,30 @@ export function AuthoringCanvasCard({
         {/* 발문 */}
         <p className="text-sm leading-relaxed text-foreground">{extractPlainText(card.stem)}</p>
 
-        {/* 선지 */}
+        {/* 선지 — 공개 설정된 선지별 해설도 함께 표시 */}
         {card.type === "객관식" && (
           <ol className="mt-2.5 space-y-1.5 text-sm">
             {card.choices.map((ch, j) => (
               <li
                 key={j}
-                className={`flex items-start gap-2 rounded-lg border px-3 py-1.5 ${
+                className={`rounded-lg border px-3 py-1.5 ${
                   j === card.correct
                     ? "border-primary/40 bg-primary/5 text-foreground"
                     : "border-border text-muted-foreground"
                 }`}
               >
-                <span className="font-mono text-xs leading-5">{j + 1}.</span>
-                <span>{ch}</span>
-                {j === card.correct && <Check size={14} strokeWidth={2.5} className="ml-auto mt-0.5 flex-none text-primary" />}
+                <div className="flex items-start gap-2">
+                  <span className="font-mono text-xs leading-5">{j + 1}.</span>
+                  <span>{ch.text}</span>
+                  {j === card.correct && (
+                    <Check size={14} strokeWidth={2.5} className="ml-auto mt-0.5 flex-none text-primary" />
+                  )}
+                </div>
+                {ch.explanation.trim() && ch.showExplanation && (
+                  <p className="mt-1 pl-6 text-xs leading-relaxed text-muted-foreground">
+                    {ch.explanation}
+                  </p>
+                )}
               </li>
             ))}
           </ol>
@@ -150,17 +184,56 @@ export function AuthoringCanvasCard({
   /* ── 편집 모드 ── */
   return (
     <article className="rounded-xl border border-primary/50 bg-card p-5">
-      {/* 헤더 */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs font-semibold">
+      {/* 헤더 — 유형 전환 토글 + 배점 */}
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
           <span className="font-mono">문제 {index + 1}</span>
-          <span className="rounded bg-surface-raised px-1.5 py-0.5 text-muted-foreground">{card.type}</span>
+          {/* 유형 자유 전환 — 기존 입력은 유지, 없는 필드는 기본값 보충 */}
+          <div className="flex overflow-hidden rounded-md border border-border">
+            {(["객관식", "주관식"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => {
+                  if (card.type === t) return;
+                  onChange(
+                    t === "객관식"
+                      ? {
+                          type: t,
+                          choices: card.choices.length >= 2 ? card.choices : DEFAULT_CHOICES(),
+                          correct: card.correct >= 0 ? card.correct : 0,
+                        }
+                      : { type: t, correct: -1 },
+                  );
+                }}
+                aria-pressed={card.type === t}
+                className={`px-2 py-1 text-[11px] transition-colors ${
+                  card.type === t
+                    ? "bg-primary font-medium text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+            배점
+            <input
+              type="number"
+              min={0}
+              step={0.5}
+              value={card.points}
+              onChange={(e) => onChange({ points: Math.max(0, Number(e.target.value) || 0) })}
+              className="h-6 w-14 rounded border border-border bg-transparent px-1.5 font-mono text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+          </label>
           <span className="text-[10px] font-medium text-primary">편집 중</span>
         </div>
         <button
           type="button"
           onClick={onFinishEdit}
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+          className="flex flex-none items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
         >
           <Check size={13} strokeWidth={2.5} /> 완료
         </button>
@@ -219,54 +292,90 @@ export function AuthoringCanvasCard({
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             선지 <span className="font-normal">(번호를 눌러 정답 지정)</span>
           </label>
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {card.choices.map((choice, j) => (
-              <div key={j} className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onChange({ correct: j })}
-                  aria-label={`${j + 1}번을 정답으로`}
-                  aria-pressed={card.correct === j}
-                  className={`flex h-9 w-9 flex-none items-center justify-center rounded-lg border font-mono text-xs font-medium transition-colors ${
-                    card.correct === j
-                      ? "border-transparent bg-primary text-primary-foreground"
-                      : "border-border text-muted-foreground hover:border-primary/40"
-                  }`}
-                >
-                  {j + 1}
-                </button>
-                <input
-                  value={choice}
-                  onChange={(e) => {
-                    const next = [...card.choices];
-                    next[j] = e.target.value;
-                    onChange({ choices: next });
-                  }}
-                  placeholder={`선지 ${j + 1}`}
-                  className="h-9 flex-1 rounded-lg border border-input bg-transparent px-3 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (card.choices.length <= 2) return;
-                    const next = card.choices.filter((_, k) => k !== j);
-                    // 정답 인덱스 보정 — 지운 선지 앞이면 그대로, 뒤면 한 칸 당김, 정답 자체를 지웠으면 0번.
-                    const correct = card.correct === j ? 0 : card.correct > j ? card.correct - 1 : card.correct;
-                    onChange({ choices: next, correct });
-                  }}
-                  disabled={card.choices.length <= 2}
-                  aria-label={`선지 ${j + 1} 삭제`}
-                  className="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-wrong disabled:opacity-30"
-                >
-                  <X size={13} strokeWidth={2} />
-                </button>
+              <div key={j} className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onChange({ correct: j })}
+                    aria-label={`${j + 1}번을 정답으로`}
+                    aria-pressed={card.correct === j}
+                    className={`flex h-9 w-9 flex-none items-center justify-center rounded-lg border font-mono text-xs font-medium transition-colors ${
+                      card.correct === j
+                        ? "border-transparent bg-primary text-primary-foreground"
+                        : "border-border text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    {j + 1}
+                  </button>
+                  <input
+                    value={choice.text}
+                    onChange={(e) => {
+                      const next = [...card.choices];
+                      next[j] = { ...next[j], text: e.target.value };
+                      onChange({ choices: next });
+                    }}
+                    placeholder={`선지 ${j + 1}`}
+                    className="h-9 flex-1 rounded-lg border border-input bg-transparent px-3 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (card.choices.length <= 2) return;
+                      const next = card.choices.filter((_, k) => k !== j);
+                      // 정답 인덱스 보정 — 지운 선지 앞이면 그대로, 뒤면 한 칸 당김, 정답 자체를 지웠으면 0번.
+                      const correct = card.correct === j ? 0 : card.correct > j ? card.correct - 1 : card.correct;
+                      onChange({ choices: next, correct });
+                    }}
+                    disabled={card.choices.length <= 2}
+                    aria-label={`선지 ${j + 1} 삭제`}
+                    className="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-wrong disabled:opacity-30"
+                  >
+                    <X size={13} strokeWidth={2} />
+                  </button>
+                </div>
+                {/* 선지별 해설 + 공개/비공개 토글 */}
+                <div className="flex items-center gap-2 pl-11">
+                  <input
+                    value={choice.explanation}
+                    onChange={(e) => {
+                      const next = [...card.choices];
+                      next[j] = { ...next[j], explanation: e.target.value };
+                      onChange({ choices: next });
+                    }}
+                    placeholder="이 선지의 해설 (선택)"
+                    className="h-7 flex-1 rounded-md border border-border bg-transparent px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = [...card.choices];
+                      next[j] = { ...next[j], showExplanation: !next[j].showExplanation };
+                      onChange({ choices: next });
+                    }}
+                    aria-pressed={choice.showExplanation}
+                    title={choice.showExplanation ? "해설 공개 중 — 클릭해 비공개" : "해설 비공개 — 클릭해 공개"}
+                    className={`flex h-7 w-7 flex-none items-center justify-center rounded-md border transition-colors ${
+                      choice.showExplanation
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {choice.showExplanation ? <Eye size={12} /> : <EyeOff size={12} />}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
           {card.choices.length < 8 && (
             <button
               type="button"
-              onClick={() => onChange({ choices: [...card.choices, ""] })}
+              onClick={() =>
+                onChange({
+                  choices: [...card.choices, { text: "", explanation: "", showExplanation: false }],
+                })
+              }
               className="mt-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
             >
               <Plus size={13} strokeWidth={2} /> 선지 추가

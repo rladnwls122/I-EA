@@ -9,7 +9,7 @@ import {
   stripQuestionBlocks,
   type ParsedQuestion,
 } from "@/lib/authoring-chat";
-import type { CanvasCard } from "./AuthoringCanvas";
+import type { CanvasCard, AiSettings } from "./AuthoringCanvas";
 import { toast } from "sonner";
 
 interface Msg {
@@ -19,11 +19,19 @@ interface Msg {
   appliedKeys?: Set<string>; // 이미 적용한 제안 인덱스(멱등)
 }
 
-const BATCH_OPTIONS = [1, 3, 5];
+/** 설정 패널의 유형 칩 — null은 "자동"(AI가 알아서). */
+const TYPE_OPTIONS: Array<{ label: string; value: AiSettings["questionType"] }> = [
+  { label: "자동", value: null },
+  { label: "객관식", value: "객관식" },
+  { label: "주관식", value: "주관식" },
+  { label: "OX", value: "OX" },
+];
 
 export function AuthoringChatPanel({
   workbookId,
   cards,
+  settings,
+  onSettingsChange,
   onSubjectResolved,
   onApplyQuestion,
   prefill,
@@ -31,6 +39,9 @@ export function AuthoringChatPanel({
 }: {
   workbookId: string;
   cards: CanvasCard[];
+  /** AI 생성 설정 — 채팅창(스레드/입력)과 분리된 독립 패널이 조작. */
+  settings: AiSettings;
+  onSettingsChange: (s: AiSettings) => void;
   onSubjectResolved: (subjectId: string) => void;
   onApplyQuestion: (q: ParsedQuestion) => void;
   /** 카드 ✨AI 버튼이 넣어주는 입력창 프리필(예: "문제 2 수정: "). */
@@ -39,7 +50,6 @@ export function AuthoringChatPanel({
 }) {
   const [subjectId, setSubjectId] = useState("");
   const [input, setInput] = useState("");
-  const [batch, setBatch] = useState(1);
   const [streaming, setStreaming] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([
     { role: "ai", text: "원하는 주제·난이도·출제 포인트를 알려주세요. 한 문제씩 신중히 만들 수도, 한 번에 여러 개 만들 수도 있어요." },
@@ -91,8 +101,22 @@ export function AuthoringChatPanel({
       stem: extractPlainText(c.stem),
     }));
 
+    // 설정 패널 → 힌트 매핑. OX는 저장 유형이 아니라 객관식 + ox 플래그.
+    const questionType =
+      settings.questionType === "OX" ? ("객관식" as const) : settings.questionType ?? undefined;
+    const ox = settings.questionType === "OX" ? true : undefined;
+
     await streamAuthoringChat(
-      { workbookId, subjectId, message: msg, batchSize: batch, currentQuestions },
+      {
+        workbookId,
+        subjectId,
+        message: msg,
+        batchSize: settings.count,
+        questionType,
+        ox,
+        difficulty: settings.difficulty,
+        currentQuestions,
+      },
       {
         onDelta: (_d, full) => {
           setMessages((p) => {
@@ -149,20 +173,61 @@ export function AuthoringChatPanel({
 
   return (
     <aside className="flex w-[440px] flex-none flex-col border-l border-border">
-      {/* 헤더 — 배치 크기 */}
+      {/* 헤더 */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <span className="text-sm font-semibold">AI 출제 도우미</span>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          한번에
-          {BATCH_OPTIONS.map((n) => (
+      </div>
+
+      {/* 생성 설정 — 채팅 스레드/입력창과 분리된 독립 패널 */}
+      <div className="space-y-2.5 border-b border-border bg-surface-raised/50 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[11px] font-medium text-muted-foreground">유형</span>
+          {TYPE_OPTIONS.map((t) => (
             <button
-              key={n}
-              onClick={() => setBatch(n)}
-              className={`rounded px-1.5 py-0.5 ${batch === n ? "bg-primary text-primary-foreground" : "hover:text-foreground"}`}
+              key={t.label}
+              type="button"
+              onClick={() => onSettingsChange({ ...settings, questionType: t.value })}
+              aria-pressed={settings.questionType === t.value}
+              className={`rounded-md border px-2 py-1 text-[11px] transition-colors ${
+                settings.questionType === t.value
+                  ? "border-transparent bg-primary font-medium text-primary-foreground"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
             >
-              {n}개
+              {t.label}
             </button>
           ))}
+        </div>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+            문항 수
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={settings.count}
+              onChange={(e) =>
+                onSettingsChange({
+                  ...settings,
+                  count: Math.min(10, Math.max(1, Number(e.target.value) || 1)),
+                })
+              }
+              className="h-6 w-14 rounded border border-border bg-transparent px-1.5 font-mono text-[11px] text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+          </label>
+          <label className="flex flex-1 items-center gap-2 text-[11px] font-medium text-muted-foreground">
+            난이도
+            <input
+              type="range"
+              min={1}
+              max={5}
+              step={1}
+              value={settings.difficulty}
+              onChange={(e) => onSettingsChange({ ...settings, difficulty: Number(e.target.value) })}
+              className="flex-1 accent-primary"
+            />
+            <span className="w-4 font-mono tabular-nums text-foreground">{settings.difficulty}</span>
+          </label>
         </div>
       </div>
 

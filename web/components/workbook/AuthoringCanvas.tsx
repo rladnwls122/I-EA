@@ -17,16 +17,33 @@ import type { ParsedQuestion } from "@/lib/authoring-chat";
 import { AuthoringChatPanel } from "./AuthoringChatPanel";
 import { AuthoringCanvasCard } from "./AuthoringCanvasCard";
 
+/** 선지 하나 — 본문 + 선지별 해설(공개 여부 토글 가능). */
+export interface CanvasChoice {
+  text: string;
+  explanation: string;
+  /** 선지별 해설 공개 여부 — 저장 시 choices Json에 함께 실린다. */
+  showExplanation: boolean;
+}
+
 /** 좌측 캔버스 카드(경량 Draft — QuestionEditor의 Draft에서 편집에 쓰는 필드만). */
 export interface CanvasCard {
   id: string;
   type: "객관식" | "주관식";
   stem: any;
   passage: any | null;
-  choices: string[];
+  choices: CanvasChoice[];
   correct: number;
   answerText: string;
   explanation: any;
+  /** 배점 — 생성 단계부터 지정 가능. */
+  points: number;
+}
+
+/** AI 생성 설정(채팅창 밖 독립 패널) — null 유형은 "자동"(힌트 없음). */
+export interface AiSettings {
+  questionType: "객관식" | "주관식" | "OX" | null;
+  count: number;
+  difficulty: number;
 }
 
 /**
@@ -36,6 +53,8 @@ export interface CanvasCard {
  */
 function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
   const isObjective = q.questionType === "객관식";
+  const toChoices = (list: string[]): CanvasChoice[] =>
+    list.map((text) => ({ text, explanation: "", showExplanation: false }));
   if (isObjective) {
     const choices = q.choices ?? [];
     const correct = q.correctIndex;
@@ -47,10 +66,11 @@ function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
       type: q.questionType,
       stem: buildRichDoc(q.stem),
       passage: q.passage ? buildRichDoc(q.passage) : null,
-      choices,
+      choices: toChoices(choices),
       correct,
       answerText: "",
       explanation: q.explanation ? buildRichDoc(q.explanation) : buildRichDoc(""),
+      points: 1,
     };
   }
   return {
@@ -62,6 +82,7 @@ function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
     correct: -1,
     answerText: q.answerText ?? "",
     explanation: q.explanation ? buildRichDoc(q.explanation) : buildRichDoc(""),
+    points: 1,
   };
 }
 
@@ -76,6 +97,28 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
   const [cards, setCards] = useState<CanvasCard[]>([]);
   const [subjectId, setSubjectId] = useState<string>("");
   const [saving, setSaving] = useState(false);
+
+  /* ── AI 생성 설정 — 채팅창 밖 독립 패널(우측 상단)이 조작 ── */
+  const [aiSettings, setAiSettings] = useState<AiSettings>({
+    questionType: null,
+    count: 1,
+    difficulty: 3,
+  });
+
+  /* ── 문제집 공개 설정 — 최종 검토(저장) 시 함께 반영 ── */
+  const [isPublic, setIsPublic] = useState(false);
+
+  /* ── 드래그&드롭 순서 변경 ── */
+  const dragIndex = useRef<number | null>(null);
+  const moveCard = useCallback((from: number, to: number) => {
+    setCards((prev) => {
+      if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  }, []);
 
   /* ── 카드 편집 모드 (한 번에 하나) ── */
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -206,10 +249,15 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
         type: "객관식",
         stem: buildRichDoc(""),
         passage: null,
-        choices: ["", "", "", ""],
+        choices: Array.from({ length: 4 }, () => ({
+          text: "",
+          explanation: "",
+          showExplanation: false,
+        })),
         correct: 0,
         answerText: "",
         explanation: buildRichDoc(""),
+        points: 1,
       },
     ]);
   }, []);
@@ -257,14 +305,22 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
           const created = await createQuestion({
             subjectId,
             questionType: c.type,
+            points: c.points,
             ...(key && passageIdByKey.has(key) ? { passageId: passageIdByKey.get(key) } : {}),
             stem: c.stem,
             choices:
               c.type === "객관식"
-                ? c.choices.map((text, i) => ({
+                ? c.choices.map((ch, i) => ({
                     id: `c${i + 1}`,
-                    content: buildRichDoc(text),
+                    content: buildRichDoc(ch.text),
                     isCorrect: i === c.correct,
+                    // 선지별 해설 — 공개 여부(showExplanation)까지 choices Json에 함께 보존.
+                    ...(ch.explanation.trim()
+                      ? {
+                          explanation: buildRichBlocks(ch.explanation),
+                          explanationVisible: ch.showExplanation,
+                        }
+                      : {}),
                   }))
                 : undefined,
             correctAnswerText:
@@ -285,6 +341,18 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
         toast.error(`${failed}개 문항 저장에 실패했어요.${lastError ? ` (${lastError})` : ""}`);
       } else {
         toast.success(`${cards.length}개 문항을 문제집에 저장했어요.`);
+      }
+
+      // 3) 공개 설정 반영 — 헤더 토글 값으로 문제집 전체 공개/비공개를 확정.
+      const targetVisibility = isPublic ? "PUBLIC" : "PRIVATE";
+      if (workbook && workbook.visibility !== targetVisibility) {
+        try {
+          await updateWorkbook(workbookId, { visibility: targetVisibility });
+          toast.success(isPublic ? "문제집을 공개로 전환했어요." : "문제집을 비공개로 유지해요.");
+        } catch (e) {
+          console.error("공개 설정 변경 실패:", e);
+          toast.error("공개 설정 변경에 실패했어요.");
+        }
       }
     } finally {
       setSaving(false);
@@ -340,29 +408,73 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
               </button>
             )}
           </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex flex-none items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-          >
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={2.5} />}
-            최종 검토
-          </button>
+          <div className="flex flex-none items-center gap-3">
+            {/* 배포 공개 설정 — 저장(최종 검토) 시 문제집 전체에 반영 */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isPublic}
+              onClick={() => setIsPublic((v) => !v)}
+              className="flex items-center gap-2 text-xs text-muted-foreground"
+              title="저장 시 문제집 공개 여부"
+            >
+              <span className={isPublic ? "text-primary font-medium" : ""}>
+                {isPublic ? "공개" : "비공개"}
+              </span>
+              <span
+                className={`relative h-5 w-9 rounded-full transition-colors ${
+                  isPublic ? "bg-primary" : "bg-surface-raised border border-border"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
+                    isPublic ? "left-[18px]" : "left-0.5"
+                  }`}
+                />
+              </span>
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex flex-none items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={2.5} />}
+              최종 검토
+            </button>
+          </div>
         </header>
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {cards.map((c, i) => (
-            <AuthoringCanvasCard
+            <div
               key={c.id}
-              card={c}
-              index={i}
-              editing={editingId === c.id}
-              sharedWith={sharedWith(i)}
-              onStartEdit={() => startEdit(c.id)}
-              onFinishEdit={finishEdit}
-              onChange={(patch) => updateCard(c.id, patch)}
-              onRemove={() => removeCard(c.id)}
-              onAskAi={() => askAi(i)}
-            />
+              // 드래그&드롭 순서 변경 — 편집 중인 카드는 드래그 금지(입력 충돌).
+              draggable={editingId !== c.id}
+              onDragStart={() => {
+                dragIndex.current = i;
+              }}
+              onDragOver={(e) => {
+                e.preventDefault(); // drop 허용
+              }}
+              onDrop={() => {
+                if (dragIndex.current !== null) moveCard(dragIndex.current, i);
+                dragIndex.current = null;
+              }}
+              onDragEnd={() => {
+                dragIndex.current = null;
+              }}
+            >
+              <AuthoringCanvasCard
+                card={c}
+                index={i}
+                editing={editingId === c.id}
+                sharedWith={sharedWith(i)}
+                onStartEdit={() => startEdit(c.id)}
+                onFinishEdit={finishEdit}
+                onChange={(patch) => updateCard(c.id, patch)}
+                onRemove={() => removeCard(c.id)}
+                onAskAi={() => askAi(i)}
+              />
+            </div>
           ))}
           <button
             className="flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-border py-8 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground"
@@ -377,6 +489,8 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
       <AuthoringChatPanel
         workbookId={workbookId}
         cards={cards}
+        settings={aiSettings}
+        onSettingsChange={setAiSettings}
         onSubjectResolved={setSubjectId}
         onApplyQuestion={applyQuestion}
         prefill={chatPrefill}

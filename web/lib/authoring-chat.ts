@@ -112,6 +112,12 @@ export interface AuthoringChatBody {
   subjectId: string;
   message: string;
   batchSize?: number;
+  /** 설정 패널의 유형 힌트 — 지정 시 이번 턴 생성 유형을 강제. */
+  questionType?: '객관식' | '주관식';
+  /** OX(참/거짓) 스타일 힌트. */
+  ox?: boolean;
+  /** 난이도 1~5. */
+  difficulty?: number;
   currentQuestions?: {
     index: number;
     questionType: string;
