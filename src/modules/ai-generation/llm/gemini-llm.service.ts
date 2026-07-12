@@ -257,7 +257,20 @@ export class GeminiLlmService {
       .join('');
     if (!payload || payload === '[DONE]') return '';
     try {
-      const json = JSON.parse(payload) as GeminiResponse;
+      const json = JSON.parse(payload) as GeminiResponse & {
+        promptFeedback?: { blockReason?: string };
+      };
+      // 텍스트 없이 끝나는 원인(안전 차단·비정상 종료)을 서버 로그에 남긴다 —
+      // 프로덕션에서 "델타 0개 스트림"의 원인을 특정할 수 있는 유일한 단서다.
+      const blockReason = json.promptFeedback?.blockReason;
+      if (blockReason) {
+        this.logger.warn(`Gemini 프롬프트 차단(blockReason=${blockReason})`);
+      }
+      const finishReason = (json.candidates?.[0] as { finishReason?: string } | undefined)
+        ?.finishReason;
+      if (finishReason && finishReason !== 'STOP') {
+        this.logger.warn(`Gemini 스트림 비정상 종료(finishReason=${finishReason})`);
+      }
       return (json.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
     } catch {
       // 부분 JSON/키프레임이 아닌 라인은 조용히 무시한다.

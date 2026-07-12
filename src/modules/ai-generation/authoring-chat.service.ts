@@ -103,6 +103,16 @@ export class AuthoringChatService {
         full += next.value;
         res.write(`data: ${JSON.stringify({ delta: next.value })}\n\n`);
       }
+      if (!full) {
+        // 델타가 하나도 없이 끝난 스트림 — 안전 차단·업스트림 중단 등. done으로
+        // 조용히 끝내면 클라이언트가 "빈 응답"의 원인을 알 수 없으므로 error로 알린다.
+        // (원인 상세는 GeminiLlmService가 blockReason/finishReason을 서버 로그에 남긴다)
+        this.logger.warn('출제 채팅 스트림이 델타 없이 종료됨 — Gemini 로그를 확인하세요.');
+        res.write(
+          `event: error\ndata: ${JSON.stringify({ message: 'AI 응답이 비어 있어요. 잠시 후 다시 시도해주세요.' })}\n\n`,
+        );
+        return;
+      }
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       await this.appendTurns(dto.workbookId, history, dto.message, full);
     } catch (err) {
