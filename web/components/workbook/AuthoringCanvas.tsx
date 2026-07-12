@@ -9,7 +9,6 @@ import {
   updateQuestion,
   publishQuestion,
   addQuestionToWorkbook,
-  removeQuestionFromWorkbook,
   updateWorkbook,
   createPassage,
   publishPassage,
@@ -221,26 +220,27 @@ export function AuthoringCanvas({
   /* ── 기존 문항 복원 ──
    * "수정"으로 열면 원래 담긴 문항을 캔버스에 그대로 되살린다(한 번만).
    * 문제집 목록 응답엔 선지/지문/해설이 없으므로 문항별 상세를 따로 불러온다.
-   * 저장 시 어떤 문항이 원래 담겨있었는지(삭제 판정용)도 여기서 기록한다. */
+   * 실패하면 hydratedRef를 세우지 않아 다음 재조회에서 다시 시도한다(데이터 유실 방지). */
   const hydratedRef = useRef(false);
-  const initialQuestionIds = useRef<string[]>([]);
   useEffect(() => {
     if (hydratedRef.current) return;
     const wqs = workbook?.questions;
     if (!wqs) return; // 아직 로딩 중
-    hydratedRef.current = true; // 빈 문제집이어도 재실행 막기(StrictMode/재조회)
-    const ids = wqs.map((wq) => wq.questionId);
-    if (ids.length === 0) return; // 새 문제집 — 복원할 것 없음
-    initialQuestionIds.current = ids;
+    if (wqs.length === 0) {
+      hydratedRef.current = true; // 새 문제집 — 복원할 것 없음
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const details = await Promise.all(ids.map((id) => fetchQuestion(id)));
+        const details = await Promise.all(wqs.map((wq) => fetchQuestion(wq.questionId)));
         if (cancelled) return;
-        setCards(details.map(questionToCard));
+        // 이미 사용자가 카드를 넣었으면 덮어쓰지 않는다.
+        setCards((prev) => (prev.length === 0 ? details.map(questionToCard) : prev));
+        hydratedRef.current = true; // 성공했을 때만 완료 표시
       } catch (e) {
         console.error("기존 문항 불러오기 실패:", e);
-        toast.error("기존 문항을 불러오지 못했어요.");
+        toast.error("기존 문항을 불러오지 못했어요. 새로고침 해주세요.");
       }
     })();
     return () => {
@@ -498,26 +498,13 @@ export function AuthoringCanvas({
         }
       }
 
-      // 4) 삭제 반영 — 처음 담겨있던 문항 중 캔버스에서 빠진 건 문제집에서 제거.
-      const currentIds = new Set(cards.map((c) => c.id));
-      for (const id of initialQuestionIds.current) {
-        if (currentIds.has(id)) continue;
-        try {
-          await removeQuestionFromWorkbook(workbookId, id);
-        } catch (e) {
-          console.error("문항 제거 실패:", e);
-        }
-      }
-
-      // 새로 만든 문항의 실제 id로 카드 id를 교체하고, "원래 담긴 문항" 기준도 갱신.
+      // 새로 만든 문항의 실제 id로 카드 id를 교체 — 같은 세션에서 다시 저장해도
+      // 중복 생성되지 않게 한다. (저장은 절대 문항을 삭제하지 않는다 — 추가/갱신만.)
       if (newIdByCardId.size > 0) {
         setCards((prev) =>
           prev.map((c) => (newIdByCardId.has(c.id) ? { ...c, id: newIdByCardId.get(c.id)! } : c)),
         );
       }
-      initialQuestionIds.current = cards
-        .map((c) => newIdByCardId.get(c.id) ?? c.id)
-        .filter(isPersistedCard);
 
       if (failed > 0) {
         toast.error(`${failed}개 문항 저장에 실패했어요.${lastError ? ` (${lastError})` : ""}`);
