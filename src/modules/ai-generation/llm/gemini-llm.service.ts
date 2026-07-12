@@ -275,7 +275,12 @@ export class GeminiLlmService {
       if (finishReason && finishReason !== 'STOP') {
         this.logger.warn(`Gemini 스트림 비정상 종료(finishReason=${finishReason})`);
       }
-      return (json.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
+      // thinking 모델(gemini-2.5/3)의 사고 과정(thought: true 파트)은 사용자에게
+      // 노출하지 않는다 — 최종 답변 파트만 델타로 흘린다.
+      return (json.candidates?.[0]?.content?.parts ?? [])
+        .filter((p) => (p as { thought?: boolean }).thought !== true)
+        .map((p) => p.text ?? '')
+        .join('');
     } catch {
       // 부분 JSON/키프레임이 아닌 라인은 조용히 무시한다.
       return '';

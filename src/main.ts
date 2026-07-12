@@ -8,8 +8,15 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
 
+  // CORS — ALLOWED_ORIGINS(콤마 구분 목록)가 설정돼 있으면 그 목록 + Vercel 배포
+  // 도메인(*.vercel.app — 프리뷰 URL이 배포마다 바뀌므로)만 허용, 없으면 데모
+  // 편의상 모든 origin 허용. 목록에 프로덕션 도메인을 넣어두는 것을 권장.
+  const allowedOrigins = (config.get<string>('ALLOWED_ORIGINS') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: true, // 데모: 모든 origin 허용. 운영 시 Vercel 도메인으로 좁힐 것.
+    origin: allowedOrigins.length > 0 ? [...allowedOrigins, /\.vercel\.app$/] : true,
     credentials: true,
   });
 
