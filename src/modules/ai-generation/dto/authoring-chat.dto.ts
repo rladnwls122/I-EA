@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -10,14 +11,14 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { QUESTION_KINDS } from '@/common/constants/question';
 
 /** 좌측 캔버스의 현재 문항 요약 — 교체/수정 참조용(평문). */
 export class CurrentQuestionRef {
   @IsInt()
   index!: number;
 
-  @IsString()
-  @MaxLength(20)
+  @IsIn(QUESTION_KINDS)
   questionType!: string;
 
   @IsString()
