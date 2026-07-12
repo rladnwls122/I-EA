@@ -41,7 +41,7 @@
 | **Database** | MySQL | Prisma ORM을 통한 데이터 관리 |
 | **Cache/Queue** | Redis | BullMQ를 이용한 비동기 작업 처리 |
 | **AI Provider** | Google Gemini | 문항 생성 및 AI 튜터 서비스 |
-| **Storage** | Supabase Storage | S3 호환 미디어 자산 저장소 |
+| **Storage** | AWS S3 | Presigned POST으로 클라이언트 직접 업로드 |
 
 ---
 

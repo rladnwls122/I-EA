@@ -41,15 +41,15 @@ Note: the ports collide — both the API and the Next.js dev server default to *
 
 ### Module layout
 
-One NestJS module per bounded context under `src/modules/*`, each following controller → service → (DTO) with constructor DI. `PrismaService` (`src/prisma/`) is the single DB gateway; there is no repository layer — services call Prisma directly. For the current per-endpoint map (what each module owns, MVP status), see `docs/superpowers/plans/2026-07-08-qidea-api-inventory.md` — not `README.md`, which is stale.
+One NestJS module per bounded context under `src/modules/*`, each following controller → service → (DTO) with constructor DI. `PrismaService` (`src/prisma/`) is the single DB gateway; there is no repository layer — services call Prisma directly. For the current per-endpoint map (what each module owns, MVP status), see `docs/superpowers/plans/2026-07-08-qidea-api-inventory.md`; `README.md`'s module table is a lighter-weight index of the same routes.
 
-Media/visuals are minimal in the MVP: images only. The client crops and uploads directly to **Supabase Storage**; `POST /media-assets` only registers the resulting public URL (`media.service.ts` never handles file bytes).
+Media/visuals are minimal in the MVP: images only. The client crops and uploads directly to **AWS S3** via a presigned POST (`s3.service.ts`, `POST /media-assets/presign`); `POST /media-assets` only registers the resulting public URL (`media.service.ts` never handles file bytes).
 
 ### Auth & authorization (global)
 
 - `JwtAuthGuard` is registered as a global `APP_GUARD` in `app.module.ts`. **Every route is authenticated by default.** Opt out per-route with `@Public()` (`src/common/decorators/public.decorator.ts`).
 - `@Roles(...)` + `RolesGuard` restrict CREATOR/ADMIN-only actions (master data, publishing). `RolesGuard` assumes `JwtAuthGuard` already populated `request.user`.
-- **Auth is email + password with bcrypt** (`auth.service.ts`: `register`/`login`, `passwordHash` column). Note: `README.md` and `LOCAL_TEST_GUIDE.md` still describe an older *email-provisioning* login (no password) — those docs are stale; trust the code.
+- **Auth is email + password with bcrypt** (`auth.service.ts`: `register`/`login`, `passwordHash` column). `LOCAL_TEST_GUIDE.md` §3.1 walks through `POST /auth/register` then `/auth/login` with this scheme — keep it in sync if the DTOs change.
 
 ### Classification & question types (MVP model)
 
@@ -95,18 +95,18 @@ The wrong-answer notebook is two decoupled axes, joined only on the client (and 
 - `prisma/schema.prisma` is the MVP-refactored schema: `subjects` (as 세부과목) → `questions.subjectId`, `questionType` VARCHAR, `questions.correctAnswerText`, and `user_question_annotations`. Removed vs. the original DDL: `units`, `question_variants`, comment `isPinned`, media `GRAPH_CODE/SVG`+`sourceCode`, the old `user_question_memos`. DB column names are `snake_case` via `@map`; Prisma fields are `camelCase`. `prisma/0001_qidea_extensions.sql` is a hand-maintained reference only (prod uses `db push`).
 - The generated client doesn't surface `Prisma.InputJsonValue`, so code writing structured objects into `Json` columns casts through a local `type JsonWritable = any` alias (see the processor). Follow that existing pattern rather than fighting the types.
 - Path alias `@/*` → `src/*` (configured in both `tsconfig.json` and the jest `moduleNameMapper`).
-- **`README.md` is stale** — it still documents units, the enum `QuestionType`, and the `variants`/`memos` modules. Trust `schema.prisma` and the docs under `docs/superpowers/plans/` (the `2026-07-08-*` files describe the MVP refactor).
+- `schema.prisma` is authoritative for the current shape; the `docs/superpowers/plans/2026-07-08-*` files describe the MVP refactor that produced it (units/`question_variants`/`user_question_memos`/`QuestionType` enum were removed then — `README.md` no longer references them).
 
 ### Deployment
 
-Railway via `railway.json` → `npm run start:railway`, which runs `prisma db push --skip-generate --accept-data-loss` then `node dist/main.js`. **Production uses `db push`, not migrations** — the `prisma/migrations` dev flow and the deployed schema-sync path differ; keep `schema.prisma` authoritative. The frontend targets Cloudflare Pages / Vercel (`@cloudflare/next-on-pages`, `wrangler` in `web/`).
+Railway via `railway.json` → `npm run start:railway`, which runs `prisma db push --skip-generate --accept-data-loss` then `node dist/main.js`. **Production uses `db push`, not migrations** — the `prisma/migrations` dev flow and the deployed schema-sync path differ; keep `schema.prisma` authoritative. The frontend is deployed to **Vercel** (`https://i-ea.vercel.app`); `@cloudflare/next-on-pages`/`wrangler` remain in `web/package.json` from an earlier abandoned Cloudflare Pages attempt (no `wrangler.toml` present) — don't assume that path is live.
 
 ### Frontend (`web/`) notes
 
 `web/WEB_GUIDE.md` is the authoritative AI-facing guide for this app (the auto-generated `web/README.md` is unmodified create-next-app boilerplate — ignore it). Key rules from it:
 
 - **Vega charts must be client-only.** Chart components import `vega`/`vega-lite`/`react-vega`, which break under SSR (`canvas` errors). Load them via `next/dynamic` with `ssr: false`, and double-guard with `typeof window !== 'undefined'` inside the component. Don't bump the Vega package versions.
-- **Layout is flat, no `AppFrame` wrapper.** `app/layout.tsx` renders a global sidebar (`AppSidebar`); left padding comes from `pl-[64px]` on `body`. Pages start directly with `<main>` — don't reintroduce a layout wrapper or duplicate the margin. Routes like `app/notes/` use parallel routes (`@sidebar` slot).
+- **Layout is flat, no `AppFrame` wrapper.** `app/layout.tsx` renders a global sidebar (`AppSidebar`), which is responsive: a fixed left rail (`md:` and up, `pl-[64px]` on `body`) collapses to a bottom tab bar on mobile (`pb-14` on `body` below `md`). Pages start directly with `<main>` — don't reintroduce a layout wrapper or duplicate the margin. `app/intro/page.tsx` offsets both (`-mb-14 md:-ml-[64px]`) since the sidebar hides there. Routes like `app/notes/` use parallel routes (`@sidebar` slot) and stack to a single column below `md`.
 - **Real API vs mock data is still mixed.** `lib/api.ts` + `lib/hooks.ts` are the real backend integration and should be preferred for any new/changed feature; some pages (e.g. `app/questions/page.tsx`) still read `lib/mock-data.ts`. `lib/mock-data.ts` and `lib/types.ts` disagree on shape in places (e.g. `id: number` vs `string`) — treat `lib/types.ts` as the source of truth and fix mismatches toward it. API calls read the auth token from `localStorage`, so they must run in client components only.
 - **Rich text is ProseMirror JSON, same as the backend** (`stem`, `choices`, `explanation`). Never render these fields as raw strings — use `lib/prosemirror.ts`'s `extractPlainText` or a dedicated renderer, or you'll get `[object Object]` or a runtime crash.
 - **Defensive guards expected throughout:** `typeof window !== 'undefined'` before any `localStorage` access, existence checks before `new Date(field)` conversions, and `(data || []).map(...)` before assuming an API response is an array.

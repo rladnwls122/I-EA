@@ -107,20 +107,32 @@ http://localhost:3000/api/docs
 
 ## 3. 기본 테스트 (curl 또는 Postman)
 
-### 3.1 로그인 — JWT 토큰 받기
+### 3.1 회원가입 + 로그인 — JWT 토큰 받기
 
-**curl:**
+인증은 **이메일 + 비밀번호**(bcrypt)입니다. 최초 1회 가입 후 로그인하세요.
+
+**가입(curl):**
+```bash
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "creator@test.com",
+    "password": "test1234!",
+    "nickname": "테스트유저"
+  }'
+```
+
+**로그인(curl):**
 ```bash
 curl -X POST http://localhost:3000/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "creator@test.com",
-    "nickname": "테스트유저",
-    "roles": ["CREATOR"]
+    "password": "test1234!"
   }'
 ```
 
-**응답:**
+**응답(가입/로그인 공통):**
 ```json
 {
   "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
@@ -432,7 +444,7 @@ curl보다 UI가 편하면 Postman을 쓰세요.
         "header": [{"key": "Content-Type", "value": "application/json"}],
         "body": {
           "mode": "raw",
-          "raw": "{\"email\":\"creator@test.com\",\"roles\":[\"CREATOR\"]}"
+          "raw": "{\"email\":\"creator@test.com\",\"password\":\"test1234!\"}"
         },
         "url": {"raw": "http://localhost:3000/api/auth/login", "protocol": "http", "host": ["localhost"], "port": ["3000"], "path": ["api", "auth", "login"]}
       }
