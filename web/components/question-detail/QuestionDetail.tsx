@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2 } from "lucide-react";
-import { useQuestion } from "@/lib/hooks";
+import { ArrowLeft, Loader2, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { useDeleteQuestion, useMe, useQuestion } from "@/lib/hooks";
 import { QuestionArticle } from "./QuestionArticle";
+import { QuestionEditForm } from "./QuestionEditForm";
 import { ExplanationPanel } from "./ExplanationPanel";
 import { StatsPanel } from "./StatsPanel";
 import { RatingPanel } from "./RatingPanel";
@@ -22,8 +24,24 @@ export function QuestionDetail({
 }) {
   const router = useRouter();
   const { data: question, isLoading, isError } = useQuestion(id);
+  const { data: me } = useMe();
+  const deleteQuestion = useDeleteQuestion();
   const [reveal, setReveal] = useState(false);
+  const [editing, setEditing] = useState(false);
   const solved = !!question?.solvedByMe;
+  const isOwner = !!me && !!question && me.id === question.creatorId;
+
+  const handleDelete = () => {
+    if (!question) return;
+    if (!window.confirm("이 문항을 삭제할까요? 보관 처리되어 목록에서 사라집니다.")) return;
+    deleteQuestion.mutate(question.id, {
+      onSuccess: () => {
+        toast.success("문항을 삭제했어요.");
+        router.push("/questions");
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : "삭제에 실패했어요."),
+    });
+  };
 
   useEffect(() => {
     if (initialReveal && solved) setReveal(true);
@@ -68,6 +86,26 @@ export function QuestionDetail({
 
         <div className="flex-1" />
 
+        {isOwner && !editing && (
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+            >
+              <Pencil size={13} /> 수정
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleteQuestion.isPending}
+              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive disabled:opacity-50"
+            >
+              {deleteQuestion.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} 삭제
+            </button>
+          </div>
+        )}
+
         <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
           <button
             type="button"
@@ -101,8 +139,12 @@ export function QuestionDetail({
       {/* 본문 2열 */}
       <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5 lg:flex-row">
         <main className="mx-auto w-full max-w-[772px] flex-1 space-y-4">
-          <QuestionArticle question={question} reveal={reveal} />
-          {reveal && <ExplanationPanel explanation={question.explanation} />}
+          {editing ? (
+            <QuestionEditForm question={question} onDone={() => setEditing(false)} />
+          ) : (
+            <QuestionArticle question={question} reveal={reveal} />
+          )}
+          {!editing && reveal && <ExplanationPanel explanation={question.explanation} />}
           {reveal && <StatsPanel questionId={id} />}
           <RatingPanel questionId={id} />
         </main>

@@ -518,7 +518,7 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
               className="flex flex-none items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={2.5} />}
-              최종 검토
+              문제집 저장
             </button>
           </div>
         </header>

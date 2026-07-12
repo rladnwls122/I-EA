@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useWorkbooks } from "@/lib/hooks";
+import { useMe, useWorkbooks } from "@/lib/hooks";
 import { WorkbookPreviewSidebar } from "@/components/workbook/WorkbookPreviewSidebar";
 import { WorkbookCard } from "@/components/workbook/WorkbookCard";
 import { CartButton } from "@/components/cart/CartButton";
@@ -14,6 +14,7 @@ export default function WorkbookPage() {
   const [keyword, setKeyword] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { data, isLoading } = useWorkbooks({ search: keyword || undefined });
+  const { data: me } = useMe();
   const workbooks = data?.items || [];
 
   return (
@@ -69,7 +70,12 @@ export default function WorkbookPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {workbooks.map((wb) => (
-            <WorkbookCard key={wb.id} wb={wb} onClick={() => setSelectedId(wb.id)} />
+            <WorkbookCard
+              key={wb.id}
+              wb={wb}
+              onClick={() => setSelectedId(wb.id)}
+              canEdit={!!me && me.id === wb.ownerId}
+            />
           ))}
         </div>
       )}

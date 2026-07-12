@@ -38,7 +38,15 @@ export class QuestionsService {
       status: query.status ?? 'PUBLISHED',
       ...(query.questionType ? { questionType: query.questionType } : {}),
       ...(query.difficulty ? { difficulty: query.difficulty } : {}),
-      ...(query.q ? { searchText: { contains: query.q } } : {}),
+      // 키워드 검색 — 본문(search_text) 또는 태그명 매칭. 태그(#키워드)로도 찾을 수 있다.
+      ...(query.q
+        ? {
+            OR: [
+              { searchText: { contains: query.q } },
+              { questionTags: { some: { tag: { name: { contains: query.q } } } } },
+            ],
+          }
+        : {}),
       // 태그 AND 매칭: 지정한 모든 태그를 가진 문제만.
       ...(query.tagIds?.length
         ? { AND: query.tagIds.map((tagId) => ({ questionTags: { some: { tagId } } })) }

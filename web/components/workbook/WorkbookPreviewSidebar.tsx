@@ -134,9 +134,16 @@ export function WorkbookPreviewSidebar({
                         <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full border border-border font-mono text-[10px] text-muted-foreground">
                           {i + 1}
                         </span>
-                        <p className="line-clamp-2 flex-1 text-[13px] leading-relaxed text-foreground/90">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            router.push(`/questions/${wq.questionId}`);
+                            onClose();
+                          }}
+                          className="line-clamp-2 flex-1 text-left text-[13px] leading-relaxed text-foreground/90 transition-colors hover:text-primary"
+                        >
                           {wq.question ? extractPlainText(wq.question.stem) : "문항"}
-                        </p>
+                        </button>
                         <button
                           type="button"
                           aria-label={inCart ? "담김 — 빼려면 클릭" : "이 문항만 담기"}

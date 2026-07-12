@@ -1,19 +1,43 @@
 "use client";
-import { ArrowUpRight, Eye, GitFork, Users } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, Eye, GitFork, Pencil, Users } from "lucide-react";
 import type { Workbook } from "@/lib/types";
 
-/** 문제집 탐색/내 문제집 그리드 공용 카드. */
-export function WorkbookCard({ wb, onClick }: { wb: Workbook; onClick: () => void }) {
+/**
+ * 문제집 탐색/내 문제집 그리드 공용 카드.
+ * canEdit(소유자)이면 우상단에 수정 버튼을 띄운다 → /edit?workbookId=... 로 이동.
+ */
+export function WorkbookCard({
+  wb,
+  onClick,
+  canEdit = false,
+}: {
+  wb: Workbook;
+  onClick: () => void;
+  canEdit?: boolean;
+}) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group relative flex flex-col justify-between overflow-hidden rounded-xl border border-border bg-card p-5 text-left transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:bg-surface-raised hover:shadow-lg hover:shadow-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-    >
-      {/* 호버 시 우상단에 미리보기 화살표가 떠올라 클릭 가능함을 알린다. */}
-      <span className="pointer-events-none absolute right-4 top-4 flex items-center gap-1 text-xs font-medium text-primary opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-        미리보기 <ArrowUpRight size={13} strokeWidth={2.5} />
-      </span>
+    <div className="relative">
+      {canEdit && (
+        <Link
+          href={`/edit?workbookId=${wb.id}`}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-md border border-border bg-card/90 px-2 py-1 text-xs font-medium text-foreground shadow-sm backdrop-blur transition-colors hover:border-primary/50 hover:text-primary"
+        >
+          <Pencil size={12} strokeWidth={2} /> 수정
+        </Link>
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        className="group relative flex w-full flex-col justify-between overflow-hidden rounded-xl border border-border bg-card p-5 text-left transition-all duration-200 hover:-translate-y-1 hover:border-primary/50 hover:bg-surface-raised hover:shadow-lg hover:shadow-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      >
+        {/* 호버 시 우상단에 미리보기 화살표가 떠올라 클릭 가능함을 알린다(소유자는 수정 버튼이 그 자리). */}
+        {!canEdit && (
+          <span className="pointer-events-none absolute right-4 top-4 flex items-center gap-1 text-xs font-medium text-primary opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            미리보기 <ArrowUpRight size={13} strokeWidth={2.5} />
+          </span>
+        )}
       <div>
         <div className="mb-2 flex items-center gap-2">
           <span
@@ -56,6 +80,7 @@ export function WorkbookCard({ wb, onClick }: { wb: Workbook; onClick: () => voi
           </span>
         </div>
       </div>
-    </button>
+      </button>
+    </div>
   );
 }
