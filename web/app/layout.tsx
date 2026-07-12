@@ -25,7 +25,7 @@ export const metadata: Metadata = { title: "IΔEA | 공부의 흐름을 설계�
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko" className={`${pretendard.variable} ${geistMono.variable}`}>
+    <html lang="ko" suppressHydrationWarning className={`${pretendard.variable} ${geistMono.variable}`}>
       <body className="bg-background text-foreground min-h-screen pb-14 font-sans antialiased md:pb-0 md:pl-[64px]">
         <Providers>
           <AppSidebar />

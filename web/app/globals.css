@@ -3,7 +3,55 @@
 @tailwind utilities;
 
 :root {
-  /* "정밀 계기" 다크 — 초록기가 스민 뉴트럴 사다리 · Pretendard · emerald 행동색 · 헤어라인 보더.
+  /* "정밀 계기" 라이트 — 다크의 주광(晝光) 대응. 초록기가 스민 오프화이트 사다리 ·
+     Pretendard · emerald 행동색(라이트 대비용으로 한 톤 진하게) · 헤어라인 보더.
+     사다리: background(f6f8f7) → surface-raised(f1f4f2) → card/popover(#fff). 흰 카드가 떠오른다. */
+  --background: #f6f8f7;
+  --foreground: #0d1210;
+  --card: #ffffff;
+  --card-foreground: #0d1210;
+  --popover: #ffffff;
+  --popover-foreground: #0d1210;
+  --primary: #059669;
+  --primary-foreground: #ffffff;
+  --primary-hover: #047857;
+  --primary-shadow: #065f46;
+  --secondary: #ecefed;
+  --secondary-foreground: #0d1210;
+  --muted: #ecefed;
+  --muted-foreground: #59635d;
+  --accent: #e6ebe8;
+  --accent-foreground: #0d1210;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --destructive-shadow: #991b1b;
+  --border: #e3e7e4;
+  --input: #cfd6d1;
+  --ring: #059669;
+  --radius: 0.75rem;
+  --surface-raised: #f1f4f2;
+  --purple: #7c3aed;
+  --correct: #059669;
+  --wrong: #dc2626;
+  --streak: #b45309;
+  /* 차트/사이드바 토큰 (shadcn 참조용 최소 정의) */
+  --chart-1: #059669;
+  --chart-2: #7c3aed;
+  --chart-3: #dc2626;
+  --chart-4: #d97706;
+  --chart-5: #2563eb;
+  --sidebar: #f1f4f2;
+  --sidebar-foreground: #0d1210;
+  --sidebar-primary: #059669;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e6ebe8;
+  --sidebar-accent-foreground: #0d1210;
+  --sidebar-border: #e3e7e4;
+  --sidebar-ring: #059669;
+}
+
+.dark {
+  /* "정밀 계기" 다크 — 초록기가 스민 뉴트럴 사다리. 앱 기본 테마(defaultTheme="dark").
      사다리: background → card → surface-raised → popover(overlay). 단계당 밝기 한 칸씩. */
   --background: #0a0c0b;
   --foreground: #f2f4f3;
@@ -27,13 +75,11 @@
   --border: #212724;
   --input: #2a322e;
   --ring: #34d399;
-  --radius: 0.75rem;
   --surface-raised: #151918;
   --purple: #a78bfa;
   --correct: #34d399;
   --wrong: #f87171;
   --streak: #fbbf24;
-  /* 차트/사이드바 토큰 (shadcn 참조용 최소 정의) */
   --chart-1: #34d399;
   --chart-2: #a78bfa;
   --chart-3: #f87171;
@@ -47,10 +93,6 @@
   --sidebar-accent-foreground: #f2f4f3;
   --sidebar-border: #1c211e;
   --sidebar-ring: #34d399;
-}
-
-.dark {
-  /* Next.js next-themes support, defaults to :root above */
 }
 
 @layer base {
@@ -102,32 +144,51 @@ label {
   }
 }
 
-/* 표면 상단 미광 — 카드가 빛을 위에서 받는 것처럼. 사다리 전 단계 공용. */
+/* 표면 상단 미광 — 카드가 빛을 위에서 받는 것처럼. 사다리 전 단계 공용.
+   라이트에선 흰 하이라이트, 다크에선 극저 white inset. */
 .surface-sheen {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.dark .surface-sheen {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 /* 글래스모피즘 — AI 채팅 패널 전용.
    backdrop-filter는 뒤에 비칠 것이 있어야 의미가 있으므로, 패널 내부의
-   ambient glow(.glass-ambient)와 세트로 쓴다. 투명도 감소 선호 시 불투명 폴백. */
+   ambient glow(.glass-ambient)와 세트로 쓴다. 투명도 감소 선호 시 불투명 폴백.
+   기본값은 라이트(흰 유리), .dark에서 어두운 유리로 덮어쓴다. */
 .glass-panel {
-  background: rgba(16, 19, 18, 0.55);
+  background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(24px) saturate(1.3);
   -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  border-color: rgba(13, 18, 16, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.dark .glass-panel {
+  background: rgba(16, 19, 18, 0.55);
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .glass-chip {
+  background: rgba(13, 18, 16, 0.04);
+  border-color: rgba(13, 18, 16, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.dark .glass-chip {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .glass-bar {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.55);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  border-color: rgba(13, 18, 16, 0.08);
+}
+.dark .glass-bar {
+  background: rgba(255, 255, 255, 0.03);
   border-color: rgba(255, 255, 255, 0.08);
 }
 

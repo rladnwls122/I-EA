@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BookmarkCheck, BookOpenCheck, Lightbulb, Store, User } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { useWallet } from "@/lib/hooks";
 
 export function AppSidebar() {
@@ -81,7 +82,9 @@ export function AppSidebar() {
           })}
         </nav>
 
-        <div className="mt-auto">
+        {/* 좌측 레일 하단 — 라이트/다크 토글 + 내 정보 */}
+        <div className="mt-auto flex flex-col items-center gap-1.5">
+          <ThemeToggle className="h-11 w-11" />
           <Link
             href="/me"
             aria-label="내 정보"

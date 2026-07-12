@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Flame, LogOut, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { useMe } from "@/lib/hooks";
 
 /** 내 정보 — 이메일/닉네임/레벨/XP/스트릭 + 로그아웃. */
@@ -69,6 +70,15 @@ export default function MePage() {
             <p className="text-xs text-muted-foreground">누적 경험치</p>
           </div>
         </div>
+      </section>
+
+      {/* 화면 테마 — 모바일에선 좌측 레일 토글이 없으므로 여기서 전환 */}
+      <section className="flex items-center justify-between rounded-2xl border border-border bg-card p-4 shadow-surface md:p-6">
+        <div>
+          <p className="text-sm font-medium text-foreground">화면 테마</p>
+          <p className="text-xs text-muted-foreground">라이트 / 다크 전환</p>
+        </div>
+        <ThemeToggle className="h-10 w-10 border border-border" />
       </section>
 
       <Button variant="outline" className="w-full" onClick={logout}>
