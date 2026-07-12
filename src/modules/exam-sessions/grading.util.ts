@@ -5,6 +5,9 @@ import { QuestionKind } from '@/common/constants/question';
 export interface QuestionSnapshot {
   questionType: QuestionKind; // "객관식" | "주관식"
   stem: PMNode;
+  // 연결 지문(있으면) — ProseMirror JSON. 세트 문항이 지문을 공유해도 스냅샷엔
+  // 각자 통째로 복사해 둔다(원본이 바뀌어도 이미 시작한 세션엔 영향 없게).
+  passage?: PMNode;
   choices?: Array<{ id: string; isCorrect?: boolean; content?: unknown; explanation?: unknown }>;
   explanation?: unknown;
   // 주관식 정답(단답 자동채점용). 없으면 서술형 → 자기채점 대상.

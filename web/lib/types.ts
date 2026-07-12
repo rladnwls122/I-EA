@@ -364,6 +364,8 @@ export interface SessionQuestionSnapshot {
   questionType: QuestionType;
   /** ProseMirror JSON */
   stem: any;
+  /** 연결 지문(있으면) — ProseMirror JSON */
+  passage?: any;
   choices?: SessionChoice[];
   /** ProseMirror JSON. IN_PROGRESS에는 없음 */
   explanation?: any;

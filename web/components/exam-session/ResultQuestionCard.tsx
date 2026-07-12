@@ -70,6 +70,12 @@ export function ResultQuestionCard({
         )}
       </div>
 
+      {item.snapshot.passage && (
+        <div className="mb-4 rounded-lg bg-surface-raised px-3 py-2.5 text-sm leading-relaxed text-foreground">
+          <p className="whitespace-pre-wrap">{extractPlainText(item.snapshot.passage)}</p>
+        </div>
+      )}
+
       <p className="mb-4 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
         {extractPlainText(item.snapshot.stem)}
       </p>

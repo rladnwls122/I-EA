@@ -98,6 +98,8 @@ export class ExamSessionsService {
         // 결과 화면 정답률 배지용 — 조립 시점 값을 스냅샷에 고정한다.
         totalSolvedCount: true,
         correctSolvedCount: true,
+        // 연결 지문 — 있으면 본문을 스냅샷에 통째로 복사(풀이 화면 표시용).
+        passage: { select: { content: true } },
       },
     });
     // picked 순서를 유지해 displayOrder를 안정적으로 부여한다.
@@ -134,6 +136,7 @@ export class ExamSessionsService {
               difficulty: q.difficulty,
               totalSolvedCount: q.totalSolvedCount,
               correctSolvedCount: q.correctSolvedCount,
+              ...(q.passage ? { passage: q.passage.content as JsonWritable } : {}),
             };
             return {
               examSessionId: created.id,
