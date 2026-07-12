@@ -6,16 +6,19 @@ import Link from "next/link";
 import { buildRichDoc, buildRichBlocks, extractPlainText } from "@/lib/prosemirror";
 import {
   createQuestion,
+  updateQuestion,
   publishQuestion,
   addQuestionToWorkbook,
+  removeQuestionFromWorkbook,
   updateWorkbook,
   createPassage,
   publishPassage,
+  fetchQuestion,
   fetchTags,
   createTag,
 } from "@/lib/api";
 import { useWorkbook } from "@/lib/hooks";
-import type { Tag } from "@/lib/types";
+import type { Tag, Question } from "@/lib/types";
 import type { ParsedQuestion } from "@/lib/authoring-chat";
 import { AuthoringChatPanel } from "./AuthoringChatPanel";
 import { AuthoringCanvasCard } from "./AuthoringCanvasCard";
@@ -103,6 +106,55 @@ function passageKey(card: CanvasCard): string | null {
   return text ? text : null;
 }
 
+/**
+ * 저장된 rich 값(doc 노드 또는 블록 노드 배열) → 평문.
+ * choices[].content/stem은 doc, explanation은 buildRichBlocks가 만든 블록 배열이라
+ * 배열이면 doc으로 감싸 extractPlainText가 순회할 수 있게 한다.
+ */
+function richToText(v: any): string {
+  if (!v) return "";
+  const doc = Array.isArray(v) ? { type: "doc", content: v } : v;
+  return extractPlainText(doc);
+}
+
+/** 새 카드(local-)와 기존 문항 카드(실제 question id)를 구분. */
+function isPersistedCard(id: string): boolean {
+  return !id.startsWith("local-");
+}
+
+/**
+ * 저장된 Question(GET /questions/:id 상세) → CanvasCard 역매핑.
+ * 기존 문제집을 "수정"으로 열 때 원래 문항을 캔버스에 그대로 복원한다.
+ * id는 실제 question id를 유지해 저장 시 새로 만들지 않고 그 문항을 갱신하도록 한다.
+ */
+function questionToCard(q: Question): CanvasCard {
+  const isObjective = q.questionType === "객관식";
+  const rawChoices: any[] = Array.isArray(q.choices) ? q.choices : [];
+  const choices: CanvasChoice[] = rawChoices.map((c) => ({
+    text: extractPlainText(c?.content),
+    explanation: richToText(c?.explanation),
+    // 저장 때 실린 선지별 해설 공개 여부를 그대로 복원.
+    showExplanation: !!c?.explanationVisible,
+  }));
+  const correct = rawChoices.findIndex((c) => c?.isCorrect === true);
+  const keywords = (q.tags ?? [])
+    .filter((t) => t.category === KEYWORD_TAG_CATEGORY)
+    .map((t) => t.name);
+  return {
+    id: q.id,
+    type: isObjective ? "객관식" : "주관식",
+    stem: q.stem ?? buildRichDoc(""),
+    passage: q.passage?.content ?? null,
+    choices: isObjective ? choices : [],
+    correct: isObjective ? (correct >= 0 ? correct : 0) : -1,
+    answerText: q.correctAnswerText ?? "",
+    // explanation은 블록 배열로 저장되므로 doc으로 다시 세운다(카드 에디터는 doc을 받는다).
+    explanation: buildRichDoc(richToText(q.explanation)),
+    points: Number(q.points) || 1,
+    keywords,
+  };
+}
+
 export function AuthoringCanvas({
   workbookId,
   initialSubjectId,
@@ -165,6 +217,36 @@ export function AuthoringCanvas({
       ?.question?.subject?.id;
     if (existingSubjectId) setSubjectId(existingSubjectId);
   }, [initialSubjectId, subjectId, workbook]);
+
+  /* ── 기존 문항 복원 ──
+   * "수정"으로 열면 원래 담긴 문항을 캔버스에 그대로 되살린다(한 번만).
+   * 문제집 목록 응답엔 선지/지문/해설이 없으므로 문항별 상세를 따로 불러온다.
+   * 저장 시 어떤 문항이 원래 담겨있었는지(삭제 판정용)도 여기서 기록한다. */
+  const hydratedRef = useRef(false);
+  const initialQuestionIds = useRef<string[]>([]);
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    const wqs = workbook?.questions;
+    if (!wqs) return; // 아직 로딩 중
+    hydratedRef.current = true; // 빈 문제집이어도 재실행 막기(StrictMode/재조회)
+    const ids = wqs.map((wq) => wq.questionId);
+    if (ids.length === 0) return; // 새 문제집 — 복원할 것 없음
+    initialQuestionIds.current = ids;
+    let cancelled = false;
+    (async () => {
+      try {
+        const details = await Promise.all(ids.map((id) => fetchQuestion(id)));
+        if (cancelled) return;
+        setCards(details.map(questionToCard));
+      } catch (e) {
+        console.error("기존 문항 불러오기 실패:", e);
+        toast.error("기존 문항을 불러오지 못했어요.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workbook]);
 
   const commitTitle = async () => {
     setTitleEditing(false);
@@ -355,52 +437,88 @@ export function AuthoringCanvas({
         return ids;
       };
 
-      // 3) 문항 영속화 + 발행 + 문제집 연결.
+      // 3) 문항 영속화 — 기존 문항(실제 id)은 갱신, 새 문항(local-)은 생성+발행+담기.
+      //    한 카드의 내용 페이로드는 생성/갱신이 동일하므로 한 번에 만든다.
       //    발행 실패를 삼키고 담기를 강행하면 백엔드가 "발행되지 않은 문항" 404를
       //    돌려줘 원인이 가려진다 — 단계별로 실패를 구분해 서버 메시지를 그대로 보여준다.
+      const buildContentPayload = (c: CanvasCard, tagIds: string[]) => {
+        const key = passageKey(c);
+        return {
+          questionType: c.type,
+          points: c.points,
+          ...(tagIds.length ? { tagIds } : {}),
+          ...(key && passageIdByKey.has(key) ? { passageId: passageIdByKey.get(key) } : {}),
+          stem: c.stem,
+          choices:
+            c.type === "객관식"
+              ? c.choices.map((ch, i) => ({
+                  id: `c${i + 1}`,
+                  content: buildRichDoc(ch.text),
+                  isCorrect: i === c.correct,
+                  // 선지별 해설 — 공개 여부(showExplanation)까지 choices Json에 함께 보존.
+                  ...(ch.explanation.trim()
+                    ? {
+                        explanation: buildRichBlocks(ch.explanation),
+                        explanationVisible: ch.showExplanation,
+                      }
+                    : {}),
+                }))
+              : undefined,
+          correctAnswerText:
+            c.type === "주관식" && c.answerText.trim() ? c.answerText.trim() : undefined,
+          explanation: extractPlainText(c.explanation).trim()
+            ? buildRichBlocks(extractPlainText(c.explanation))
+            : undefined,
+        };
+      };
+
       let failed = 0;
       let lastError = "";
+      // local- 카드 id → 새로 만들어진 실제 question id. 저장 뒤 카드 id를 교체해
+      // 같은 세션에서 다시 저장해도 중복 생성되지 않게 한다.
+      const newIdByCardId = new Map<string, string>();
       for (const c of cards) {
         if (!extractPlainText(c.stem).trim()) continue;
-        const key = passageKey(c);
         try {
           const tagIds = await resolveTagIds(c.keywords);
-          const created = await createQuestion({
-            subjectId,
-            questionType: c.type,
-            points: c.points,
-            ...(tagIds.length ? { tagIds } : {}),
-            ...(key && passageIdByKey.has(key) ? { passageId: passageIdByKey.get(key) } : {}),
-            stem: c.stem,
-            choices:
-              c.type === "객관식"
-                ? c.choices.map((ch, i) => ({
-                    id: `c${i + 1}`,
-                    content: buildRichDoc(ch.text),
-                    isCorrect: i === c.correct,
-                    // 선지별 해설 — 공개 여부(showExplanation)까지 choices Json에 함께 보존.
-                    ...(ch.explanation.trim()
-                      ? {
-                          explanation: buildRichBlocks(ch.explanation),
-                          explanationVisible: ch.showExplanation,
-                        }
-                      : {}),
-                  }))
-                : undefined,
-            correctAnswerText:
-              c.type === "주관식" && c.answerText.trim() ? c.answerText.trim() : undefined,
-            explanation: extractPlainText(c.explanation).trim()
-              ? buildRichBlocks(extractPlainText(c.explanation))
-              : undefined,
-          } as any);
-          await publishQuestion(created.id); // 실패 시 담기 강행하지 않고 이 문항을 실패 처리
-          await addQuestionToWorkbook(workbookId, { questionId: created.id });
+          const payload = buildContentPayload(c, tagIds);
+          if (isPersistedCard(c.id)) {
+            // 기존 문항 — 새로 만들지 않고 그 자리에서 갱신(중복 방지). 이미 발행/담긴 상태.
+            await updateQuestion(c.id, payload as any);
+          } else {
+            const created = await createQuestion({ subjectId, ...payload } as any);
+            await publishQuestion(created.id); // 실패 시 담기 강행하지 않고 이 문항을 실패 처리
+            await addQuestionToWorkbook(workbookId, { questionId: created.id });
+            newIdByCardId.set(c.id, created.id);
+          }
         } catch (e) {
           failed += 1;
           lastError = e instanceof Error ? e.message : String(e);
           console.error("문항 저장 실패:", e);
         }
       }
+
+      // 4) 삭제 반영 — 처음 담겨있던 문항 중 캔버스에서 빠진 건 문제집에서 제거.
+      const currentIds = new Set(cards.map((c) => c.id));
+      for (const id of initialQuestionIds.current) {
+        if (currentIds.has(id)) continue;
+        try {
+          await removeQuestionFromWorkbook(workbookId, id);
+        } catch (e) {
+          console.error("문항 제거 실패:", e);
+        }
+      }
+
+      // 새로 만든 문항의 실제 id로 카드 id를 교체하고, "원래 담긴 문항" 기준도 갱신.
+      if (newIdByCardId.size > 0) {
+        setCards((prev) =>
+          prev.map((c) => (newIdByCardId.has(c.id) ? { ...c, id: newIdByCardId.get(c.id)! } : c)),
+        );
+      }
+      initialQuestionIds.current = cards
+        .map((c) => newIdByCardId.get(c.id) ?? c.id)
+        .filter(isPersistedCard);
+
       if (failed > 0) {
         toast.error(`${failed}개 문항 저장에 실패했어요.${lastError ? ` (${lastError})` : ""}`);
       } else {
