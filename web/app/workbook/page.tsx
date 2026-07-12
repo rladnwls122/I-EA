@@ -17,18 +17,18 @@ export default function WorkbookPage() {
   const workbooks = data?.items || [];
 
   return (
-    <main className="mx-auto max-w-7xl p-8">
-      <div className="mb-9 flex items-end justify-between gap-6">
+    <main className="mx-auto max-w-7xl p-4 md:p-8">
+      <div className="mb-6 flex flex-col gap-4 sm:mb-9 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
         <div>
           <span className="mb-2 block font-mono text-xs uppercase tracking-widest text-muted-foreground">
             Workbook library
           </span>
-          <h1 className="text-3xl font-semibold tracking-tight">공개 문제집 탐색</h1>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">공개 문제집 탐색</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             다른 사람이 공개한 문제집을 둘러보고, 원하는 문항만 담아 풀어보세요.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
             <Link href="/workbook/mine">내 문제집</Link>
           </Button>

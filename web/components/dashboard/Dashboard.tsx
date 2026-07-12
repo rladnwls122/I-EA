@@ -14,8 +14,9 @@ function StreakHero({ enabled, onBrowse }: { enabled: boolean; onBrowse: () => v
   const s = data?.summary;
 
   return (
-    <section className="rounded-xl border border-border bg-card p-6">
-      <div className="flex flex-wrap items-center gap-6">
+    <section className="rounded-xl border border-border bg-card p-4 md:p-6">
+      {/* 모바일에서는 세로 스택, md 이상에서 기존 가로 배치 유지 */}
+      <div className="flex flex-wrap items-center gap-4 md:gap-6">
         <div className="flex items-center gap-3">
           <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <Flame size={24} />
@@ -35,7 +36,7 @@ function StreakHero({ enabled, onBrowse }: { enabled: boolean; onBrowse: () => v
           <p className="text-xs text-muted-foreground">{s?.title ?? "레벨"}</p>
         </div>
 
-        <div className="min-w-[160px] flex-1">
+        <div className="w-full min-w-0 flex-1 md:w-auto md:min-w-[160px]">
           <div className="mb-1 flex items-center justify-between">
             <span className="font-mono text-xs text-muted-foreground">XP {s?.xp ?? 0}</span>
             {s?.xpToNextTier != null && (
@@ -59,7 +60,7 @@ function StreakHero({ enabled, onBrowse }: { enabled: boolean; onBrowse: () => v
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex w-full flex-wrap gap-2 md:w-auto">
           <Button asChild size="sm">
             <Link href="/workbook/create">
               나만의 문제집 생성 <ArrowRight size={14} />
@@ -82,7 +83,7 @@ function ResumeBanner({ enabled }: { enabled: boolean }) {
   return (
     <Link
       href={`/exam-sessions/${active.id}`}
-      className="flex items-center gap-3 rounded-xl border border-primary/40 bg-primary/5 px-5 py-4 transition-colors hover:bg-primary/10"
+      className="flex items-center gap-3 rounded-xl border border-primary/40 bg-primary/5 px-4 py-3 transition-colors hover:bg-primary/10 md:px-5 md:py-4"
     >
       <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-primary text-primary-foreground">
         <Play size={15} />
@@ -116,7 +117,7 @@ export function Dashboard() {
 
   if (auth === "pending") {
     return (
-      <main className="mx-auto max-w-7xl space-y-4 p-6">
+      <main className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
         <div className="h-28 animate-pulse rounded-xl border border-border bg-surface-raised" />
         <div className="h-64 animate-pulse rounded-xl border border-border bg-surface-raised" />
       </main>
@@ -124,7 +125,7 @@ export function Dashboard() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl p-6">
+    <main className="mx-auto max-w-7xl p-4 md:p-6">
       {/* 스포트라이트 검색 — 로그인 여부 무관 공개 */}
       <div className="mb-4">
         <SpotlightSearch open={searchOpen} onOpenChange={setSearchOpen} />

@@ -27,23 +27,23 @@ export default function MePage() {
 
   if (!checked || isLoading) {
     return (
-      <main className="mx-auto max-w-xl p-6">
+      <main className="mx-auto max-w-xl p-4 md:p-6">
         <div className="h-40 animate-pulse rounded-xl border border-border bg-surface-raised" />
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-xl space-y-4 p-6">
+    <main className="mx-auto max-w-xl space-y-4 p-4 md:p-6">
       <h1 className="text-xl font-semibold tracking-tight text-foreground">내 정보</h1>
 
-      <section className="rounded-xl border border-border bg-card p-6">
-        <p className="text-sm font-medium text-foreground">{me?.nickname}</p>
-        <p className="text-xs text-muted-foreground">{me?.email}</p>
+      <section className="rounded-xl border border-border bg-card p-4 md:p-6">
+        <p className="truncate text-sm font-medium text-foreground">{me?.nickname}</p>
+        <p className="truncate text-xs text-muted-foreground">{me?.email}</p>
 
-        <div className="mt-5 flex flex-wrap items-center gap-6">
+        <div className="mt-5 flex flex-wrap items-center gap-4 md:gap-6">
           <div className="flex items-center gap-2">
-            <Trophy size={18} className="text-primary" />
+            <Trophy size={18} className="shrink-0 text-primary" />
             <div>
               <p className="font-mono text-lg font-semibold text-foreground">
                 Lv.{me?.level}
@@ -52,7 +52,7 @@ export default function MePage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Flame size={18} className="text-primary" />
+            <Flame size={18} className="shrink-0 text-primary" />
             <div>
               <p className="font-mono text-lg font-semibold text-foreground">
                 {me?.streak.current}일

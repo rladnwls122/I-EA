@@ -150,7 +150,7 @@ export function NotesDashboard() {
     .join(" · ");
 
   return (
-    <main className="mx-auto w-full max-w-6xl p-8 lg:p-10">
+    <main className="mx-auto w-full max-w-6xl p-4 md:p-8 lg:p-10">
       {/* 헤더 */}
       <div className="mb-8">
         <h1 className="text-3xl font-semibold tracking-tight">틀린 이유를 다음 정답으로</h1>

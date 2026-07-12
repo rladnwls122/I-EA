@@ -10,7 +10,7 @@ export function MilestoneProgress({ enabled }: { enabled: boolean }) {
   const milestones = enabled ? data?.milestones || [] : [];
 
   return (
-    <section className="rounded-xl border border-border bg-card p-5">
+    <section className="rounded-xl border border-border bg-card p-4 md:p-5">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Trophy size={15} className="text-muted-foreground" />
@@ -68,7 +68,7 @@ export function PopularContent() {
   const topWorkbooks = (workbooks?.items || []).slice(0, 5);
 
   return (
-    <section id="popular" className="rounded-xl border border-border bg-card p-5">
+    <section id="popular" className="rounded-xl border border-border bg-card p-4 md:p-5">
       <div className="mb-4 flex items-center gap-2">
         <Flame size={15} className="text-muted-foreground" />
         <h2 className="text-sm font-semibold text-foreground">인기 콘텐츠</h2>

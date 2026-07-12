@@ -466,18 +466,18 @@ export function QuestionEditor() {
     <div className="flex flex-col lg:flex-row h-[calc(100vh)] overflow-hidden">
       {/* ═══ 좌측 패널: 문항 에디터 ═══ */}
       <section className="flex-1 flex flex-col min-w-0 border-r border-border relative">
-        {/* 헤더 */}
-        <header className="flex items-center justify-between px-6 py-4 border-b border-border bg-background sticky top-0 z-10">
-          <div className="flex items-center gap-3">
+        {/* 헤더 — 모바일에서 제목/버튼이 한 줄에 안 들어가면 아래로 감싸도록 flex-wrap */}
+        <header className="flex flex-wrap items-center justify-between gap-3 px-4 md:px-6 py-3 md:py-4 border-b border-border bg-background sticky top-0 z-10">
+          <div className="flex items-center gap-3 min-w-0">
             <Link href="/workbook/create" className="text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft size={20} strokeWidth={2} />
             </Link>
-            <div>
+            <div className="min-w-0">
               <span className="mb-1 block font-mono text-[11px] uppercase tracking-widest text-muted-foreground">문제집 편집</span>
-              <h1 className="text-lg font-semibold tracking-tight">새 문항 초안</h1>
+              <h1 className="text-lg font-semibold tracking-tight truncate">새 문항 초안</h1>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant="outline"
@@ -496,9 +496,9 @@ export function QuestionEditor() {
         </header>
 
         {/* 문항 리스트 (스크롤) */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 pb-24 space-y-4 relative">
+        <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 md:py-5 pb-24 space-y-4 relative">
           {drafts.map((draft, index) => (
-            <article key={draft.id} className="bg-card border border-border rounded-xl p-6 transition-colors hover:border-primary/40">
+            <article key={draft.id} className="bg-card border border-border rounded-xl p-4 sm:p-6 transition-colors hover:border-primary/40">
               {/* 카드 헤더 */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
@@ -686,7 +686,8 @@ export function QuestionEditor() {
       </section>
 
       {/* ═══ 우측 패널: AI 채팅 (글래스) ═══ */}
-      <aside className="glass-panel w-full lg:w-[360px] flex flex-col border-l relative z-20">
+      {/* 모바일: 좌측 에디터와 세로로 남은 공간을 나눠 갖도록 flex-1(둘 다) — lg 이상에선 고정폭으로 나란히 */}
+      <aside className="glass-panel w-full flex-1 lg:w-[360px] lg:flex-none flex flex-col border-l relative z-20">
         {/* ambient glow — 유리 뒤에 비칠 빛. 콘텐츠 아래(-z-10), 인터랙션 차단 없음 */}
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
           <div className="absolute -top-24 -right-20 h-64 w-64 rounded-full bg-primary/[0.08] blur-3xl" />

@@ -12,7 +12,7 @@ export function WrongNotesSummary({ enabled }: { enabled: boolean }) {
   const total = byReason.reduce((s, r) => s + r.count, 0);
 
   return (
-    <section className="rounded-xl border border-border bg-card p-5">
+    <section className="rounded-xl border border-border bg-card p-4 md:p-5">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-foreground">오답노트 요약</h2>
         <Link
@@ -70,7 +70,7 @@ export function RecentSessions({ enabled }: { enabled: boolean }) {
   const recent = (sessions || []).slice(0, 5);
 
   return (
-    <section className="rounded-xl border border-border bg-card p-5">
+    <section className="rounded-xl border border-border bg-card p-4 md:p-5">
       <div className="mb-4 flex items-center gap-2">
         <Clock size={15} className="text-muted-foreground" />
         <h2 className="text-sm font-semibold text-foreground">최근 풀이 기록</h2>

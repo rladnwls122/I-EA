@@ -33,7 +33,8 @@ export function CartPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <div className="fixed bottom-24 right-6 z-50 flex max-h-[70vh] w-[320px] flex-col rounded-xl border border-border bg-card shadow-2xl">
+      {/* 모바일에서 화면 밖으로 넘치지 않도록 max-w로 가둔다(데스크톱은 기존 320px 그대로). */}
+      <div className="fixed bottom-24 right-6 z-50 flex max-h-[70vh] w-[320px] max-w-[calc(100vw-3rem)] flex-col rounded-xl border border-border bg-card shadow-2xl">
         <div className="flex flex-none items-center justify-between border-b border-border px-4 py-3">
           <span className="text-sm font-semibold text-foreground">
             담은 문제 <span className="font-mono text-primary">{items.length}</span>

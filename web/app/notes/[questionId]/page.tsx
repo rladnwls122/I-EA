@@ -34,15 +34,16 @@ export default function NoteDetailPage() {
   } catch(e) {}
 
   return (
-    <main className="p-8 lg:p-10 max-w-4xl mx-auto w-full">
-      <Link 
-        href="/notes" 
+    // 모바일에서 좌우 여백을 줄이고, 가로 오버플로가 생기지 않도록 폭 계산 보정
+    <main className="mx-auto w-full max-w-4xl overflow-x-hidden p-4 md:p-10">
+      <Link
+        href="/notes"
         className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors mb-8"
       >
         <ArrowLeft size={14} /> 오답노트로 돌아가기
       </Link>
 
-      <div className="flex flex-col lg:flex-row gap-8">
+      <div className="flex flex-col gap-8 md:flex-row">
         {/* 문항 본문 */}
         <section className="flex-1 min-w-0">
           <div className="mb-6">
@@ -65,24 +66,24 @@ export default function NoteDetailPage() {
                 return (
                   <div 
                     key={i} 
-                    className={`flex items-center justify-between p-4 rounded-xl border text-sm font-medium transition-colors ${
-                      isCorrect 
-                        ? "bg-correct/10 border-correct/30 text-correct-foreground" 
-                        : isSelected 
+                    className={`flex items-center justify-between gap-3 flex-wrap p-4 rounded-xl border text-sm font-medium transition-colors ${
+                      isCorrect
+                        ? "bg-correct/10 border-correct/30 text-correct-foreground"
+                        : isSelected
                           ? "bg-wrong/10 border-wrong/30 text-wrong-foreground"
                           : "bg-card border-border text-foreground"
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <span className={`flex items-center justify-center w-6 h-6 rounded-md text-[11px] font-bold ${
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <span className={`flex items-center justify-center w-6 h-6 rounded-md text-[11px] font-bold flex-none ${
                         isCorrect ? "bg-correct text-white" : isSelected ? "bg-wrong text-white" : "bg-surface-raised text-muted-foreground"
                       }`}>
                         {isCorrect ? <Check size={12} /> : isSelected ? <X size={12} /> : i + 1}
                       </span>
-                      <span>{choice}</span>
+                      <span className="break-words">{choice}</span>
                     </div>
                     {(isCorrect || isSelected) && (
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-md flex-none ${
                         isCorrect ? "bg-correct/20 text-correct" : "bg-wrong/20 text-wrong"
                       }`}>
                         {isCorrect ? "정답" : "내가 고른 답"}
@@ -105,8 +106,8 @@ export default function NoteDetailPage() {
           </section>
         </section>
 
-        {/* 사이드 정보 (노트 특정 기능) */}
-        <aside className="w-full lg:w-[280px] flex flex-col gap-5">
+        {/* 사이드 정보 (노트 특정 기능) — 모바일에선 본문 아래로 전체 폭 스택 */}
+        <aside className="flex w-full flex-col gap-5 md:w-[280px]">
           <section className="bg-card border border-border rounded-xl p-5">
             <span className="text-xs font-medium text-muted-foreground block mb-3">이번 풀이 결과</span>
             <div className="flex items-center gap-2 text-wrong font-semibold text-lg">

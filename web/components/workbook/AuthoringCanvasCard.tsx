@@ -79,7 +79,7 @@ export function AuthoringCanvasCard({
 
   if (!editing) {
     return (
-      <article className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40">
+      <article className="group rounded-xl border border-border bg-card p-4 sm:p-5 transition-colors hover:border-primary/40">
         {/* 헤더 */}
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-semibold">
@@ -212,9 +212,9 @@ export function AuthoringCanvasCard({
 
   /* ── 편집 모드 ── */
   return (
-    <article className="rounded-xl border border-primary/50 bg-card p-5">
-      {/* 헤더 — 유형 전환 토글 + 배점 */}
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <article className="rounded-xl border border-primary/50 bg-card p-4 sm:p-5">
+      {/* 헤더 — 유형 전환 토글 + 배점. 모바일에서 안 들어가면 다음 줄로 넘어가도록 flex-wrap */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
           <span className="font-mono">문제 {index + 1}</span>
           {/* 유형 자유 전환 — 기존 입력은 유지, 없는 필드는 기본값 보충 */}

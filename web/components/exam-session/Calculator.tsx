@@ -60,7 +60,8 @@ export function Calculator({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed z-[70] w-[260px] rounded-xl border border-border bg-card shadow-2xl"
+      // 모바일에서 좁은 화면을 넘지 않도록 max-w로 가둔다(데스크톱은 기존 260px 그대로).
+      className="fixed z-[70] w-[260px] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card shadow-2xl"
       style={{ left: pos.x, top: pos.y }}
     >
       <div

@@ -65,21 +65,21 @@ export default function QuestionsPage() {
 
   return (
     <>
-      <main className="mx-auto max-w-7xl p-8">
-        {/* 헤더 */}
-        <div className="mb-9 flex items-end justify-between gap-6">
+      <main className="mx-auto max-w-7xl p-4 md:p-8">
+        {/* 헤더 — 모바일에서는 세로로 쌓는다 */}
+        <div className="mb-9 flex flex-col items-start gap-4 md:flex-row md:items-end md:justify-between md:gap-6">
           <div>
             <span className="mb-2 block font-mono text-xs uppercase tracking-widest text-muted-foreground">
               Question library
             </span>
-            <h1 className="text-3xl font-semibold tracking-tight">
+            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
               필요한 문제를, 가장 빠르게
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               과목과 유형을 골라 나만의 문제집으로 바로 담아보세요.
             </p>
           </div>
-          <Button asChild>
+          <Button asChild className="w-full md:w-auto">
             <Link href="/workbook/create">문제집 만들기</Link>
           </Button>
         </div>
@@ -170,7 +170,7 @@ export default function QuestionsPage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card py-20 text-center">
+          <div className="rounded-xl border border-border bg-card px-4 py-12 text-center md:py-20">
             <p className="text-sm text-muted-foreground">
               검색 결과가 없습니다. 다른 키워드나 과목으로 찾아보세요.
             </p>
