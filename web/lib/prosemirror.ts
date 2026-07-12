@@ -56,8 +56,12 @@ function visitTextNodes(
   doc: any,
   visitor: { text: (t: string) => void; blockGap: () => void },
 ): void {
-  if (!doc || !doc.content || !Array.isArray(doc.content)) return;
-  doc.content.forEach((node: any, i: number) => {
+  // choices[].content·explanation은 doc 래퍼 없는 블록 배열(buildRichBlocks)로 저장된다.
+  // 배열이 들어오면 doc.content처럼 취급해 순회한다 — 안 그러면 선지/해설이 빈 문자열로
+  // 읽혀 화면에서 "선지·해설이 깨져" 보인다.
+  const root = Array.isArray(doc) ? { content: doc } : doc;
+  if (!root || !root.content || !Array.isArray(root.content)) return;
+  root.content.forEach((node: any, i: number) => {
     if (i > 0) visitor.blockGap();
     if (node.content && Array.isArray(node.content)) {
       for (const child of node.content) {
