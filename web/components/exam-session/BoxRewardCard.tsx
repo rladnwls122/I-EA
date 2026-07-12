@@ -63,9 +63,9 @@ export function BoxRewardCard({ box }: { box: { id: string; tier: LootBoxTier } 
   };
 
   return (
-    <div className="mb-4 rounded-xl border border-border bg-card p-5">
+    <div className="reward-pop mb-4 rounded-xl border border-border bg-card p-5 shadow-surface surface-sheen">
       <div className="flex flex-wrap items-center gap-4">
-        <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-streak/10 text-streak">
           <Gift size={22} aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
@@ -83,7 +83,7 @@ export function BoxRewardCard({ box }: { box: { id: string; tier: LootBoxTier } 
         </div>
 
         {opened ? (
-          <span className="flex items-baseline gap-1 font-mono text-lg font-semibold text-primary">
+          <span className="flex items-baseline gap-1 font-mono text-lg font-semibold text-streak">
             +{displayCoins}
             <span className="text-xs font-normal text-muted-foreground">코인</span>
           </span>
