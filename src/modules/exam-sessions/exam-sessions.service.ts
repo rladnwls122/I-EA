@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { QuestionKind } from '@/common/constants/question';
+import { rollBoxTier, type BoxTier } from '@/common/constants/shop';
 import {
   XP_RULES,
   levelForXp,
@@ -402,7 +403,10 @@ export class ExamSessionsService {
       // XP 적립: 정답 기본점 + 콤보 + 스트릭, 부스터 반영. 서술형(미확정)은 selfGrade에서.
       // 복습(오답노트 출처) 세션이면 정답 기본점을 REVIEW_CORRECT(+15)로 올린다.
       const perCorrectXp = session.isReview ? XP_RULES.REVIEW_CORRECT : XP_RULES.CORRECT;
-      return this.awardForSubmit(tx, userId, correct, correctFlags, now, perCorrectXp, weakCorrect, id);
+      const reward = await this.awardForSubmit(tx, userId, correct, correctFlags, now, perCorrectXp, weakCorrect, id);
+      // 상자 드롭: XP 적립과 별개로, 제출 자체에 대한 보상. 미개봉 상태로 지급.
+      const box = await this.maybeDropBox(tx, userId, scorePercent, id);
+      return { reward, box };
     });
 
     return {
@@ -414,7 +418,9 @@ export class ExamSessionsService {
       scorePercent,
       durationSec,
       // 이번 제출로 적립된 XP와 갱신된 xp/레벨. 적립 없으면 null.
-      reward,
+      reward: reward.reward,
+      // 이번 제출로 드롭된 미개봉 상자. 미드롭이면 null.
+      box: reward.box,
     };
   }
 
@@ -675,6 +681,23 @@ export class ExamSessionsService {
       streak: { current: st.currentStreak, longest: longestStreak, extended: st.counted },
       boostGranted: milestone.grantBoost,
     };
+  }
+
+  /** 제출 후 상자 드롭 롤. 히트 시 미개봉 LootBox 생성. 코인은 개봉 때 롤. */
+  private async maybeDropBox(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    scorePercent: number,
+    examSessionId: string,
+    rng: () => number = Math.random,
+  ): Promise<{ id: string; tier: BoxTier } | null> {
+    const tier = rollBoxTier(scorePercent, rng);
+    if (!tier) return null;
+    const box = await tx.lootBox.create({
+      data: { userId, tier, examSessionId },
+      select: { id: true, tier: true },
+    });
+    return { id: box.id, tier: box.tier as BoxTier };
   }
 
   // --- 헬퍼 -----------------------------------------------------------
