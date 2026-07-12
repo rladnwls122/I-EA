@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookmarkCheck, BookOpenCheck, Lightbulb } from "lucide-react";
+import { BookmarkCheck, BookOpenCheck, Lightbulb, User } from "lucide-react";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -49,7 +49,16 @@ export function AppSidebar() {
           );
         })}
       </nav>
-      {/* 내 정보는 우측 하단 UserChip으로 이동(app/layout.tsx). */}
+
+      <div className="mt-auto">
+        <Link
+          href="/me"
+          aria-label="내 정보"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground active:scale-95 motion-reduce:transition-none"
+        >
+          <User size={19} strokeWidth={2} />
+        </Link>
+      </div>
     </aside>
   );
 }

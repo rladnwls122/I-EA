@@ -112,6 +112,8 @@ export interface Workbook {
 
   // ── 관계 ──
   questions?: WorkbookQuestion[];
+  /** 작성자 — 목록/상세 응답에 include됨(id + nickname만). */
+  owner?: { id: string; nickname: string };
 }
 
 export interface WorkbookQuestion {

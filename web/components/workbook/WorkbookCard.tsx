@@ -32,16 +32,29 @@ export function WorkbookCard({ wb, onClick }: { wb: Workbook; onClick: () => voi
           <p className="line-clamp-2 text-sm text-muted-foreground">{wb.description}</p>
         )}
       </div>
-      <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <Eye size={13} /> {wb.viewCount}
-        </span>
-        <span className="flex items-center gap-1">
-          <GitFork size={13} /> {wb.forkCount}
-        </span>
-        <span className="flex items-center gap-1">
-          <Users size={13} /> {wb.attemptCount}
-        </span>
+      <div className="mt-4 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        {/* 작성자 — 백엔드가 owner(id+nickname)를 include해 내려준다 */}
+        {wb.owner ? (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+              {wb.owner.nickname.trim().charAt(0).toUpperCase()}
+            </span>
+            <span className="truncate">{wb.owner.nickname}</span>
+          </span>
+        ) : (
+          <span />
+        )}
+        <div className="flex flex-none items-center gap-4">
+          <span className="flex items-center gap-1">
+            <Eye size={13} /> {wb.viewCount}
+          </span>
+          <span className="flex items-center gap-1">
+            <GitFork size={13} /> {wb.forkCount}
+          </span>
+          <span className="flex items-center gap-1">
+            <Users size={13} /> {wb.attemptCount}
+          </span>
+        </div>
       </div>
     </button>
   );
