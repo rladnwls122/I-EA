@@ -26,11 +26,16 @@ export function AuthoringChatPanel({
   cards,
   onSubjectResolved,
   onApplyQuestion,
+  prefill,
+  onPrefillConsumed,
 }: {
   workbookId: string;
   cards: CanvasCard[];
   onSubjectResolved: (subjectId: string) => void;
   onApplyQuestion: (q: ParsedQuestion) => void;
+  /** 카드 ✨AI 버튼이 넣어주는 입력창 프리필(예: "문제 2 수정: "). */
+  prefill?: string | null;
+  onPrefillConsumed?: () => void;
 }) {
   const [subjectId, setSubjectId] = useState("");
   const [input, setInput] = useState("");
@@ -40,6 +45,21 @@ export function AuthoringChatPanel({
     { role: "ai", text: "원하는 주제·난이도·출제 포인트를 알려주세요. 한 문제씩 신중히 만들 수도, 한 번에 여러 개 만들 수도 있어요." },
   ]);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // 카드 ✨AI 클릭 → 입력창에 프리필 + 포커스(커서를 끝으로).
+  useEffect(() => {
+    if (!prefill) return;
+    setInput(prefill);
+    onPrefillConsumed?.();
+    requestAnimationFrame(() => {
+      const ta = inputRef.current;
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+      }
+    });
+  }, [prefill, onPrefillConsumed]);
 
   // 첫 과목을 기본 선택해 subjectId를 캔버스에 올린다(저장에 필요).
   useEffect(() => {
@@ -175,6 +195,7 @@ export function AuthoringChatPanel({
       {/* 입력 */}
       <div className="flex items-end gap-2 border-t border-border px-4 py-3">
         <textarea
+          ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {

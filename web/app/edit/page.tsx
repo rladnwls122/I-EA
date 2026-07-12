@@ -1,8 +1,11 @@
 "use client";
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AuthoringCanvas } from "@/components/workbook/AuthoringCanvas";
 
-export default function EditPage() {
+// useSearchParams()는 정적 프리렌더 시 Suspense 경계가 필요하다(Next 14 규칙).
+// 경계가 없으면 next build가 "/edit" 프리렌더 단계에서 실패한다.
+function EditPageInner() {
   const params = useSearchParams();
   const workbookId = params.get("workbookId");
   if (!workbookId) {
@@ -13,4 +16,12 @@ export default function EditPage() {
     );
   }
   return <AuthoringCanvas workbookId={workbookId} />;
+}
+
+export default function EditPage() {
+  return (
+    <Suspense fallback={<main className="p-8 text-sm text-muted-foreground">불러오는 중…</main>}>
+      <EditPageInner />
+    </Suspense>
+  );
 }
