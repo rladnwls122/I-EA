@@ -279,6 +279,9 @@ export function fetchWorkbooks(params?: {
   search?: string;
   sort?: 'popular' | 'recent';
   mine?: boolean;
+  examType?: string;
+  examCategory?: string;
+  subjectId?: string;
 }) {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
@@ -287,6 +290,9 @@ export function fetchWorkbooks(params?: {
   if (params?.search) query.set('q', params.search);
   if (params?.sort) query.set('sort', params.sort);
   if (params?.mine) query.set('mine', 'true');
+  if (params?.examType) query.set('examType', params.examType);
+  if (params?.examCategory) query.set('examCategory', params.examCategory);
+  if (params?.subjectId) query.set('subjectId', params.subjectId);
 
   const qs = query.toString();
   return apiFetch<PaginatedResponse<Workbook>>(

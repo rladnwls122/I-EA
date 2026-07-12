@@ -173,6 +173,9 @@ export function useWorkbooks(params?: {
   search?: string;
   sort?: 'popular' | 'recent';
   mine?: boolean;
+  examType?: string;
+  examCategory?: string;
+  subjectId?: string;
 }, enabled = true) {
   return useQuery({
     queryKey: ['workbooks', params],

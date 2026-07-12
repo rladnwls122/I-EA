@@ -1,19 +1,59 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useMe, useWorkbooks } from "@/lib/hooks";
+import { useMe, useSubjects, useWorkbooks } from "@/lib/hooks";
 import { WorkbookPreviewSidebar } from "@/components/workbook/WorkbookPreviewSidebar";
 import { WorkbookCard } from "@/components/workbook/WorkbookCard";
 import { CartButton } from "@/components/cart/CartButton";
+import type { Subject } from "@/lib/types";
+
+const chip = (active: boolean) =>
+  `whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+    active
+      ? "border-transparent bg-primary font-medium text-primary-foreground"
+      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+  }`;
 
 /** 공개 문제집 탐색 — 소유자 무관하게 PUBLIC만. 내 문제집 관리는 /workbook/mine. */
 export default function WorkbookPage() {
   const [keyword, setKeyword] = useState("");
+  const [examType, setExamType] = useState("");
+  const [category, setCategory] = useState("");
+  const [subjectId, setSubjectId] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { data, isLoading } = useWorkbooks({ search: keyword || undefined });
+
+  const { data: subjectsData } = useSubjects();
+  const allSubjects: Subject[] = subjectsData || [];
+
+  // 3단 분류: 시험(examType) → 대분류(examCategory) → 세부과목(subject, 단일 — 백엔드가 subjectId 하나만 받는다).
+  const examTypes = useMemo(
+    () => Array.from(new Set(allSubjects.map((s) => s.examType))),
+    [allSubjects],
+  );
+  const categories = useMemo(
+    () =>
+      examType
+        ? Array.from(new Set(allSubjects.filter((s) => s.examType === examType).map((s) => s.examCategory)))
+        : [],
+    [allSubjects, examType],
+  );
+  const leafSubjects = useMemo(
+    () =>
+      examType && category
+        ? allSubjects.filter((s) => s.examType === examType && s.examCategory === category)
+        : [],
+    [allSubjects, examType, category],
+  );
+
+  const { data, isLoading } = useWorkbooks({
+    search: keyword || undefined,
+    examType: examType || undefined,
+    examCategory: category || undefined,
+    subjectId: subjectId || undefined,
+  });
   const { data: me } = useMe();
   const workbooks = data?.items || [];
 
@@ -39,7 +79,7 @@ export default function WorkbookPage() {
         </div>
       </div>
 
-      <div className="relative mb-8">
+      <div className="relative mb-4">
         <Search
           size={16}
           className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -51,6 +91,67 @@ export default function WorkbookPage() {
           className="h-11 pl-10"
         />
       </div>
+
+      {/* 1단: 시험 선택 */}
+      <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+        <button
+          onClick={() => {
+            setExamType("");
+            setCategory("");
+            setSubjectId("");
+          }}
+          className={chip(examType === "")}
+        >
+          전체
+        </button>
+        {examTypes.map((t) => (
+          <button
+            key={t}
+            onClick={() => {
+              setExamType(examType === t ? "" : t);
+              setCategory("");
+              setSubjectId("");
+            }}
+            className={chip(examType === t)}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* 2단: 대분류 — 시험을 골라야 노출 */}
+      {examType && categories.length > 0 && (
+        <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+          {categories.map((c) => (
+            <button
+              key={c}
+              onClick={() => {
+                setCategory(category === c ? "" : c);
+                setSubjectId("");
+              }}
+              className={chip(category === c)}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 3단: 세부과목 단일 선택 — 대분류를 골라야 노출 */}
+      {category && leafSubjects.length > 0 && (
+        <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-1">
+          {leafSubjects.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setSubjectId(subjectId === s.id ? "" : s.id)}
+              aria-pressed={subjectId === s.id}
+              className={chip(subjectId === s.id)}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -64,7 +165,7 @@ export default function WorkbookPage() {
       ) : workbooks.length === 0 ? (
         <div className="rounded-xl border border-border bg-card py-20 text-center">
           <p className="text-sm text-muted-foreground">
-            아직 공개된 문제집이 없습니다.
+            조건에 맞는 공개 문제집이 없습니다.
           </p>
         </div>
       ) : (
