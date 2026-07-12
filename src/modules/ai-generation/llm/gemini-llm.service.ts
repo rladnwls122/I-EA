@@ -11,6 +11,8 @@ import {
   LlmGenerationResult,
   LlmRegenerateChoicesContext,
   LlmRegenerateChoicesResult,
+  LlmHintContext,
+  LlmHintResult,
   TutorTurn,
 } from './llm.types';
 import { GeminiKeyPool } from './gemini-key-pool';
@@ -122,6 +124,81 @@ export class GeminiLlmService {
       { timeoutMs: REGENERATE_TIMEOUT_MS, attempts: REGENERATE_ATTEMPTS, disableThinking: true },
     );
     return this.parseChoicesResult(raw, ctx.choiceCount);
+  }
+
+  /**
+   * 응시 중 풀이 힌트 즉석 생성 (동기 인라인 UX).
+   *
+   * regenerateChoices와 동일한 동기 정책: 짧은 타임아웃 + 일시 장애 자체 재시도 + thinking off.
+   * DB에 쓰지 않는다(휘발). 정답을 모델에 주되 프롬프트로 노출을 억제한다.
+   */
+  async generateHint(ctx: LlmHintContext): Promise<LlmHintResult> {
+    const raw = await this.callGemini(
+      this.buildHintSystemPrompt(),
+      this.buildHintUserPrompt(ctx),
+      { timeoutMs: REGENERATE_TIMEOUT_MS, attempts: REGENERATE_ATTEMPTS, disableThinking: true },
+    );
+    return this.parseHintResult(raw);
+  }
+
+  private buildHintSystemPrompt(): string {
+    return [
+      '너는 한국 시험 문항의 풀이 코치다. 학생이 스스로 답을 찾도록 방향만 제시하는',
+      '짧은 힌트를 만든다. 아래 JSON 스키마를 "그대로" 따르는 JSON 하나만 출력한다.',
+      '서두/설명/코드펜스 금지.',
+      '',
+      '{ "hint": string }',
+      '',
+      '규칙:',
+      '- hint는 1~2문장, 한국어.',
+      '- 정답 선지 번호, 정답 텍스트, 정답을 곧바로 유추하게 하는 문구를 절대 쓰지 않는다.',
+      '- 접근 방법·주의할 함정·떠올려야 할 개념/공식만 짚는다.',
+      '- 수식은 순수 텍스트로만(예: x^2 - 2x = 0). LaTeX/KaTeX 금지.',
+      '- JSON 외 문자는 절대 출력하지 않는다.',
+    ].join('\n');
+  }
+
+  private buildHintUserPrompt(ctx: LlmHintContext): string {
+    const lines = [
+      `시험: ${ctx.examType ?? '(미지정)'}`,
+      `대분류: ${ctx.examCategory ?? '(미지정)'}`,
+      `소분류: ${ctx.subjectName ?? '(미지정)'}`,
+      `난이도: ${ctx.difficulty ?? 3} (1 쉬움 ~ 5 어려움)`,
+      `유형: ${ctx.questionType}`,
+      '',
+      '발문:',
+      ctx.stemText,
+    ];
+    if (ctx.choices?.length) {
+      lines.push('', '선지(정답 표시는 힌트에 노출 금지):');
+      ctx.choices.forEach((c, i) => {
+        lines.push(`${i + 1}. ${c.content}${c.isCorrect ? '  [정답]' : ''}`);
+      });
+    }
+    if (ctx.correctAnswerText) lines.push('', `정답(노출 금지): ${ctx.correctAnswerText}`);
+    if (ctx.explanationText) lines.push('', `해설(힌트 근거용): ${ctx.explanationText}`);
+    lines.push('', '위 문항에 대해, 정답을 노출하지 않는 풀이 힌트를 만들어라.');
+    return lines.join('\n');
+  }
+
+  /** 힌트 응답 파싱. hint가 비면 예외 — 프론트에 빈 힌트가 표시되지 않게 한다. */
+  private parseHintResult(raw: string): LlmHintResult {
+    const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1) {
+      throw new ServiceUnavailableException('모델 응답에서 JSON을 찾지 못했습니다.');
+    }
+    let parsed: LlmHintResult;
+    try {
+      parsed = JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      throw new ServiceUnavailableException('모델 응답 JSON 파싱에 실패했습니다.');
+    }
+    if (typeof parsed.hint !== 'string' || !parsed.hint.trim()) {
+      throw new ServiceUnavailableException('모델이 빈 힌트를 반환했습니다.');
+    }
+    return { hint: parsed.hint.trim() };
   }
 
   /**

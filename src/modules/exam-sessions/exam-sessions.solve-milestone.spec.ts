@@ -9,7 +9,7 @@ function makeTx() {
 }
 
 describe('ExamSessionsService.maybeAwardSolveMilestone', () => {
-  const svc = new ExamSessionsService({} as any);
+  const svc = new ExamSessionsService({} as any, {} as any);
   it('증가후 10 도달 + 미지급 → 저자 +20코인, 플래그 set', async () => {
     const tx = makeTx();
     const r = await (svc as any).maybeAwardSolveMilestone(tx, { id: 'q1', creatorId: 'author1', totalSolvedCount: 10, solveBonusAwarded: false }, new Date());

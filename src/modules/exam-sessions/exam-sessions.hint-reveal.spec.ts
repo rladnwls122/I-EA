@@ -41,7 +41,8 @@ describe('ExamSessionsService.revealHint — 힌트 토큰 원자적 차감', ()
 
   it('토큰 재고 있음(count=1): 정상 차감 + 세션 문항/유저 갱신', async () => {
     const { prisma, tx } = makePrisma({ tokenDebitCount: 1 });
-    const svc = new ExamSessionsService(prisma);
+    // hintContent가 있는 경로만 검증 — geminiLlm은 호출되지 않으므로 목이 필요 없다.
+    const svc = new ExamSessionsService(prisma, {} as any);
     const r = await svc.revealHint('sq1', 'u1');
     expect(tx.userInventory.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ userId: 'u1', itemKey: 'HINT_TOKEN', quantity: { gt: 0 } }),
@@ -53,7 +54,7 @@ describe('ExamSessionsService.revealHint — 힌트 토큰 원자적 차감', ()
 
   it('레이스로 토큰 이미 소진(count=0): Conflict, 세션 문항/유저 갱신 안 함(음수 소모 방지)', async () => {
     const { prisma, tx } = makePrisma({ tokenDebitCount: 0 });
-    const svc = new ExamSessionsService(prisma);
+    const svc = new ExamSessionsService(prisma, {} as any);
     await expect(svc.revealHint('sq1', 'u1')).rejects.toBeInstanceOf(ConflictException);
     expect(tx.examSessionQuestion.update).not.toHaveBeenCalled();
     expect(tx.user.update).not.toHaveBeenCalled();
