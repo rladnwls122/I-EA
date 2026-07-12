@@ -50,6 +50,12 @@ export class MeController {
     return this.service.wallet(user.id);
   }
 
+  @Get('purchases')
+  @ApiOperation({ summary: '내 구매 이력(최신순, 쿠폰 상태 포함)' })
+  purchases(@CurrentUser() user: CurrentUserPayload) {
+    return this.service.purchases(user.id);
+  }
+
   @Post('cosmetics/equip')
   @ApiOperation({ summary: '코스메틱 장착 (칭호/이름색)' })
   equipCosmetic(@CurrentUser() user: CurrentUserPayload, @Body() dto: EquipCosmeticDto) {

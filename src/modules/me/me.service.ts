@@ -316,6 +316,14 @@ export class MeService {
     };
   }
 
+  /** 내 구매 이력(최신순) — 실물 쿠폰 배송 상태(PENDING/FULFILLED) 포함. */
+  purchases(userId: string) {
+    return this.prisma.purchase.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   /** 코스메틱 장착 — 소유 검증 후 칭호/이름색 세팅. 미소유·비코스메틱이면 BadRequest. */
   async equipCosmetic(userId: string, itemKey: string) {
     const item = getShopItem(itemKey as ShopItemKey);
