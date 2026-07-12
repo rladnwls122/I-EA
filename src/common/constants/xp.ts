@@ -51,6 +51,8 @@ export const XP_REASON = {
   SESSION_SUBMIT: 'SESSION_SUBMIT',
   /** 서술형 자기채점 확정/정정 적립(하향 시 음수). */
   SELF_GRADE: 'SELF_GRADE',
+  /** 공개 문제집 발행에 따른 저자 보상 적립(하루 캡 있음). */
+  AUTHOR_PUBLISH: 'AUTHOR_PUBLISH',
 } as const;
 export type XpReason = (typeof XP_REASON)[keyof typeof XP_REASON];
 

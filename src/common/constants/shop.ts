@@ -80,3 +80,33 @@ export function boostExpiryHours(now: Date, hours: number): Date {
 
 /** 힌트 하루 무료 횟수. */
 export const HINT_FREE_PER_DAY = 3;
+
+// ─── 저자 리워드(출제자 보상) 규칙 ───
+export const AUTHOR_PUBLISH_REWARD = { exp: 20, coins: 20 } as const;
+export const AUTHOR_PUBLISH_DAILY_CAP = 3;
+
+function rewardDayNum(d: Date): number {
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000);
+}
+
+/** 공개 문제집 발행 보상 하루 캡. 날짜 바뀌면 카운트 리셋. */
+export function resolveAuthorRewardQuota(
+  rewardDate: Date | null | undefined,
+  rewardCount: number,
+  today: Date,
+): { allow: boolean; newCount: number } {
+  const sameDay = !!rewardDate && rewardDayNum(rewardDate) === rewardDayNum(today);
+  const usedToday = sameDay ? rewardCount : 0;
+  if (usedToday < AUTHOR_PUBLISH_DAILY_CAP) return { allow: true, newCount: usedToday + 1 };
+  return { allow: false, newCount: AUTHOR_PUBLISH_DAILY_CAP };
+}
+
+export const FORK_COIN_MIN = 5;
+export const FORK_COIN_MAX = 10;
+/** 포크 보상 코인 [5,10] 균등 정수. */
+export function rollForkCoins(rng: () => number = Math.random): number {
+  return FORK_COIN_MIN + Math.floor(rng() * (FORK_COIN_MAX - FORK_COIN_MIN + 1));
+}
+
+export const SOLVE_MILESTONE_THRESHOLD = 10;
+export const SOLVE_MILESTONE_COINS = 20;
