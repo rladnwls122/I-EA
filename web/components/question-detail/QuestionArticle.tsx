@@ -20,14 +20,16 @@ export function QuestionArticle({
     Array.isArray(question.choices) ? question.choices : [];
 
   return (
-    <article className="rounded-xl border border-border bg-card p-6">
+    <article className="rounded-xl border border-border bg-card p-6 shadow-surface">
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Badge variant="secondary" className="font-mono text-[11px] font-medium">
           {question.subject?.name ?? "과목 미지정"}
         </Badge>
         <span className="text-xs text-muted-foreground">{question.questionType}</span>
-        <span className="text-xs text-muted-foreground">난이도 {question.difficulty}</span>
-        <span className="ml-auto rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+        <span className="text-xs text-muted-foreground">
+          난이도 <span className="font-mono">{question.difficulty}</span>
+        </span>
+        <span className="ml-auto rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 font-mono text-xs font-medium text-primary">
           [{Number(question.points)}점]
         </span>
       </div>
@@ -71,7 +73,8 @@ export function QuestionArticle({
       )}
 
       {question.questionType === "주관식" && reveal && question.correctAnswerText && (
-        <p className="rounded-lg bg-correct/10 border border-correct/30 px-3 py-2.5 text-sm">
+        <p className="flex items-center gap-2 rounded-lg border border-correct/30 bg-correct/10 px-3 py-2.5 text-sm">
+          <Check size={14} className="flex-none text-correct" aria-hidden />
           <span className="text-muted-foreground">정답: </span>
           <span className="font-medium text-foreground">{question.correctAnswerText}</span>
         </p>

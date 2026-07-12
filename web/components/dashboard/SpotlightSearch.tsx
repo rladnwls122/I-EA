@@ -1,17 +1,17 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Check, Search, X } from "lucide-react";
 import { useSubjects, useQuestions } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
 import { QuestionPreview } from "@/components/questions/QuestionPreview";
 import type { Question, Subject } from "@/lib/types";
 
-/** 필터 칩 공통 스타일 — 호버 시 테두리 강조+색 반전(스펙 4 마이크로 인터랙션). */
+/** 필터 칩 공통 스타일 — 선택은 색+체크 아이콘 이중 채널, 호버는 accent 표면. */
 const chip = (active: boolean) =>
-  `whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-all duration-300 ${
+  `inline-flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
     active
       ? "border-transparent bg-primary font-medium text-primary-foreground"
-      : "border-border text-muted-foreground hover:border-primary/60 hover:bg-primary/10 hover:text-foreground"
+      : "border-border text-muted-foreground hover:border-primary/40 hover:bg-accent hover:text-foreground"
   }`;
 
 /**

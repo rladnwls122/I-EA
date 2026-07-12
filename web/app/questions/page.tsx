@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Search, SearchX } from "lucide-react";
 import { QuestionCard } from "@/components/questions/QuestionCard";
 import { QuestionPreview } from "@/components/questions/QuestionPreview";
 import { CartButton } from "@/components/cart/CartButton";
@@ -11,7 +11,7 @@ import { useQuestions, useSubjects } from "@/lib/hooks";
 import type { Question, Subject } from "@/lib/types";
 
 const chip = (active: boolean) =>
-  `whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+  `whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
     active
       ? "border-transparent bg-primary font-medium text-primary-foreground"
       : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
@@ -181,8 +181,8 @@ export default function QuestionsPage() {
           </div>
         )}
 
-        {/* 결과 카운트 */}
-        <div className="mb-5 flex items-center justify-between">
+        {/* 결과 카운트 — 필터 바와 헤어라인으로 구획 */}
+        <div className="mb-5 flex items-center justify-between border-t border-border pt-5">
           <span className="text-sm text-muted-foreground">
             <span className="font-mono font-medium tabular-nums text-foreground">
               {filtered.length}
@@ -202,10 +202,21 @@ export default function QuestionsPage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card px-4 py-12 text-center md:py-20">
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card px-4 py-16 text-center">
+            <SearchX size={28} strokeWidth={1.75} className="text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
               검색 결과가 없습니다. 다른 키워드나 과목으로 찾아보세요.
             </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setKeyword("");
+                clearSubjects();
+              }}
+            >
+              필터 초기화
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

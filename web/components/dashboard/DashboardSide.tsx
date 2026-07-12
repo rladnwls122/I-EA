@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { ChevronRight, Coins, Flame, Gift, Lock, Trophy } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useMilestones, useQuestions, useWallet, useWorkbooks } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
@@ -11,8 +12,8 @@ export function WalletSummary({ enabled }: { enabled: boolean }) {
   if (!enabled) return null;
 
   return (
-    <section className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 md:p-5">
-      <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-primary/10 text-primary">
+    <section className="flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-surface md:p-5">
+      <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-streak/10 text-streak">
         <Coins size={16} />
       </span>
       <div className="min-w-0 flex-1">
@@ -35,10 +36,10 @@ export function MilestoneProgress({ enabled }: { enabled: boolean }) {
   const milestones = enabled ? data?.milestones || [] : [];
 
   return (
-    <section className="rounded-xl border border-border bg-card p-4 md:p-5">
+    <section className="rounded-2xl border bg-card p-4 shadow-surface md:p-5">
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Trophy size={15} className="text-muted-foreground" />
+          <Trophy size={15} className="text-streak" />
           <h2 className="text-sm font-semibold text-foreground">마일스톤</h2>
         </div>
         {data?.summary && (
@@ -51,9 +52,17 @@ export function MilestoneProgress({ enabled }: { enabled: boolean }) {
       {isLoading && enabled ? (
         <div className="h-32 animate-pulse rounded-lg bg-surface-raised" />
       ) : milestones.length === 0 ? (
-        <p className="py-4 text-center text-xs text-muted-foreground">
-          학습을 시작하면 마일스톤이 열려요.
-        </p>
+        <div className="flex flex-col items-center gap-3 py-4">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-streak/10 text-streak">
+            <Trophy size={18} />
+          </span>
+          <p className="text-center text-xs text-muted-foreground">
+            학습을 시작하면 마일스톤이 열려요.
+          </p>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/questions">문제 풀러 가기</Link>
+          </Button>
+        </div>
       ) : (
         <div className="space-y-3">
           {milestones.map((m) => (
@@ -62,7 +71,7 @@ export function MilestoneProgress({ enabled }: { enabled: boolean }) {
                 {m.locked && <Lock size={11} className="text-muted-foreground" />}
                 <span
                   className={`text-xs ${
-                    m.achieved ? "font-medium text-primary" : "text-foreground"
+                    m.achieved ? "font-medium text-streak" : "text-foreground"
                   }`}
                 >
                   {m.label}
@@ -73,7 +82,7 @@ export function MilestoneProgress({ enabled }: { enabled: boolean }) {
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-background">
                 <div
-                  className={`h-full rounded-full ${m.achieved ? "bg-primary" : "bg-primary/40"}`}
+                  className={`h-full rounded-full ${m.achieved ? "bg-streak" : "bg-primary/40"}`}
                   style={{ width: `${Math.round(m.progress.ratio * 100)}%` }}
                 />
               </div>
@@ -93,7 +102,7 @@ export function PopularContent() {
   const topWorkbooks = (workbooks?.items || []).slice(0, 5);
 
   return (
-    <section id="popular" className="rounded-xl border border-border bg-card p-4 md:p-5">
+    <section id="popular" className="rounded-2xl border bg-card p-4 shadow-surface md:p-5">
       <div className="mb-4 flex items-center gap-2">
         <Flame size={15} className="text-muted-foreground" />
         <h2 className="text-sm font-semibold text-foreground">인기 콘텐츠</h2>
@@ -105,7 +114,7 @@ export function PopularContent() {
         </span>
         <Link
           href="/questions"
-          className="flex items-center gap-0.5 text-[11px] text-muted-foreground transition-colors hover:text-primary"
+          className="flex items-center gap-0.5 rounded-md px-1 py-1 text-[11px] text-muted-foreground transition-colors duration-150 ease-swift hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           더 보기 <ChevronRight size={11} />
         </Link>
@@ -118,7 +127,7 @@ export function PopularContent() {
             <Link
               key={q.id}
               href={`/questions/${q.id}`}
-              className="block rounded-lg border border-border px-3 py-2 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+              className="block min-h-[44px] rounded-lg border px-3 py-2 transition-colors duration-150 ease-swift hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <p className="line-clamp-1 text-xs text-foreground">
                 {extractPlainText(q.stem)}
@@ -137,7 +146,7 @@ export function PopularContent() {
         </span>
         <Link
           href="/workbook"
-          className="flex items-center gap-0.5 text-[11px] text-muted-foreground transition-colors hover:text-primary"
+          className="flex items-center gap-0.5 rounded-md px-1 py-1 text-[11px] text-muted-foreground transition-colors duration-150 ease-swift hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           더 보기 <ChevronRight size={11} />
         </Link>
@@ -150,7 +159,7 @@ export function PopularContent() {
             <Link
               key={wb.id}
               href="/workbook"
-              className="block rounded-lg border border-border px-3 py-2 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+              className="block min-h-[44px] rounded-lg border px-3 py-2 transition-colors duration-150 ease-swift hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <p className="line-clamp-1 text-xs text-foreground">{wb.title}</p>
               <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">

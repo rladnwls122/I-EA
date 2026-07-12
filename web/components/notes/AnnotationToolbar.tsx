@@ -6,7 +6,7 @@
  * Esc로 닫기(선택 해제 포함).
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Highlighter, Underline, X } from 'lucide-react';
+import { Check, Highlighter, Underline, X } from 'lucide-react';
 import { useCreateAnnotation } from '@/lib/hooks';
 import {
   ANNOTATION_COLORS,
@@ -17,6 +17,7 @@ import {
 } from '@/lib/annotations';
 import type { AnnotationSelection } from '@/lib/hooks/useTextSelection';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 
 interface Props {
   questionId: string;
@@ -85,7 +86,7 @@ export function AnnotationToolbar({ questionId, selection, canonicalText, onClos
     <div
       ref={ref}
       // 데스크톱: 선택 근처 플로팅(뷰포트 클램핑) / 모바일: 하단 시트(탭바 위)
-      className="z-50 w-72 rounded-xl border border-border bg-popover p-3 shadow-2xl
+      className="surface-sheen z-50 w-72 rounded-xl border border-border bg-popover p-3 shadow-lg
                  max-md:fixed max-md:inset-x-3 max-md:bottom-16 max-md:w-auto
                  md:fixed"
       style={pos ? { top: pos.top, left: pos.left } : undefined}
@@ -95,7 +96,8 @@ export function AnnotationToolbar({ questionId, selection, canonicalText, onClos
           <button
             type="button"
             onClick={() => setMarkStyle('HIGHLIGHT')}
-            className={`rounded-md p-1.5 ${markStyle === 'HIGHLIGHT' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            aria-pressed={markStyle === 'HIGHLIGHT'}
+            className={`rounded-md p-1.5 transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover ${markStyle === 'HIGHLIGHT' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
             aria-label="하이라이트"
           >
             <Highlighter size={15} />
@@ -103,7 +105,8 @@ export function AnnotationToolbar({ questionId, selection, canonicalText, onClos
           <button
             type="button"
             onClick={() => setMarkStyle('UNDERLINE')}
-            className={`rounded-md p-1.5 ${markStyle === 'UNDERLINE' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+            aria-pressed={markStyle === 'UNDERLINE'}
+            className={`rounded-md p-1.5 transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover ${markStyle === 'UNDERLINE' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
             aria-label="밑줄"
           >
             <Underline size={15} />
@@ -114,13 +117,21 @@ export function AnnotationToolbar({ questionId, selection, canonicalText, onClos
               key={code}
               type="button"
               onClick={() => setColor(code)}
-              className={`h-5 w-5 rounded-full border-2 ${color === code ? 'border-foreground' : 'border-transparent'}`}
+              aria-pressed={color === code}
+              className={`flex h-6 w-6 items-center justify-center rounded-full transition-all duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover ${color === code ? 'ring-2 ring-foreground ring-offset-2 ring-offset-popover' : ''}`}
               style={{ backgroundColor: hex }}
               aria-label={`색상 ${code}`}
-            />
+            >
+              {color === code && <Check size={13} strokeWidth={3} className="text-background" />}
+            </button>
           ))}
         </div>
-        <button type="button" onClick={onClose} aria-label="닫기" className="text-muted-foreground hover:text-foreground">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="닫기"
+          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover"
+        >
           <X size={15} />
         </button>
       </div>
@@ -131,7 +142,7 @@ export function AnnotationToolbar({ questionId, selection, canonicalText, onClos
             key={code}
             type="button"
             onClick={() => setReasonCode(reasonCode === code ? null : code)}
-            className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
+            className={`rounded-md px-2 py-1 text-[11px] font-semibold transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover ${
               reasonCode === code
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-surface-raised text-muted-foreground hover:text-foreground'
@@ -142,11 +153,11 @@ export function AnnotationToolbar({ questionId, selection, canonicalText, onClos
         ))}
       </div>
 
-      <textarea
+      <Textarea
         value={memoText}
         onChange={(e) => setMemoText(e.target.value)}
         placeholder="메모 (선택)"
-        className="mb-2 min-h-[56px] w-full resize-none rounded-lg border border-border bg-background px-2.5 py-2 text-xs outline-none focus:border-primary"
+        className="mb-2 min-h-[56px] resize-none bg-background text-xs"
       />
 
       <Button size="sm" className="w-full" onClick={save} disabled={create.isPending}>

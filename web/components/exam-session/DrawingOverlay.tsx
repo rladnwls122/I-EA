@@ -67,7 +67,7 @@ export function DrawingOverlay({ onClose }: { onClose: () => void }) {
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       />
-      <div className="fixed bottom-20 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 shadow-lg">
+      <div className="fixed bottom-20 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-border bg-popover px-3 py-2 shadow-lg surface-sheen">
         {COLORS.map((c) => (
           <button
             key={c}
@@ -77,7 +77,8 @@ export function DrawingOverlay({ onClose }: { onClose: () => void }) {
               setErasing(false);
             }}
             aria-label={`색상 ${c}`}
-            className={`h-6 w-6 rounded-full border-2 ${
+            aria-pressed={!erasing && color === c}
+            className={`h-8 w-8 rounded-full border-2 transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover ${
               !erasing && color === c ? "border-foreground" : "border-transparent"
             }`}
             style={{ backgroundColor: c }}
@@ -87,8 +88,8 @@ export function DrawingOverlay({ onClose }: { onClose: () => void }) {
           type="button"
           onClick={() => setErasing(true)}
           aria-pressed={erasing}
-          className={`flex h-7 w-7 items-center justify-center rounded-md border ${
-            erasing ? "border-primary text-primary" : "border-border text-muted-foreground"
+          className={`flex h-8 w-8 items-center justify-center rounded-md border transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover ${
+            erasing ? "border-primary text-primary" : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
           }`}
           title="지우개"
         >
@@ -97,7 +98,7 @@ export function DrawingOverlay({ onClose }: { onClose: () => void }) {
         <button
           type="button"
           onClick={clearAll}
-          className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:text-wrong"
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-wrong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover"
           title="전체 지우기"
         >
           <Trash2 size={14} />
@@ -106,7 +107,7 @@ export function DrawingOverlay({ onClose }: { onClose: () => void }) {
         <button
           type="button"
           onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground"
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover"
           title="화면필기 끄기"
         >
           <X size={14} />

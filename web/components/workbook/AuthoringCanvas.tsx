@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Loader2, PencilLine, Plus, X } from "lucide-react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { buildRichDoc, buildRichBlocks, extractPlainText } from "@/lib/prosemirror";
 import {
   createQuestion,
@@ -612,7 +613,7 @@ export function AuthoringCanvas({
           AI 도우미
           {/* AI가 캔버스 탭 보는 동안에도 응답 중임을 알리는 신호 — 장식이 아니라 실제 상태. */}
           {aiStreaming && mobileTab !== "chat" && (
-            <span className="absolute right-[calc(50%-2.75rem)] top-2 h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+            <span className="absolute right-[calc(50%-2.75rem)] top-2 h-1.5 w-1.5 animate-pulse rounded-full bg-purple" />
           )}
         </button>
       </div>
@@ -687,20 +688,16 @@ export function AuthoringCanvas({
                 }`}
               >
                 <span
-                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${
+                  className={`absolute top-0.5 h-4 w-4 rounded-full bg-foreground shadow transition-all ${
                     isPublic ? "left-[18px]" : "left-0.5"
                   }`}
                 />
               </span>
             </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex flex-none items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-            >
+            <Button onClick={handleSave} disabled={saving} className="flex-none">
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={2.5} />}
               문제집 저장
-            </button>
+            </Button>
           </div>
         </header>
         {/* 문제집 #키워드 — 문항 키워드와 별개, 문제집 전체 분류/탐색용. */}

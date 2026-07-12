@@ -406,6 +406,8 @@ export interface SessionQuestionItem {
 export interface SessionDetail {
   id: string;
   subject: { id: string; name: string } | null;
+  /** 문제집 응시면 그 문제집 ID, 아니면 null. 결과 추천에서 자기 자신 제외에 사용. */
+  workbookId: string | null;
   status: SessionStatus;
   startedAt: string | null;
   submittedAt: string | null;

@@ -79,7 +79,7 @@ export function AnnotatedText({
             data-start={s}
             data-end={e}
             onClick={() => onMarkClick?.(top.ann.id)}
-            className="cursor-pointer transition-opacity hover:opacity-80"
+            className="cursor-pointer rounded-sm transition-opacity duration-150 ease-swift hover:opacity-80 motion-reduce:transition-none"
             style={
               top.ann.markStyle === 'UNDERLINE'
                 ? { borderBottom: `2px solid ${hex}` }

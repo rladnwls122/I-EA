@@ -14,15 +14,15 @@ function StreakHero({ enabled, onBrowse }: { enabled: boolean; onBrowse: () => v
   const s = data?.summary;
 
   return (
-    <section className="rounded-xl border border-border bg-card p-4 md:p-6">
+    <section className="rounded-2xl border bg-card p-4 shadow-surface md:p-6">
       {/* 모바일에서는 세로 스택, md 이상에서 기존 가로 배치 유지 */}
       <div className="flex flex-wrap items-center gap-4 md:gap-6">
         <div className="flex items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-streak/10 text-streak">
             <Flame size={24} />
           </span>
           <div>
-            <p className="font-mono text-2xl font-semibold text-foreground">
+            <p className="font-mono text-2xl font-semibold text-streak">
               {s ? `${s.currentStreak}일` : "—"}
             </p>
             <p className="text-xs text-muted-foreground">연속 학습</p>
@@ -83,20 +83,20 @@ function ResumeBanner({ enabled }: { enabled: boolean }) {
   return (
     <Link
       href={`/exam-sessions/${active.id}`}
-      className="flex items-center gap-3 rounded-xl border border-primary/40 bg-primary/5 px-4 py-3 transition-colors hover:bg-primary/10 md:px-5 md:py-4"
+      className="flex items-center gap-4 rounded-2xl border border-primary/40 bg-card p-4 shadow-surface transition-colors duration-150 ease-swift hover:border-primary/60 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background md:p-5"
     >
-      <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-primary text-primary-foreground">
-        <Play size={15} />
+      <span className="flex h-12 w-12 flex-none items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-key">
+        <Play size={18} />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-foreground">
+        <p className="truncate text-base font-semibold text-foreground md:text-lg">
           풀던 시험 이어하기 — {active.workbookTitle ?? active.subjectName ?? "세션"}
         </p>
-        <p className="font-mono text-[11px] text-muted-foreground">
+        <p className="mt-0.5 font-mono text-xs text-muted-foreground">
           {active.answered}/{active.total} 문항 진행 중
         </p>
       </div>
-      <ArrowRight size={16} className="flex-none text-primary" />
+      <ArrowRight size={18} className="flex-none text-primary" />
     </Link>
   );
 }
@@ -118,8 +118,8 @@ export function Dashboard() {
   if (auth === "pending") {
     return (
       <main className="mx-auto max-w-7xl space-y-4 p-4 md:p-6">
-        <div className="h-28 animate-pulse rounded-xl border border-border bg-surface-raised" />
-        <div className="h-64 animate-pulse rounded-xl border border-border bg-surface-raised" />
+        <div className="h-28 animate-pulse rounded-2xl border bg-surface-raised" />
+        <div className="h-64 animate-pulse rounded-2xl border bg-surface-raised" />
       </main>
     );
   }
@@ -139,8 +139,9 @@ export function Dashboard() {
           }
           aria-hidden={!loggedIn}
         >
-          <StreakHero enabled={loggedIn} onBrowse={() => setSearchOpen(true)} />
+          {/* "오늘 다음 할 일"(이어풀기)이 위계 최상단 — 있을 때만 렌더되므로 없으면 헤어로가 그대로 첫 요소 */}
           <ResumeBanner enabled={loggedIn} />
+          <StreakHero enabled={loggedIn} onBrowse={() => setSearchOpen(true)} />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="space-y-4 lg:col-span-2">

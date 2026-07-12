@@ -37,12 +37,12 @@ export function TiptapEditor({ value, onChange, placeholder, minHeight = "80px",
 }, [value, editor]);
 
   if (!editor) {
-    return <div className="animate-pulse bg-surface-raised rounded-lg w-full" style={{ minHeight }} />;
+    return <div className="w-full animate-pulse rounded-lg border border-border bg-surface-raised" style={{ minHeight }} />;
   }
 
   return (
     <div
-      className={`bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground outline-none transition-colors duration-150 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${className}`}
+      className={`relative rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground transition-colors duration-150 ease-swift focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${className}`}
       style={{ minHeight }}
       onClick={() => editor.commands.focus()}
     >

@@ -4,6 +4,7 @@ import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useUpdateQuestion } from "@/lib/hooks";
 import { buildRichDoc, buildRichBlocks, extractPlainText } from "@/lib/prosemirror";
 import type { Question } from "@/lib/types";
@@ -97,11 +98,11 @@ export function QuestionEditForm({
       {/* 발문 */}
       <label className="block space-y-1.5">
         <span className="text-xs font-semibold text-muted-foreground">발문</span>
-        <textarea
+        <Textarea
           value={stem}
           onChange={(e) => setStem(e.target.value)}
           rows={3}
-          className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          className="resize-y text-sm"
         />
       </label>
 
@@ -117,10 +118,11 @@ export function QuestionEditForm({
                 type="button"
                 onClick={() => setCorrect(i)}
                 aria-label={`${i + 1}번을 정답으로`}
-                className={`flex h-6 w-6 flex-none items-center justify-center rounded-full border text-[11px] font-bold ${
+                aria-pressed={correct === i}
+                className={`flex h-6 w-6 flex-none items-center justify-center rounded-full border text-[11px] font-bold transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card ${
                   correct === i
                     ? "border-correct bg-correct text-white"
-                    : "border-border text-muted-foreground"
+                    : "border-border text-muted-foreground hover:border-correct/40 hover:text-foreground"
                 }`}
               >
                 {correct === i ? <Check size={12} /> : i + 1}
@@ -159,10 +161,11 @@ export function QuestionEditForm({
               key={n}
               type="button"
               onClick={() => setDifficulty(n)}
-              className={`h-8 w-8 rounded-md text-xs font-semibold ${
+              aria-pressed={difficulty === n}
+              className={`h-8 w-8 rounded-md font-mono text-xs font-semibold tabular-nums transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card ${
                 difficulty === n
                   ? "bg-primary text-primary-foreground"
-                  : "bg-surface-raised text-muted-foreground"
+                  : "bg-surface-raised text-muted-foreground hover:text-foreground"
               }`}
             >
               {n}
@@ -174,11 +177,11 @@ export function QuestionEditForm({
       {/* 해설 */}
       <label className="block space-y-1.5">
         <span className="text-xs font-semibold text-muted-foreground">해설</span>
-        <textarea
+        <Textarea
           value={explanation}
           onChange={(e) => setExplanation(e.target.value)}
           rows={3}
-          className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          className="resize-y text-sm"
         />
       </label>
 

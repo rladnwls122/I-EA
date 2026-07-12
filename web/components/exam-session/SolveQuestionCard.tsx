@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Lightbulb, Loader2 } from "lucide-react";
+import { Check, Lightbulb, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useDebounce, useSubmitAnswer, useRevealHint } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
@@ -10,23 +10,23 @@ export function SolveQuestionCard({
   item,
   order,
   onAnswerStateChange,
+  selectedId,
+  onSelectChoice,
 }: {
   item: SessionQuestionItem;
   order: number;
   onAnswerStateChange: (sessionQuestionId: string, answered: boolean) => void;
+  // 객관식 선택은 상위(SessionPage)가 소유 — 답안지 OMR 마킹과 양방향 동기화된다.
+  selectedId: string | null;
+  onSelectChoice: (choiceId: string) => void;
 }) {
   const isObjective = item.snapshot.questionType === "객관식";
   const submitAnswer = useSubmitAnswer(item.sessionQuestionId);
   const revealHint = useRevealHint();
 
   // ── 객관식: 단일 선택(라디오). 마스킹된 snapshot은 복수정답 여부를 알 수 없다(Global Constraints 참고) ──
-  const [selectedId, setSelectedId] = useState<string | null>(
-    item.answer?.selectedChoiceIds?.[0] ?? null,
-  );
-
   const selectChoice = (choiceId: string) => {
-    setSelectedId(choiceId);
-    onAnswerStateChange(item.sessionQuestionId, true);
+    onSelectChoice(choiceId); // 상위 공유 상태 + answeredIds 갱신
     submitAnswer.mutate({ selectedChoiceIds: [choiceId] });
   };
 
@@ -58,7 +58,7 @@ export function SolveQuestionCard({
   const choices = item.snapshot.choices ?? [];
 
   return (
-    <article className="rounded-xl border border-border bg-card p-5">
+    <article className="rounded-xl border border-border bg-card p-5 shadow-surface">
       <div className="mb-3 flex items-center gap-2">
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {order}.
@@ -80,29 +80,37 @@ export function SolveQuestionCard({
 
       {isObjective ? (
         <div className="space-y-2">
-          {choices.map((c, i) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => selectChoice(c.id)}
-              className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
-                selectedId === c.id
-                  ? "border-primary bg-primary/10 text-foreground"
-                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
-              }`}
-            >
-              <span
-                className={`flex h-5 w-5 flex-none items-center justify-center rounded-full border text-[10px] font-mono ${
-                  selectedId === c.id
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border"
+          {/* 선지 = 큰 토글 버튼. 선택 상태는 색 + 보더 + 체크 아이콘 이중 채널, 피드백은 즉각(150ms). */}
+          {choices.map((c, i) => {
+            const selected = selectedId === c.id;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => selectChoice(c.id)}
+                aria-pressed={selected}
+                className={`flex min-h-[52px] w-full items-center gap-3 rounded-lg border px-4 py-3 text-left text-sm transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                  selected
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border text-muted-foreground hover:border-primary/40 hover:bg-accent hover:text-foreground"
                 }`}
               >
-                {i + 1}
-              </span>
-              <span>{extractPlainText(c.content)}</span>
-            </button>
-          ))}
+                <span
+                  className={`flex h-6 w-6 flex-none items-center justify-center rounded-full border font-mono text-[11px] transition-colors duration-150 ease-swift ${
+                    selected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border"
+                  }`}
+                >
+                  {i + 1}
+                </span>
+                <span className="flex-1">{extractPlainText(c.content)}</span>
+                {selected && (
+                  <Check size={16} className="flex-none text-primary" aria-hidden="true" />
+                )}
+              </button>
+            );
+          })}
         </div>
       ) : (
         <textarea
@@ -110,17 +118,17 @@ export function SolveQuestionCard({
           onChange={(e) => setAnswerText(e.target.value)}
           rows={3}
           placeholder="답안을 입력하세요"
-          className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+          className="min-h-[52px] w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         />
       )}
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-2 flex items-center gap-2">
         {!hintUnavailable && (
           <button
             type="button"
             onClick={openHint}
             disabled={revealHint.isPending}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-primary disabled:opacity-50"
+            className="-ml-2 flex h-10 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
           >
             {revealHint.isPending ? (
               <Loader2 size={13} className="animate-spin" />
@@ -136,9 +144,10 @@ export function SolveQuestionCard({
       </div>
 
       {hintText && (
-        <p className="mt-2 rounded-lg bg-primary/5 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-          💡 {hintText}
-        </p>
+        <div className="mt-2 flex items-start gap-2 rounded-lg bg-primary/5 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+          <Lightbulb size={13} className="mt-0.5 flex-none text-primary" aria-hidden="true" />
+          <p>{hintText}</p>
+        </div>
       )}
     </article>
   );

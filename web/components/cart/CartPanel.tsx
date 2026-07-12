@@ -34,7 +34,7 @@ export function CartPanel({ onClose }: { onClose: () => void }) {
   return (
     <>
       {/* 모바일에서 화면 밖으로 넘치지 않도록 max-w로 가둔다(데스크톱은 기존 320px 그대로). */}
-      <div className="fixed bottom-24 right-6 z-50 flex max-h-[70vh] w-[320px] max-w-[calc(100vw-3rem)] flex-col rounded-xl border border-border bg-card shadow-2xl">
+      <div className="fixed bottom-24 right-6 z-50 flex max-h-[70vh] w-[320px] max-w-[calc(100vw-3rem)] flex-col rounded-xl border border-border bg-popover shadow-2xl">
         <div className="flex flex-none items-center justify-between border-b border-border px-4 py-3">
           <span className="text-sm font-semibold text-foreground">
             담은 문제 <span className="font-mono text-primary">{items.length}</span>
@@ -58,7 +58,7 @@ export function CartPanel({ onClose }: { onClose: () => void }) {
             items.map((item) => (
               <div
                 key={item.id}
-                className="flex items-start gap-2 border-b border-border py-3 last:border-b-0"
+                className="flex min-h-11 items-start gap-2 border-b border-border py-3 last:border-b-0"
               >
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 flex items-center gap-1.5">
@@ -79,7 +79,7 @@ export function CartPanel({ onClose }: { onClose: () => void }) {
                   type="button"
                   onClick={() => remove(item.id)}
                   aria-label="빼기"
-                  className="mt-0.5 flex-none text-muted-foreground transition-colors hover:text-wrong"
+                  className="-mr-1.5 flex h-9 w-9 flex-none items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-swift hover:bg-wrong/10 hover:text-wrong"
                 >
                   <X size={14} />
                 </button>
@@ -93,7 +93,7 @@ export function CartPanel({ onClose }: { onClose: () => void }) {
             type="button"
             onClick={startSession}
             disabled={items.length === 0 || createSession.isPending}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-primary py-2.5 text-sm font-medium text-primary-foreground transition-colors duration-150 ease-swift hover:bg-[var(--primary-hover)] disabled:opacity-50"
           >
             {createSession.isPending ? (
               <Loader2 size={14} className="animate-spin" />
@@ -107,7 +107,7 @@ export function CartPanel({ onClose }: { onClose: () => void }) {
               type="button"
               onClick={() => setAssembleOpen(true)}
               disabled={items.length === 0}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-medium text-foreground transition-colors hover:border-primary/40 disabled:opacity-50"
+              className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-xs font-medium text-foreground transition-colors duration-150 ease-swift hover:border-primary/40 hover:bg-accent disabled:opacity-50"
             >
               <Save size={13} /> 새 문제집
             </button>
@@ -115,7 +115,7 @@ export function CartPanel({ onClose }: { onClose: () => void }) {
               type="button"
               onClick={() => setAddToWorkbookOpen(true)}
               disabled={items.length === 0}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-xs font-medium text-foreground transition-colors hover:border-primary/40 disabled:opacity-50"
+              className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-border text-xs font-medium text-foreground transition-colors duration-150 ease-swift hover:border-primary/40 hover:bg-accent disabled:opacity-50"
             >
               <FolderPlus size={13} /> 내 문제집에 담기
             </button>
@@ -124,7 +124,7 @@ export function CartPanel({ onClose }: { onClose: () => void }) {
               onClick={clear}
               disabled={items.length === 0}
               aria-label="비우기"
-              className="flex items-center justify-center rounded-lg border border-border px-3 text-muted-foreground transition-colors hover:border-wrong/40 hover:text-wrong disabled:opacity-50"
+              className="flex h-10 items-center justify-center rounded-lg border border-border px-3 text-muted-foreground transition-colors duration-150 ease-swift hover:border-wrong/40 hover:text-wrong disabled:opacity-50"
             >
               <Trash2 size={13} />
             </button>

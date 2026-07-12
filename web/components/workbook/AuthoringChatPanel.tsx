@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import { Send, Sparkles } from "lucide-react";
 import { extractPlainText } from "@/lib/prosemirror";
 import {
   streamAuthoringChat,
@@ -187,7 +187,10 @@ export function AuthoringChatPanel({
     <aside className="flex w-full flex-1 flex-col border-l-0 border-border md:w-[440px] md:flex-none md:border-l">
       {/* 헤더 */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <span className="text-sm font-semibold">AI 출제 도우미</span>
+        <span className="flex items-center gap-1.5 text-sm font-semibold">
+          <Sparkles size={15} strokeWidth={2} className="text-purple" />
+          AI 출제 도우미
+        </span>
       </div>
 
       {/* 생성 설정 — 채팅 스레드/입력창과 분리된 독립 패널 */}
@@ -257,14 +260,14 @@ export function AuthoringChatPanel({
             {m.questions?.map((q, qi) => {
               const applied = m.appliedKeys?.has(String(qi));
               return (
-                <div key={qi} className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
+                <div key={qi} className="rounded-xl border border-purple/30 bg-purple/5 p-3 text-sm">
                   <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                     <span>{q.questionType}</span>
                     {q.passage && (
                       <span className="rounded bg-surface-raised px-1.5 py-0.5 text-[10px]">지문 포함</span>
                     )}
                     {q.target?.startsWith("replace:") && (
-                      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                      <span className="rounded bg-purple/10 px-1.5 py-0.5 text-[10px] text-purple">
                         문제 {q.target.slice(8)} 교체안
                       </span>
                     )}

@@ -118,7 +118,18 @@ function NoteDetail() {
   }
 
   if (!stemDoc) {
-    return <div className="p-10">문항을 찾을 수 없습니다.</div>;
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-3 p-8 text-center">
+        <p className="text-sm font-medium text-foreground">문항을 찾을 수 없습니다.</p>
+        <p className="text-xs text-muted-foreground">삭제되었거나 잘못된 주소일 수 있어요.</p>
+        <Link
+          href="/notes"
+          className="mt-2 inline-flex h-10 items-center gap-1.5 rounded-lg border border-border px-4 text-sm font-medium text-foreground transition-colors duration-150 ease-swift hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <ArrowLeft size={14} /> 오답노트로 돌아가기
+        </Link>
+      </main>
+    );
   }
 
   const anns = annotations || [];
@@ -128,14 +139,14 @@ function NoteDetail() {
     <main className="relative mx-auto w-full max-w-5xl overflow-x-hidden p-4 md:p-10">
       <Link
         href="/notes"
-        className="mb-8 inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+        className="mb-8 inline-flex items-center gap-1.5 rounded-md text-xs font-semibold text-muted-foreground transition-colors duration-150 ease-swift hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <ArrowLeft size={14} /> 오답노트로 돌아가기
       </Link>
 
       <div className="flex flex-col gap-8 md:flex-row">
-        {/* 문항 본문 */}
-        <section className="min-w-0 flex-1">
+        {/* 문항 본문 — 읽기 focus-width */}
+        <section className="mx-auto w-full min-w-0 max-w-[680px] flex-1">
           <div className="mb-6">
             <span className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-primary">
               {subjectName} · {questionType} · 난이도 {difficulty}
@@ -244,7 +255,7 @@ function NoteDetail() {
 
           {/* 해설 */}
           {explanationDoc && (
-            <section className="mt-10 rounded-xl border border-border/50 bg-surface-raised p-6">
+            <section className="mt-10 rounded-xl border border-border bg-surface-raised p-6">
               <span className="mb-3 block text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
                 해설
               </span>

@@ -11,6 +11,7 @@ import { useCreateAnnotation, useDeleteAnnotation, useUpdateAnnotation } from '@
 import { colorHex, getReasonLabel, REASON_CODES, REASON_LABELS, type AnchorStatus } from '@/lib/annotations';
 import type { UserQuestionAnnotation } from '@/lib/types';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 
 interface Props {
   questionId: string;
@@ -41,20 +42,20 @@ function EditForm({
             key={code}
             type="button"
             onClick={() => setReasonCode(reasonCode === code ? null : code)}
-            className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
+            className={`rounded-md px-2 py-1 text-[11px] font-semibold transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card ${
               reasonCode === code
                 ? 'bg-primary text-primary-foreground'
-                : 'bg-surface-raised text-muted-foreground'
+                : 'bg-surface-raised text-muted-foreground hover:text-foreground'
             }`}
           >
             {REASON_LABELS[code]}
           </button>
         ))}
       </div>
-      <textarea
+      <Textarea
         value={memoText}
         onChange={(e) => setMemoText(e.target.value)}
-        className="min-h-[56px] w-full resize-none rounded-lg border border-border bg-background px-2.5 py-2 text-xs outline-none focus:border-primary"
+        className="min-h-[56px] resize-none text-xs"
         placeholder="메모"
       />
       <div className="flex gap-2">
@@ -108,7 +109,9 @@ function AnnotationItem({
   return (
     <div
       ref={ref}
-      className={`rounded-lg border p-3 ${focused ? 'border-primary' : 'border-border'}`}
+      className={`cursor-pointer rounded-lg border p-3 transition-colors duration-150 ease-swift ${
+        focused ? 'border-primary bg-accent' : 'border-border hover:bg-accent'
+      }`}
       onClick={() => onFocus(ann.id)}
     >
       {ann.selectedText && (
@@ -141,14 +144,14 @@ function AnnotationItem({
       {editing ? (
         <EditForm ann={ann} questionId={questionId} onDone={() => setEditing(false)} />
       ) : (
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex gap-1">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               setEditing(true);
             }}
-            className="text-muted-foreground hover:text-foreground"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-swift hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
             aria-label="수정"
           >
             <Pencil size={13} />
@@ -159,7 +162,7 @@ function AnnotationItem({
               e.stopPropagation();
               remove.mutate(ann.id);
             }}
-            className="text-muted-foreground hover:text-destructive"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-swift hover:bg-surface-raised hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
             aria-label="삭제"
           >
             <Trash2 size={13} />
@@ -207,11 +210,11 @@ export function AnnotationPanel({ questionId, annotations, statusById, focusedId
       {/* ① 문항 메모 */}
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-bold">문항 메모</h3>
+          <h3 className="text-sm font-semibold">문항 메모</h3>
           <button
             type="button"
             onClick={() => setAddingMemo((v) => !v)}
-            className="text-muted-foreground hover:text-foreground"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-swift hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
             aria-label="메모 추가"
           >
             <Plus size={15} />
@@ -225,21 +228,21 @@ export function AnnotationPanel({ questionId, annotations, statusById, focusedId
                   key={code}
                   type="button"
                   onClick={() => setNewReason(newReason === code ? null : code)}
-                  className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
+                  className={`rounded-md px-2 py-1 text-[11px] font-semibold transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card ${
                     newReason === code
                       ? 'bg-primary text-primary-foreground'
-                      : 'bg-surface-raised text-muted-foreground'
+                      : 'bg-surface-raised text-muted-foreground hover:text-foreground'
                   }`}
                 >
                   {REASON_LABELS[code]}
                 </button>
               ))}
             </div>
-            <textarea
+            <Textarea
               value={newMemo}
               onChange={(e) => setNewMemo(e.target.value)}
               placeholder="이 문항에 대한 메모"
-              className="min-h-[64px] w-full resize-none rounded-lg border border-border bg-background px-2.5 py-2 text-xs outline-none focus:border-primary"
+              className="min-h-[64px] resize-none text-xs"
             />
             <Button size="sm" onClick={saveMemo} disabled={create.isPending || (!newMemo.trim() && !newReason)}>
               저장
@@ -267,7 +270,7 @@ export function AnnotationPanel({ questionId, annotations, statusById, focusedId
 
       {/* ② 텍스트 주석 */}
       <section className="rounded-xl border border-border bg-card p-5">
-        <h3 className="mb-3 text-sm font-bold">텍스트 주석</h3>
+        <h3 className="mb-3 text-sm font-semibold">텍스트 주석</h3>
         {textMarks.length === 0 ? (
           <p className="text-xs leading-relaxed text-muted-foreground">
             본문에서 텍스트를 드래그하면 하이라이트와 메모를 남길 수 있어요.

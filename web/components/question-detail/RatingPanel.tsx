@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Loader2, Star } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { useReviews, useUpsertReview } from "@/lib/hooks";
 
 function StarRow({
@@ -21,7 +22,7 @@ function StarRow({
           type="button"
           onClick={() => onChange(n)}
           aria-label={`${n}점`}
-          className="p-0.5 transition-transform active:scale-90"
+          className="flex h-8 w-8 items-center justify-center rounded-md transition-transform duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-90 motion-reduce:transition-none motion-reduce:active:scale-100"
         >
           <Star
             size={18}
@@ -61,7 +62,7 @@ export function RatingPanel({ questionId }: { questionId: string }) {
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <div className="rounded-xl border border-border bg-card p-5 shadow-surface">
       <div className="mb-4 flex items-center justify-between">
         <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
           이 문제 평가하기
@@ -90,15 +91,10 @@ export function RatingPanel({ questionId }: { questionId: string }) {
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={submit}
-        disabled={upsert.isPending}
-        className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-      >
+      <Button onClick={submit} disabled={upsert.isPending} className="mt-4 w-full">
         {upsert.isPending && <Loader2 size={14} className="animate-spin" />}
         평가 저장
-      </button>
+      </Button>
     </div>
   );
 }

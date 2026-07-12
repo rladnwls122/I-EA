@@ -84,9 +84,9 @@ export function StatsPanel({ questionId }: { questionId: string }) {
                   >
                     {d.index + 1}
                   </span>
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-background">
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-raised">
                     <div
-                      className={`h-full rounded-full ${d.isCorrect ? "bg-correct" : "bg-border"}`}
+                      className={`h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none ${d.isCorrect ? "bg-correct" : "bg-border"}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>

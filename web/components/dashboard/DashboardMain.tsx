@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { ChevronRight, Clock } from "lucide-react";
+import { ChevronRight, Clock, NotebookPen } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useMyNotes, useMyExamSessions } from "@/lib/hooks";
 import { REASON_COLORS } from "@/components/notes/reason-colors";
 
@@ -12,12 +13,12 @@ export function WrongNotesSummary({ enabled }: { enabled: boolean }) {
   const total = byReason.reduce((s, r) => s + r.count, 0);
 
   return (
-    <section className="rounded-xl border border-border bg-card p-4 md:p-5">
+    <section className="rounded-2xl border bg-card p-4 shadow-surface md:p-5">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-foreground">오답노트 요약</h2>
         <Link
           href="/notes"
-          className="flex items-center gap-0.5 text-xs text-muted-foreground transition-colors hover:text-primary"
+          className="flex min-h-10 items-center gap-0.5 rounded-md px-1.5 text-xs text-muted-foreground transition-colors duration-150 ease-swift hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           전체 보기 <ChevronRight size={13} />
         </Link>
@@ -26,14 +27,23 @@ export function WrongNotesSummary({ enabled }: { enabled: boolean }) {
       {isLoading && enabled ? (
         <div className="h-24 animate-pulse rounded-lg bg-surface-raised" />
       ) : byReason.length === 0 ? (
-        <p className="py-6 text-center text-xs text-muted-foreground">
-          아직 기록된 오답 원인이 없어요. 문제를 풀고 원인을 태그해보세요.
-        </p>
+        <div className="flex flex-col items-center gap-3 py-6">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <NotebookPen size={18} />
+          </span>
+          <p className="text-center text-xs text-muted-foreground">
+            아직 기록된 오답 원인이 없어요. 문제를 풀고 원인을 태그해보세요.
+          </p>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/questions">문제 풀러 가기</Link>
+          </Button>
+        </div>
       ) : (
         <>
-          <p className="mb-3 text-xs text-muted-foreground">
-            미해결 오답 <span className="font-mono font-semibold text-wrong">{wrongCount}</span>개
-          </p>
+          <div className="mb-3 flex items-baseline gap-1.5">
+            <span className="font-mono text-2xl font-semibold text-wrong">{wrongCount}</span>
+            <span className="text-xs text-muted-foreground">미해결 오답</span>
+          </div>
           <div className="space-y-2">
             {byReason.map((r) => {
               const pct = total > 0 ? Math.round((r.count / total) * 100) : 0;
@@ -70,7 +80,7 @@ export function RecentSessions({ enabled }: { enabled: boolean }) {
   const recent = (sessions || []).slice(0, 5);
 
   return (
-    <section className="rounded-xl border border-border bg-card p-4 md:p-5">
+    <section className="rounded-2xl border bg-card p-4 shadow-surface md:p-5">
       <div className="mb-4 flex items-center gap-2">
         <Clock size={15} className="text-muted-foreground" />
         <h2 className="text-sm font-semibold text-foreground">최근 풀이 기록</h2>
@@ -79,16 +89,24 @@ export function RecentSessions({ enabled }: { enabled: boolean }) {
       {isLoading && enabled ? (
         <div className="h-24 animate-pulse rounded-lg bg-surface-raised" />
       ) : recent.length === 0 ? (
-        <p className="py-6 text-center text-xs text-muted-foreground">
-          아직 제출한 풀이가 없어요. 문제집을 골라 시작해보세요.
-        </p>
+        <div className="flex flex-col items-center gap-3 py-6">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Clock size={18} />
+          </span>
+          <p className="text-center text-xs text-muted-foreground">
+            아직 제출한 풀이가 없어요. 문제집을 골라 시작해보세요.
+          </p>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/workbook">문제집 둘러보기</Link>
+          </Button>
+        </div>
       ) : (
         <div className="space-y-2">
           {recent.map((s) => (
             <Link
               key={s.id}
               href={`/exam-sessions/${s.id}`}
-              className="flex items-center gap-3 rounded-lg border border-border px-3.5 py-3 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+              className="flex min-h-[44px] items-center gap-3 rounded-lg border px-3.5 py-3 transition-colors duration-150 ease-swift hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-medium text-foreground">

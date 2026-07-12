@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Search, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useMe, useSubjects, useWorkbooks } from "@/lib/hooks";
@@ -199,10 +199,14 @@ export default function WorkbookPage() {
           ))}
         </div>
       ) : workbooks.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card py-20 text-center">
-          <p className="text-sm text-muted-foreground">
+        <div className="flex flex-col items-center rounded-xl border border-border bg-card px-6 py-20 text-center">
+          <SearchX size={28} strokeWidth={1.75} className="mb-4 text-muted-foreground" />
+          <p className="mb-4 text-sm text-muted-foreground">
             조건에 맞는 공개 문제집이 없습니다.
           </p>
+          <Button asChild>
+            <Link href="/workbook/create">직접 문제집 만들기</Link>
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

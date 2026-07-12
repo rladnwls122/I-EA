@@ -48,9 +48,19 @@ export function QuestionDetail({
   }, [initialReveal, solved]);
 
   if (isLoading) {
+    // 스켈레톤 — 실제 레이아웃(헤더 + 좌 본문/우 댓글)과 같은 골격으로.
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="animate-spin text-primary" size={32} />
+      <div className="min-h-screen">
+        <div className="sticky top-0 z-30 flex h-14 items-center border-b border-border bg-background/90 px-4">
+          <div className="h-8 w-8 animate-pulse rounded-lg bg-surface-raised" />
+        </div>
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5 lg:flex-row">
+          <div className="mx-auto w-full max-w-[680px] flex-1 space-y-4">
+            <div className="h-[320px] animate-pulse rounded-xl border border-border bg-surface-raised" />
+            <div className="h-[180px] animate-pulse rounded-xl border border-border bg-surface-raised" />
+          </div>
+          <div className="h-[420px] w-full animate-pulse rounded-xl border border-border bg-surface-raised lg:w-[376px] lg:flex-none" />
+        </div>
       </div>
     );
   }
@@ -60,6 +70,13 @@ export function QuestionDetail({
       <div className="flex min-h-screen flex-col items-center justify-center gap-2 p-8 text-center">
         <p className="text-sm font-medium text-foreground">문항을 찾을 수 없어요.</p>
         <p className="text-xs text-muted-foreground">삭제되었거나 잘못된 주소입니다.</p>
+        <button
+          type="button"
+          onClick={() => router.push("/questions")}
+          className="mt-3 flex h-10 items-center rounded-lg border border-border px-4 text-sm font-medium text-foreground transition-colors duration-150 ease-swift hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          문제 목록으로 돌아가기
+        </button>
       </div>
     );
   }
@@ -72,7 +89,7 @@ export function QuestionDetail({
           type="button"
           onClick={() => router.back()}
           aria-label="뒤로"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:text-foreground"
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <ArrowLeft size={15} />
         </button>
@@ -91,7 +108,7 @@ export function QuestionDetail({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              className="flex h-10 items-center gap-1 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors duration-150 ease-swift hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <Pencil size={13} /> 수정
             </button>
@@ -99,7 +116,7 @@ export function QuestionDetail({
               type="button"
               onClick={handleDelete}
               disabled={deleteQuestion.isPending}
-              className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive disabled:opacity-50"
+              className="flex h-10 items-center gap-1 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors duration-150 ease-swift hover:border-destructive/50 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
             >
               {deleteQuestion.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} 삭제
             </button>
@@ -113,12 +130,12 @@ export function QuestionDetail({
             disabled={!solved}
             aria-pressed={reveal}
             title={solved ? undefined : "문제를 풀어야 채점 결과를 볼 수 있어요"}
-            className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+            className={`rounded-md px-3 py-1.5 text-xs transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
               reveal
-                ? "bg-primary/10 text-primary"
+                ? "bg-primary/10 font-semibold text-primary"
                 : solved
-                  ? "text-muted-foreground hover:text-foreground"
-                  : "cursor-not-allowed text-muted-foreground/40"
+                  ? "font-medium text-muted-foreground hover:text-foreground"
+                  : "cursor-not-allowed font-medium text-muted-foreground/40"
             }`}
           >
             채점 결과
@@ -127,8 +144,10 @@ export function QuestionDetail({
             type="button"
             onClick={() => setReveal(false)}
             aria-pressed={!reveal}
-            className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-              !reveal ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+            className={`rounded-md px-3 py-1.5 text-xs transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+              !reveal
+                ? "bg-primary/10 font-semibold text-primary"
+                : "font-medium text-muted-foreground hover:text-foreground"
             }`}
           >
             문제 탐색
@@ -138,7 +157,7 @@ export function QuestionDetail({
 
       {/* 본문 2열 */}
       <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5 lg:flex-row">
-        <main className="mx-auto w-full max-w-[772px] flex-1 space-y-4">
+        <main className="mx-auto w-full max-w-[680px] flex-1 space-y-4">
           {editing ? (
             <QuestionEditForm question={question} onDone={() => setEditing(false)} />
           ) : (

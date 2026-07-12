@@ -70,13 +70,13 @@ export function CommentSidebar({ questionId }: { questionId: string }) {
   };
 
   return (
-    <aside className="flex w-full flex-col rounded-xl border border-border bg-card lg:w-[376px] lg:flex-none">
+    <aside className="flex w-full flex-col rounded-xl border border-border bg-card shadow-surface lg:w-[376px] lg:flex-none">
       <div className="flex-none p-4 pb-0">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-semibold text-foreground">댓글</span>
           <span className="font-mono text-[11px] text-muted-foreground">{list.length}개</span>
         </div>
-        <div className="flex gap-1 rounded-lg border border-border bg-background p-1">
+        <div className="flex gap-1 rounded-lg border border-border bg-surface-raised p-1">
           {(
             [
               ["discuss", "풀이 토론"],
@@ -87,10 +87,10 @@ export function CommentSidebar({ questionId }: { questionId: string }) {
               key={key}
               type="button"
               onClick={() => setTab(key)}
-              className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${
+              className={`flex-1 rounded-md py-2 text-xs transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                 tab === key
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-primary/10 font-semibold text-primary"
+                  : "font-medium text-muted-foreground hover:text-foreground"
               }`}
             >
               {label}
@@ -120,14 +120,14 @@ export function CommentSidebar({ questionId }: { questionId: string }) {
             onChange={(e) => setDraft(e.target.value)}
             rows={2}
             placeholder="댓글을 입력하세요"
-            className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-[13px] text-foreground outline-none focus:border-primary"
+            className="flex-1 resize-none rounded-lg border border-input bg-surface-raised px-3 py-2 text-[13px] text-foreground transition-colors duration-150 ease-swift placeholder:text-muted-foreground focus-visible:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           />
           <button
             type="button"
             onClick={submit}
             disabled={createComment.isPending || !draft.trim()}
             aria-label="댓글 등록"
-            className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            className="pressable flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-key hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:shadow-key-press disabled:opacity-50"
           >
             {createComment.isPending ? (
               <Loader2 size={14} className="animate-spin" />

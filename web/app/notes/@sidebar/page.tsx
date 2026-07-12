@@ -4,6 +4,7 @@ import { ArrowUpRight, Loader2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { useMyNotes, useCreateSession } from "@/lib/hooks";
+import { Button } from "@/components/ui/button";
 
 const VegaStatWidget = dynamic(
   () => import("@/components/notes/VegaStatWidget").then((mod) => mod.VegaStatWidget),
@@ -33,28 +34,24 @@ export default function NotesSidebarPage() {
 
   return (
     <>
-      <section className="bg-card border border-border rounded-xl p-5">
-        <h3 className="font-semibold text-[15px] mb-1">오답 원인 분석</h3>
-        <p className="text-xs text-muted-foreground mb-4">최근 기록한 원인 태그 통계입니다.</p>
+      <section className="rounded-xl border border-border bg-card p-5 shadow-surface">
+        <h3 className="mb-1 text-[15px] font-semibold">오답 원인 분석</h3>
+        <p className="mb-4 text-xs text-muted-foreground">최근 기록한 원인 태그 통계입니다.</p>
         <VegaStatWidget />
       </section>
 
-      <section className="bg-card border border-border rounded-xl p-6 flex flex-col items-start">
-        <span className="font-mono text-xs text-muted-foreground tracking-widest uppercase mb-2">Next step</span>
-        <h3 className="text-[15px] font-semibold leading-snug mb-5">
+      <section className="flex flex-col items-start rounded-xl border border-border bg-card p-6 shadow-surface">
+        <span className="mb-2 font-mono text-xs uppercase tracking-widest text-muted-foreground">Next step</span>
+        <h3 className="mb-5 text-[15px] font-semibold leading-snug">
           기록한 오답을 다시 풀어보세요.
         </h3>
-        <button
-          type="button"
+        <Button
           onClick={startReview}
           disabled={wrongIds.length === 0 || createSession.isPending}
-          className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium text-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
         >
-          {createSession.isPending ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : null}
+          {createSession.isPending ? <Loader2 size={16} className="animate-spin" /> : null}
           복습 시작 <ArrowUpRight size={16} strokeWidth={2} />
-        </button>
+        </Button>
         {wrongIds.length === 0 && (
           <p className="mt-2 text-[11px] text-muted-foreground">복습할 오답이 없어요.</p>
         )}

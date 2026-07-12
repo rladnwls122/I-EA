@@ -564,7 +564,7 @@ export function QuestionEditor() {
                       <div key={i} className="flex gap-2">
                         <button
                           onClick={() => update(draft.id, "correct", i)}
-                          className={`w-10 h-10 flex-shrink-0 rounded-lg border font-mono text-xs font-medium transition-all active:translate-y-0 motion-reduce:transition-none ${
+                          className={`w-10 h-10 flex-shrink-0 rounded-lg border font-mono text-xs font-medium transition-colors duration-150 motion-reduce:transition-none ${
                             draft.correct === i
                               ? "bg-primary border-transparent text-primary-foreground"
                               : "border-border text-muted-foreground hover:border-primary/40"
@@ -588,7 +588,7 @@ export function QuestionEditor() {
                   <button
                     onClick={() => handleRegenerateChoices(draft)}
                     disabled={isRegenerating === draft.id}
-                    className="flex items-center gap-1.5 text-xs font-medium text-primary transition-colors hover:text-primary/80 mb-3 disabled:opacity-50"
+                    className="flex items-center gap-1.5 text-xs font-medium text-purple transition-colors duration-150 hover:text-purple/80 mb-3 disabled:opacity-50"
                   >
                     {isRegenerating === draft.id ? <Loader2 size={13} strokeWidth={2} className="animate-spin" /> : <RotateCcw size={13} strokeWidth={2} />}
                     {isRegenerating === draft.id ? "생성 중..." : "AI 매력적 오답 자동 생성"}
@@ -620,7 +620,7 @@ export function QuestionEditor() {
                         type="button"
                         onClick={() => toggleDraftTag(draft, t.id)}
                         aria-pressed={draft.tagIds.includes(t.id)}
-                        className={`rounded-full border px-2.5 py-1 text-[11px] transition-all active:scale-[0.98] motion-reduce:transition-none ${
+                        className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors duration-150 motion-reduce:transition-none ${
                           draft.tagIds.includes(t.id)
                             ? "border-primary bg-primary/10 font-medium text-foreground"
                             : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
@@ -691,12 +691,12 @@ export function QuestionEditor() {
         {/* ambient glow — 유리 뒤에 비칠 빛. 콘텐츠 아래(-z-10), 인터랙션 차단 없음 */}
         <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
           <div className="absolute -top-24 -right-20 h-64 w-64 rounded-full bg-primary/[0.08] blur-3xl" />
-          <div className="absolute bottom-16 -left-24 h-72 w-72 rounded-full bg-[#a78bfa]/[0.06] blur-3xl" />
+          <div className="absolute bottom-16 -left-24 h-72 w-72 rounded-full bg-purple/[0.06] blur-3xl" />
         </div>
         {/* 헤더 */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2 text-foreground font-semibold text-sm">
-            <Sparkles size={18} strokeWidth={2} className="text-primary" />
+            <Sparkles size={18} strokeWidth={2} className="text-purple" />
             AI 출제 도우미
           </div>
           <div className="flex items-center gap-2">
@@ -706,10 +706,10 @@ export function QuestionEditor() {
               aria-pressed={optionsOpen}
               aria-label="AI 생성 설정"
               title="AI 생성 설정"
-              className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-all duration-300 ${
+              className={`flex h-7 w-7 items-center justify-center rounded-lg border transition-colors duration-150 ${
                 optionsOpen
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  ? "border-purple bg-purple/10 text-purple"
+                  : "border-border text-muted-foreground hover:border-purple/40 hover:text-foreground"
               }`}
             >
               <Settings2 size={14} strokeWidth={2} />
@@ -750,7 +750,7 @@ export function QuestionEditor() {
           {/* 생성 중 로딩 버블 — 화면이 멈춘 느낌 제거 */}
           {isGenerating && (
             <div className="glass-chip flex items-center gap-2.5 rounded-xl border px-4 py-3 text-sm text-muted-foreground">
-              <Loader2 size={15} className="animate-spin text-primary" />
+              <Loader2 size={15} className="animate-spin text-purple" />
               문항을 만들고 있어요…
             </div>
           )}
@@ -850,7 +850,7 @@ export function QuestionEditor() {
                     onClick={() => selectCategory(c)}
                     disabled={isGenerating}
                     aria-pressed={category === c}
-                    className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+                    className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-colors duration-150 motion-reduce:transition-none disabled:opacity-50 ${
                       category === c
                         ? "bg-primary border-transparent text-primary-foreground"
                         : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
@@ -869,7 +869,7 @@ export function QuestionEditor() {
                       onClick={() => setSubjectId(s.id)}
                       disabled={isGenerating}
                       aria-pressed={subjectId === s.id}
-                      className={`px-3 py-1.5 rounded-full border text-[11px] transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+                      className={`px-3 py-1.5 rounded-full border text-[11px] transition-colors duration-150 motion-reduce:transition-none disabled:opacity-50 ${
                         subjectId === s.id
                           ? "border-primary bg-primary/10 text-foreground font-medium"
                           : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
@@ -895,7 +895,7 @@ export function QuestionEditor() {
                 onClick={() => toggleType(t)}
                 disabled={isGenerating}
                 aria-pressed={typeSel.has(t)}
-                className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+                className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-colors duration-150 motion-reduce:transition-none disabled:opacity-50 ${
                   typeSel.has(t)
                     ? "bg-primary border-transparent text-primary-foreground"
                     : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
@@ -921,7 +921,7 @@ export function QuestionEditor() {
                 onClick={() => setDifficulty(d)}
                 disabled={isGenerating}
                 aria-pressed={difficulty === d}
-                className={`w-8 h-8 rounded-full border text-[11px] font-mono font-medium transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+                className={`w-8 h-8 rounded-full border text-[11px] font-mono font-medium transition-colors duration-150 motion-reduce:transition-none disabled:opacity-50 ${
                   difficulty === d
                     ? "bg-primary border-transparent text-primary-foreground"
                     : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
@@ -944,7 +944,7 @@ export function QuestionEditor() {
                 onClick={() => setCount(n)}
                 disabled={isGenerating}
                 aria-pressed={count === n}
-                className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+                className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-colors duration-150 motion-reduce:transition-none disabled:opacity-50 ${
                   count === n
                     ? "bg-primary border-transparent text-primary-foreground"
                     : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
@@ -959,7 +959,7 @@ export function QuestionEditor() {
               onClick={() => setIncludePassage((v) => !v)}
               disabled={isGenerating}
               aria-pressed={includePassage}
-              className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-[0.98] motion-reduce:transition-none disabled:opacity-50 ${
+              className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-colors duration-150 motion-reduce:transition-none disabled:opacity-50 ${
                 includePassage
                   ? "bg-primary border-transparent text-primary-foreground"
                   : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"

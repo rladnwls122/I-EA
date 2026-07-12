@@ -10,11 +10,11 @@ export function ExplanationPanel({ explanation }: { explanation: any }) {
   if (!text) return null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-surface">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-surface-raised"
+        className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors duration-150 ease-swift hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg bg-primary/10 text-primary">
           <BookOpen size={14} />
@@ -28,7 +28,7 @@ export function ExplanationPanel({ explanation }: { explanation: any }) {
         />
       </button>
       {open && (
-        <p className="whitespace-pre-wrap border-t border-border px-5 py-4 text-sm leading-relaxed text-muted-foreground">
+        <p className="whitespace-pre-wrap border-t border-border px-5 py-4 text-sm leading-relaxed text-foreground/90">
           {text}
         </p>
       )}

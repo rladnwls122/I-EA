@@ -26,7 +26,7 @@ export function QuestionCard({
   return (
     <button
       onClick={onClick}
-      className="group flex w-full flex-col rounded-xl border border-border bg-card p-5 text-left transition-all duration-150 hover:border-primary/40 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="group flex w-full flex-col rounded-xl border border-border bg-card p-5 text-left shadow-surface transition-colors duration-150 ease-swift hover:border-primary/40 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
       {/* 상단: 과목 · 유형  /  난이도 pip */}
       <div className="mb-3.5 flex items-center justify-between gap-2">

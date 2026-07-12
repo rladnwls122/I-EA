@@ -64,6 +64,7 @@ const config: Config = {
         purple: "var(--purple)",
         correct: "var(--correct)",
         wrong: "var(--wrong)",
+        streak: "var(--streak)",
         "surface-raised": "var(--surface-raised)",
       },
       borderRadius: {
@@ -77,10 +78,21 @@ const config: Config = {
         mono: ["var(--font-geist-mono)", "ui-monospace", "monospace"],
       },
       boxShadow: {
-        sm: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
-        DEFAULT: "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
-        md: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
-        lg: "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+        sm: "0 1px 2px 0 rgb(0 0 0 / 0.25)",
+        DEFAULT: "0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3)",
+        md: "0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3)",
+        lg: "0 10px 15px -3px rgb(0 0 0 / 0.35), 0 4px 6px -4px rgb(0 0 0 / 0.35)",
+        // 카드 표면 — 상단 미광 + 접지 그림자. 사다리 전 단계 공용.
+        surface: "inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 2px rgb(0 0 0 / 0.4)",
+        // 눌리는 primary 버튼의 바닥 그림자(시그니처). active에서 press로 줄어든다.
+        key: "0 2px 0 var(--primary-shadow)",
+        "key-press": "0 0.5px 0 var(--primary-shadow)",
+      },
+      transitionTimingFunction: {
+        // 기능 피드백(150ms 내) 전용 — 감속 위주라 즉답처럼 느껴진다
+        swift: "cubic-bezier(0.2, 0, 0, 1)",
+        // 보상 모션 전용 — 살짝 튀는 스프링
+        spring: "cubic-bezier(0.34, 1.56, 0.64, 1)",
       },
       keyframes: {
         shimmer: { "100%": { transform: "translateX(100%)" } },

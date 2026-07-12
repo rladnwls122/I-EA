@@ -1,5 +1,5 @@
 "use client";
-import { Sparkles } from "lucide-react";
+import { Check, Sparkles } from "lucide-react";
 import type { SubmitReward } from "@/lib/types";
 
 function formatDuration(sec: number | null): string {
@@ -23,13 +23,13 @@ export function ResultBanner({
   reward?: SubmitReward | null;
 }) {
   return (
-    <div className="mb-4 rounded-xl border border-border bg-card p-5">
+    <div className="reward-pop mb-4 rounded-xl border border-border bg-card p-5 shadow-surface surface-sheen">
       <div className="flex flex-wrap items-center gap-6">
         <div>
           <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
             점수
           </span>
-          <span className="font-mono text-2xl font-semibold text-foreground">
+          <span className="font-mono text-3xl font-semibold text-foreground">
             {scorePercent}%
           </span>
         </div>
@@ -37,7 +37,8 @@ export function ResultBanner({
           <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
             정답
           </span>
-          <span className="font-mono text-lg font-medium text-foreground">
+          <span className="flex items-center gap-1 font-mono text-lg font-medium text-correct">
+            <Check size={16} aria-hidden="true" />
             {correct}/{total}
           </span>
         </div>
@@ -50,9 +51,9 @@ export function ResultBanner({
           </span>
         </div>
         {reward && reward.gained > 0 && (
-          <div className="ml-auto flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-primary">
-            <Sparkles size={14} />
-            <span className="text-sm font-medium">+{reward.gained} XP</span>
+          <div className="ml-auto flex items-center gap-1.5 rounded-full bg-streak/10 px-3 py-1.5 text-streak">
+            <Sparkles size={14} aria-hidden="true" />
+            <span className="font-mono text-sm font-medium tabular-nums">+{reward.gained} XP</span>
           </div>
         )}
       </div>

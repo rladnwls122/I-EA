@@ -80,7 +80,8 @@ export function AssembleDialog({
                 key={key}
                 type="button"
                 onClick={() => setVisibility(key)}
-                className={`flex-1 rounded-md py-2 text-[13px] font-medium transition-colors ${
+                aria-pressed={visibility === key}
+                className={`flex-1 rounded-md py-2.5 text-[13px] font-medium transition-colors duration-150 ease-swift ${
                   visibility === key
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:text-foreground"

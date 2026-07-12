@@ -79,7 +79,7 @@ export function AuthoringCanvasCard({
 
   if (!editing) {
     return (
-      <article className="group rounded-xl border border-border bg-card p-4 sm:p-5 transition-colors hover:border-primary/40">
+      <article className="group rounded-xl border border-border bg-card p-4 shadow-surface transition-colors duration-150 ease-swift hover:border-primary/40 hover:bg-accent sm:p-5">
         {/* 헤더 */}
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-semibold">
@@ -100,7 +100,7 @@ export function AuthoringCanvasCard({
               onClick={onAskAi}
               aria-label="AI에게 이 문항 수정 요청"
               title="AI에게 수정 요청"
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 ease-swift hover:bg-purple/10 hover:text-purple"
             >
               <Sparkles size={14} strokeWidth={2} />
             </button>

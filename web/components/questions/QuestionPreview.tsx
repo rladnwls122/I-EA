@@ -77,7 +77,7 @@ export function QuestionPreview({
             </h2>
           </div>
           <button
-            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-surface-raised hover:text-foreground"
+            className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-swift hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             aria-label="닫기"
             onClick={onClose}
           >
@@ -88,9 +88,7 @@ export function QuestionPreview({
         {/* 본문 */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="mb-6 flex items-center gap-2">
-            <Badge className="bg-primary/10 text-primary hover:bg-primary/10">
-              {q.questionType}
-            </Badge>
+            <Badge>{q.questionType}</Badge>
             <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
               난이도
               <span className="flex items-center gap-1">

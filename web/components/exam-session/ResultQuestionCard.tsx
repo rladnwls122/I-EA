@@ -50,7 +50,7 @@ export function ResultQuestionCard({
       : null;
 
   return (
-    <article className={`rounded-xl border ${borderColor} bg-card p-5`}>
+    <article className={`rounded-xl border ${borderColor} bg-card p-5 shadow-surface`}>
       <div className="mb-3 flex items-center gap-2">
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {order}.
@@ -126,7 +126,7 @@ export function ResultQuestionCard({
             type="button"
             onClick={() => handleSelfGrade(true)}
             disabled={selfGrade.isPending}
-            className="flex items-center gap-1 rounded-md border border-correct px-2.5 py-1 text-xs text-correct transition-colors hover:bg-correct/10 disabled:opacity-50"
+            className="flex h-10 items-center gap-1 rounded-md border border-correct px-3 text-xs font-medium text-correct transition-colors duration-150 ease-swift hover:bg-correct/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
           >
             {selfGrade.isPending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
             맞음
@@ -135,7 +135,7 @@ export function ResultQuestionCard({
             type="button"
             onClick={() => handleSelfGrade(false)}
             disabled={selfGrade.isPending}
-            className="flex items-center gap-1 rounded-md border border-wrong px-2.5 py-1 text-xs text-wrong transition-colors hover:bg-wrong/10 disabled:opacity-50"
+            className="flex h-10 items-center gap-1 rounded-md border border-wrong px-3 text-xs font-medium text-wrong transition-colors duration-150 ease-swift hover:bg-wrong/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
           >
             {selfGrade.isPending ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
             틀림
@@ -152,7 +152,7 @@ export function ResultQuestionCard({
       <div className="mt-3 flex items-center justify-between">
         <Link
           href={`/questions/${item.questionId}?reveal=1`}
-          className="inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+          className="inline-flex h-10 items-center gap-1 rounded-md text-xs font-medium text-primary transition-colors duration-150 ease-swift hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           문항 상세 보기 <ArrowUpRight size={12} />
         </Link>

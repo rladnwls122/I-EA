@@ -1,10 +1,13 @@
 "use client";
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Calculator as CalculatorIcon, LogOut, Pencil, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { useSession, useSubmitSession } from "@/lib/hooks";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { useSession, useSubmitSession, useWorkbooks } from "@/lib/hooks";
 import type { SubmitSessionResult } from "@/lib/types";
 import { OmrPanel } from "./OmrPanel";
 import { SolveQuestionCard } from "./SolveQuestionCard";
@@ -14,6 +17,8 @@ import { DrawingOverlay } from "./DrawingOverlay";
 import { ResultBanner } from "./ResultBanner";
 import { ResultQuestionCard } from "./ResultQuestionCard";
 import { BoxRewardCard } from "./BoxRewardCard";
+import { WorkbookCard } from "@/components/workbook/WorkbookCard";
+import { WorkbookPreviewSidebar } from "@/components/workbook/WorkbookPreviewSidebar";
 
 const Calculator = dynamic(
   () => import("./Calculator").then((m) => m.Calculator),
@@ -21,13 +26,32 @@ const Calculator = dynamic(
 );
 
 export function SessionPage({ id }: { id: string }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { data: session, isLoading, isError } = useSession(id);
   const submitSession = useSubmitSession();
 
+  // 결과 화면 하단 추천 — 방금 푼 세션과 같은 과목의 인기 공개 문제집(과목 없으면 전체 인기).
+  // 훅 규칙상 최상단에서 호출하고, 결과 모드일 때만 enabled로 실제 조회한다.
+  const isResult = !!session && session.status !== "IN_PROGRESS";
+  const recWorkbooks = useWorkbooks(
+    {
+      visibility: "PUBLIC",
+      sort: "popular",
+      subjectId: session?.subject?.id,
+      limit: 5, // 자기 자신 1개 제외해도 최대 4개가 남도록 넉넉히 받는다.
+    },
+    isResult,
+  );
+  // 추천 카드 클릭 시 열리는 미리보기 사이드바(결과 모드 전용).
+  const [recPreviewId, setRecPreviewId] = useState<string | null>(null);
+
   const [answeredIds, setAnsweredIds] = useState<Set<string>>(new Set());
+  // 객관식 선택 상태의 단일 소스 — 문제카드와 답안지 OMR이 함께 읽고 쓴다.
+  const [objectiveAnswers, setObjectiveAnswers] = useState<Record<string, string>>({});
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [omrOpen, setOmrOpen] = useState(false);
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   // 방금 제출한 응답(reward 포함) — 새로고침하면 사라지고 서버 재조회 값으로 대체된다.
   const [justSubmitted, setJustSubmitted] = useState<SubmitSessionResult | null>(null);
@@ -42,6 +66,18 @@ export function SessionPage({ id }: { id: string }) {
         .map((q) => q.sessionQuestionId);
       return new Set(ids);
     });
+    // 객관식 기존 선택을 공유 상태로 복원(한 번만).
+    setObjectiveAnswers((prev) => {
+      if (Object.keys(prev).length > 0) return prev;
+      const next: Record<string, string> = {};
+      for (const q of session.questions) {
+        const cid = q.answer?.selectedChoiceIds?.[0];
+        if (q.snapshot.questionType === "객관식" && cid) {
+          next[q.sessionQuestionId] = cid;
+        }
+      }
+      return next;
+    });
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.id]);
@@ -53,6 +89,12 @@ export function SessionPage({ id }: { id: string }) {
       else next.delete(sessionQuestionId);
       return next;
     });
+  };
+
+  // 객관식 선택(문제카드·답안지 OMR 공용). 저장(submit)은 클릭한 쪽이 각자 수행한다.
+  const handleObjectiveSelect = (sessionQuestionId: string, choiceId: string) => {
+    setObjectiveAnswers((prev) => ({ ...prev, [sessionQuestionId]: choiceId }));
+    handleAnswerStateChange(sessionQuestionId, true);
   };
 
   const jumpTo = (sessionQuestionId: string) => {
@@ -75,9 +117,24 @@ export function SessionPage({ id }: { id: string }) {
   };
 
   if (isLoading) {
+    // 실제 풀이 레이아웃 모양의 스켈레톤 — 상단 진행 스트립 + 문항 카드 자리
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="animate-spin text-primary" size={32} />
+      <div className="mx-auto w-full max-w-[680px] p-4 md:p-6">
+        <Skeleton className="mb-6 h-1.5 w-full rounded-full" />
+        <div className="flex flex-col gap-4">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="rounded-xl border border-border bg-card p-5 shadow-surface">
+              <Skeleton className="mb-4 h-4 w-24" />
+              <Skeleton className="mb-2 h-4 w-full" />
+              <Skeleton className="mb-5 h-4 w-3/4" />
+              <div className="flex flex-col gap-2">
+                <Skeleton className="h-[52px] w-full rounded-lg" />
+                <Skeleton className="h-[52px] w-full rounded-lg" />
+                <Skeleton className="h-[52px] w-full rounded-lg" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -113,8 +170,21 @@ export function SessionPage({ id }: { id: string }) {
     const correct = session.questions.filter((q) => q.answer?.isCorrect === true).length;
     const scorePercent = total > 0 ? Math.round((correct / total) * 1000) / 10 : 0;
 
+    // 방금 푼 문제집 자체는 추천에서 빼고 최대 4개만 노출.
+    const recItems = (recWorkbooks.data?.items ?? [])
+      .filter((wb) => wb.id !== session.workbookId)
+      .slice(0, 4);
+
     return (
-      <div className="mx-auto max-w-5xl p-6">
+      <div className="mx-auto w-full max-w-[680px] p-4 md:p-6">
+        {/* 상단 우측 — 결과 확인 후 문제집 탐색으로 나가기 */}
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground">채점 결과</h1>
+          <Button onClick={() => router.push("/workbook")}>
+            <LogOut size={15} className="mr-1.5" /> 확인하고 나가기
+          </Button>
+        </div>
+
         <ResultBanner
           total={justSubmitted?.total ?? total}
           correct={justSubmitted?.correct ?? correct}
@@ -127,8 +197,8 @@ export function SessionPage({ id }: { id: string }) {
             비어 사라진다(이미 개봉했더라도 재조회 값엔 상자 여부가 없으므로 자연히 숨겨짐). */}
         {justSubmitted?.box && <BoxRewardCard box={justSubmitted.box} />}
 
-        {/* 시험지 느낌 — 2열 사이 중앙 hairline (md 이상) */}
-        <div className="relative grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-x-10 md:before:absolute md:before:inset-y-0 md:before:left-1/2 md:before:w-px md:before:bg-border">
+        {/* focus-width 단일 컬럼 — 결과 복기도 위에서 아래로 한 흐름 */}
+        <div className="flex flex-col gap-4">
           {sortedQuestions.map((q) => (
             <ResultQuestionCard
               key={q.sessionQuestionId}
@@ -145,32 +215,58 @@ export function SessionPage({ id }: { id: string }) {
           ))}
         </div>
 
+        {/* 하단 추천 — 방금 푼 과목의 다른 인기 문제집. 카드 클릭 시 미리보기 사이드바. */}
+        {recItems.length > 0 && (
+          <section className="mt-10">
+            <div className="mb-4 flex items-center gap-2">
+              <Sparkles size={16} className="text-primary" aria-hidden="true" />
+              <h2 className="text-base font-semibold tracking-tight text-foreground">
+                이런 문제집은 어때요?
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {recItems.map((wb) => (
+                <WorkbookCard
+                  key={wb.id}
+                  wb={wb}
+                  onClick={() => setRecPreviewId(wb.id)}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        <WorkbookPreviewSidebar
+          workbookId={recPreviewId}
+          onClose={() => setRecPreviewId(null)}
+        />
+
         <div className="fixed bottom-6 right-6 z-40 flex gap-2">
           <button
             type="button"
             onClick={() => setDrawingEnabled((v) => !v)}
             aria-pressed={drawingEnabled}
-            className={`flex h-11 w-11 items-center justify-center rounded-full border shadow-lg transition-colors ${
+            className={`flex h-11 w-11 items-center justify-center rounded-full border shadow-lg transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
               drawingEnabled
                 ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-card text-muted-foreground hover:text-foreground"
+                : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
             }`}
             title="화면필기"
           >
-            ✏️
+            <Pencil size={17} />
           </button>
           <button
             type="button"
             onClick={() => setCalculatorOpen((v) => !v)}
             aria-pressed={calculatorOpen}
-            className={`flex h-11 w-11 items-center justify-center rounded-full border shadow-lg transition-colors ${
+            className={`flex h-11 w-11 items-center justify-center rounded-full border shadow-lg transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
               calculatorOpen
                 ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-card text-muted-foreground hover:text-foreground"
+                : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
             }`}
             title="계산기"
           >
-            🧮
+            <CalculatorIcon size={17} />
           </button>
         </div>
 
@@ -184,13 +280,40 @@ export function SessionPage({ id }: { id: string }) {
   const omrItems = session.questions
     .slice()
     .sort((a, b) => a.displayOrder - b.displayOrder)
-    .map((q) => ({ sessionQuestionId: q.sessionQuestionId, order: q.displayOrder }));
+    .map((q) => ({
+      sessionQuestionId: q.sessionQuestionId,
+      order: q.displayOrder,
+      questionType: q.snapshot.questionType,
+      choiceIds: (q.snapshot.choices ?? []).map((c) => c.id),
+      selectedChoiceId: objectiveAnswers[q.sessionQuestionId] ?? null,
+    }));
 
   return (
     <div className="flex min-h-screen flex-col">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:flex-row md:p-6">
-        {/* 시험지 느낌 — 중앙 정렬 + 2열 사이 중앙 hairline (md 이상) */}
-        <div className="relative flex-1 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-x-10 md:before:absolute md:before:inset-y-0 md:before:left-1/2 md:before:w-px md:before:bg-border">
+      {/* 상단 상시 노출 — 진행률 스트립(전역 상태). 풀이 중 어디서든 보인다. */}
+      <div className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-[960px] items-center gap-3 px-4 py-2.5 md:px-6">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-300 ease-swift"
+              style={{
+                width: `${
+                  session.questions.length > 0
+                    ? (answeredIds.size / session.questions.length) * 100
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+          <span className="flex-none font-mono text-xs tabular-nums text-muted-foreground">
+            {answeredIds.size}/{session.questions.length}
+          </span>
+        </div>
+      </div>
+
+      {/* 문항 2열 배치(md 이상). 답안지는 하단 드로어로 분리 → 본문은 전체 폭 사용. */}
+      <div className="mx-auto w-full max-w-[960px] flex-1 p-4 pb-24 md:p-6 md:pb-28">
+        <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
           {session.questions
             .slice()
             .sort((a, b) => a.displayOrder - b.displayOrder)
@@ -200,12 +323,24 @@ export function SessionPage({ id }: { id: string }) {
                   item={q}
                   order={q.displayOrder}
                   onAnswerStateChange={handleAnswerStateChange}
+                  selectedId={objectiveAnswers[q.sessionQuestionId] ?? null}
+                  onSelectChoice={(choiceId) =>
+                    handleObjectiveSelect(q.sessionQuestionId, choiceId)
+                  }
                 />
               </div>
             ))}
         </div>
-        <OmrPanel items={omrItems} answeredIds={answeredIds} onJump={jumpTo} />
       </div>
+
+      <OmrPanel
+        open={omrOpen}
+        onClose={() => setOmrOpen(false)}
+        items={omrItems}
+        answeredIds={answeredIds}
+        onJump={jumpTo}
+        onSelectChoice={handleObjectiveSelect}
+      />
 
       <SolveBottomBar
         startedAt={session.startedAt}
@@ -215,6 +350,8 @@ export function SessionPage({ id }: { id: string }) {
         onToggleDrawing={() => setDrawingEnabled((v) => !v)}
         calculatorOpen={calculatorOpen}
         onToggleCalculator={() => setCalculatorOpen((v) => !v)}
+        omrOpen={omrOpen}
+        onToggleOmr={() => setOmrOpen((v) => !v)}
         onRequestSubmit={() => setSubmitDialogOpen(true)}
       />
 

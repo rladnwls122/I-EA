@@ -1,10 +1,10 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { LibraryBig, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useMe, useWorkbooks } from "@/lib/hooks";
+import { useMe, useWorkbooks, useDeleteWorkbook } from "@/lib/hooks";
 import { WorkbookPreviewSidebar } from "@/components/workbook/WorkbookPreviewSidebar";
 import { WorkbookCard } from "@/components/workbook/WorkbookCard";
 import { CartButton } from "@/components/cart/CartButton";
@@ -13,9 +13,24 @@ import { CartButton } from "@/components/cart/CartButton";
 export default function MyWorkbooksPage() {
   const [keyword, setKeyword] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // 삭제 모드: 카드를 누르면 미리보기 대신 그 문제집을 삭제 확인으로 연다(하나씩 삭제).
+  const [deleteMode, setDeleteMode] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const { data, isLoading } = useWorkbooks({ search: keyword || undefined, mine: true });
   const { data: me } = useMe();
+  const deleteWorkbook = useDeleteWorkbook();
   const workbooks = data?.items || [];
+
+  const exitDeleteMode = () => {
+    setDeleteMode(false);
+    setConfirmId(null);
+  };
+
+  const handleDelete = (id: string) => {
+    deleteWorkbook.mutate(id, {
+      onSettled: () => setConfirmId(null),
+    });
+  };
 
   return (
     <main className="mx-auto max-w-7xl p-4 md:p-8">
@@ -30,6 +45,20 @@ export default function MyWorkbooksPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {workbooks.length > 0 &&
+            (deleteMode ? (
+              <Button variant="outline" onClick={exitDeleteMode}>
+                완료
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => setDeleteMode(true)}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 size={15} className="mr-1.5" /> 삭제 모드
+              </Button>
+            ))}
           <Button asChild variant="outline">
             <Link href="/workbook">공개 탐색</Link>
           </Button>
@@ -62,7 +91,8 @@ export default function MyWorkbooksPage() {
           ))}
         </div>
       ) : workbooks.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card py-20 text-center">
+        <div className="flex flex-col items-center rounded-xl border border-border bg-card px-6 py-20 text-center">
+          <LibraryBig size={28} strokeWidth={1.75} className="mb-4 text-muted-foreground" />
           <p className="mb-4 text-sm text-muted-foreground">
             아직 만든 문제집이 없습니다. 첫 문제집을 만들어보세요.
           </p>
@@ -71,18 +101,59 @@ export default function MyWorkbooksPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {workbooks.map((wb) => (
-            <WorkbookCard
-              key={wb.id}
-              wb={wb}
-              onClick={() => setSelectedId(wb.id)}
-              canEdit={!!me && me.id === wb.ownerId}
-            />
-          ))}
-        </div>
+        <>
+          {deleteMode && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2.5 text-sm text-destructive">
+              <Trash2 size={15} className="flex-none" />
+              삭제할 문제집을 눌러 하나씩 삭제하세요. 삭제한 문제집은 되돌릴 수 없습니다.
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {workbooks.map((wb) => (
+              <div key={wb.id} className="relative">
+                <WorkbookCard
+                  wb={wb}
+                  deleteMode={deleteMode}
+                  onClick={() =>
+                    deleteMode ? setConfirmId(wb.id) : setSelectedId(wb.id)
+                  }
+                  canEdit={!!me && me.id === wb.ownerId}
+                />
+                {confirmId === wb.id && (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive bg-card/95 p-4 text-center backdrop-blur">
+                    <p className="text-sm text-foreground">
+                      <span className="font-semibold">{wb.title}</span>
+                      <br />
+                      삭제할까요? 되돌릴 수 없습니다.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setConfirmId(null)}
+                        disabled={deleteWorkbook.isPending}
+                      >
+                        취소
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleDelete(wb.id)}
+                        disabled={deleteWorkbook.isPending}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        {deleteWorkbook.isPending ? "삭제 중…" : "삭제"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
-      <WorkbookPreviewSidebar workbookId={selectedId} onClose={() => setSelectedId(null)} />
+      {!deleteMode && (
+        <WorkbookPreviewSidebar workbookId={selectedId} onClose={() => setSelectedId(null)} />
+      )}
       <CartButton />
     </main>
   );

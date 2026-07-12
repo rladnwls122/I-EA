@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -88,13 +88,19 @@ export function AddToWorkbookDialog({
                 key={wb.id}
                 type="button"
                 onClick={() => setTargetId(wb.id)}
-                className={`flex w-full items-center justify-between rounded-lg border px-3.5 py-2.5 text-left text-sm transition-colors ${
+                aria-pressed={targetId === wb.id}
+                className={`flex min-h-11 w-full items-center gap-2 rounded-lg border px-3.5 py-2.5 text-left text-sm transition-colors duration-150 ease-swift ${
                   targetId === wb.id
                     ? "border-primary bg-primary/10 text-foreground"
-                    : "border-border text-foreground hover:border-primary/40"
+                    : "border-border text-foreground hover:border-primary/40 hover:bg-accent"
                 }`}
               >
-                <span className="truncate">{wb.title}</span>
+                <Check
+                  size={15}
+                  strokeWidth={2.5}
+                  className={`flex-none text-primary ${targetId === wb.id ? "opacity-100" : "opacity-0"}`}
+                />
+                <span className="min-w-0 flex-1 truncate">{wb.title}</span>
                 <span className="ml-2 flex-none font-mono text-[11px] text-muted-foreground">
                   문항 {wb.questionCount}
                 </span>

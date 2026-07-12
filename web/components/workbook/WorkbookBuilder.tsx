@@ -13,7 +13,7 @@ const pillBase =
   "rounded-lg border px-4 py-2.5 text-sm transition-colors duration-150 motion-reduce:transition-none";
 const pillOn = "border-transparent bg-primary font-medium text-primary-foreground";
 const pillOff =
-  "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground";
+  "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-accent hover:text-foreground";
 
 export function WorkbookBuilder() {
   const router = useRouter();
@@ -126,7 +126,7 @@ export function WorkbookBuilder() {
 
       {/* ── Step 1: 과목 선택 (다중) → 선택 즉시 문제집 생성 후 2단계로 ── */}
       {!createdWorkbookId && (
-        <section className="rounded-xl border border-border bg-card p-8">
+        <section className="rounded-2xl border border-border bg-card p-8 shadow-surface">
           <span className="mb-2 block font-mono text-xs uppercase tracking-widest text-primary">Step 1</span>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight">어떤 시험을 준비하고 있나요?</h2>
           <p className="mt-1 text-sm text-muted-foreground">소과목은 여러 개 고를 수 있어요.</p>

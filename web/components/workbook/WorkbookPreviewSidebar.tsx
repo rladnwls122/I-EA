@@ -114,7 +114,7 @@ export function WorkbookPreviewSidebar({
                   {workbook.visibility === "PUBLIC" ? "공개" : "비공개"}
                 </Badge>
                 <span className="text-xs text-muted-foreground">
-                  문항 {workbook.questionCount}개
+                  문항 <span className="font-mono">{workbook.questionCount}</span>개
                 </span>
               </div>
             )}
@@ -148,7 +148,7 @@ export function WorkbookPreviewSidebar({
                     className={`flex items-start gap-2 rounded-lg border p-2.5 transition-colors ${
                       active
                         ? "border-primary/50 bg-primary/5"
-                        : "border-transparent hover:bg-surface-raised"
+                        : "border-transparent hover:bg-accent"
                     }`}
                   >
                     <button
@@ -221,7 +221,7 @@ export function WorkbookPreviewSidebar({
             <button
               type="button"
               onClick={onClose}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              className="flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-medium text-muted-foreground transition-colors duration-150 hover:border-primary/40 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               <ArrowLeft size={15} /> 미리보기 닫기
             </button>
