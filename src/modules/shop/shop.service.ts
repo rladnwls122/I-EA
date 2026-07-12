@@ -20,26 +20,48 @@ export class ShopService {
     if (!item) throw new NotFoundException('존재하지 않는 상품입니다.');
 
     return this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({ where: { id: userId }, select: { coins: true } });
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { coins: true, xpBoostUntil: true },
+      });
       if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
-      if (user.coins < item.price) throw new BadRequestException('코인이 부족합니다.');
 
       const now = new Date();
       const status = item.kind === 'PHYSICAL' ? 'PENDING' : 'FULFILLED';
+      const eff = item.effect;
 
-      // 1) 코인 차감
-      const updated = await tx.user.update({
-        where: { id: userId },
+      // COSMETIC은 중복 구매(이미 보유)를 차단한다 — 차감 전에 검사해야 이중 과금을 막는다.
+      if (eff.type === 'COSMETIC') {
+        const owned = await tx.userInventory.findUnique({
+          where: { userId_itemKey: { userId, itemKey } },
+          select: { quantity: true },
+        });
+        if (owned && owned.quantity >= 1) {
+          throw new BadRequestException('이미 보유한 아이템입니다.');
+        }
+      }
+
+      // 1) 코인 차감. 동시 구매로 인한 이중 차감/음수 잔고를 막기 위해
+      //    "잔고가 충분할 때만" 조건부로 원자적 차감한다(loot-boxes open()의 openedAt 가드와 같은 패턴).
+      const debit = await tx.user.updateMany({
+        where: { id: userId, coins: { gte: item.price } },
         data: { coins: { decrement: item.price } },
-        select: { coins: true },
       });
+      if (debit.count === 0) throw new BadRequestException('코인이 부족합니다.');
+
+      const afterDebit = await tx.user.findUnique({ where: { id: userId }, select: { coins: true } });
+      const debitedCoins = afterDebit?.coins ?? 0;
 
       // 2) 효과 적용(부스터/인벤토리/코스메틱). PHYSICAL은 효과 없음(관리자 배송).
-      const eff = item.effect;
+      const updated = { coins: debitedCoins };
       if (eff.type === 'BOOST') {
+        // 기존 부스터가 새로 사는 부스터보다 더 나중에 만료되면 단축시키지 않는다(더 늦은 시점을 취한다).
+        const newUntil = boostExpiryHours(now, eff.hours);
+        const nextUntil =
+          user.xpBoostUntil && user.xpBoostUntil > newUntil ? user.xpBoostUntil : newUntil;
         await tx.user.update({
           where: { id: userId },
-          data: { xpBoostUntil: boostExpiryHours(now, eff.hours) },
+          data: { xpBoostUntil: nextUntil },
         });
       } else if (eff.type === 'CONSUMABLE') {
         await tx.userInventory.upsert({

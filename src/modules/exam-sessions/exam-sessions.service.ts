@@ -305,6 +305,18 @@ export class ExamSessionsService {
       }
 
       await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        // 토큰 소모는 동시 열람 시 음수로 빠지면 안 되므로, 수량이 남아있을 때만
+        // 원자적으로 차감한다(loot-boxes open()의 openedAt 가드와 같은 패턴).
+        // count===0이면 이미 다른 요청이 토큰을 다 써버린 것 — 열람을 거부한다.
+        if (quota.useToken) {
+          const debit = await tx.userInventory.updateMany({
+            where: { userId, itemKey: 'HINT_TOKEN', quantity: { gt: 0 } },
+            data: { quantity: { decrement: 1 } },
+          });
+          if (debit.count === 0) {
+            throw new ConflictException('힌트 토큰이 없습니다.');
+          }
+        }
         await tx.examSessionQuestion.update({
           where: { id: sessionQuestionId },
           data: { isHintUsed: true, hintUsedAt },
@@ -313,12 +325,6 @@ export class ExamSessionsService {
           where: { id: userId },
           data: { hintFreeDate: today, hintFreeUsed: quota.newFreeUsed },
         });
-        if (quota.useToken) {
-          await tx.userInventory.update({
-            where: { userId_itemKey: { userId, itemKey: 'HINT_TOKEN' } },
-            data: { quantity: { decrement: 1 } },
-          });
-        }
       });
     }
 

@@ -191,6 +191,8 @@ export class WorkbooksService {
 
     // becomingPublic이면 문항 저자 보상 지급까지 한 트랜잭션으로 묶어야 원자적이다
     // (문제집은 공개됐는데 보상만 누락되는 상황을 막는다).
+    // 큰 문제집은 문항 수만큼 직렬 read+write가 들어가 기본 tx 타임아웃(~5s)을 넘길 수 있으므로
+    // 타임아웃을 늘려 안전마진을 둔다.
     const updated = await this.prisma.$transaction(async (tx) => {
       const result = await tx.workbook.update({
         where: { id },
@@ -217,13 +219,20 @@ export class WorkbooksService {
           select: { question: { select: { creatorId: true } } },
         });
         const now = new Date();
+        // 저자별 하루 캡이 이미 소진됐으면(rewarded:false) 같은 저자에 대해 더 이상 호출하지 않는다.
+        // 대형 문제집에서 저자가 겹칠 때 불필요한 read+write를 줄여 tx 타임아웃 위험을 낮춘다
+        // (캡 정확성 자체는 헬퍼가 이미 보장하므로, 이 스킵은 순수 최적화다).
+        const exhaustedAuthors = new Set<string>();
         for (const wq of questions) {
-          await this.awardPublishReward(tx, wq.question.creatorId, id, now);
+          const authorId = wq.question.creatorId;
+          if (exhaustedAuthors.has(authorId)) continue;
+          const { rewarded } = await this.awardPublishReward(tx, authorId, id, now);
+          if (!rewarded) exhaustedAuthors.add(authorId);
         }
       }
 
       return result;
-    });
+    }, { timeout: 15000 });
     return withTags(updated);
   }
 
