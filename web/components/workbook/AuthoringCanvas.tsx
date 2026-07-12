@@ -4,7 +4,14 @@ import { toast } from "sonner";
 import { ArrowLeft, Check, Loader2, PencilLine, Plus } from "lucide-react";
 import Link from "next/link";
 import { buildRichDoc, buildRichBlocks, extractPlainText } from "@/lib/prosemirror";
-import { createQuestion, publishQuestion, addQuestionToWorkbook, updateWorkbook } from "@/lib/api";
+import {
+  createQuestion,
+  publishQuestion,
+  addQuestionToWorkbook,
+  updateWorkbook,
+  createPassage,
+  publishPassage,
+} from "@/lib/api";
 import { useWorkbook } from "@/lib/hooks";
 import type { ParsedQuestion } from "@/lib/authoring-chat";
 import { AuthoringChatPanel } from "./AuthoringChatPanel";
@@ -216,20 +223,33 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
       toast.error("과목 정보가 없습니다. 채팅에서 과목을 확인해주세요.");
       return;
     }
-    // 지문(passage)은 별도 엔티티 생성 API 연동이 범위 밖이라 아직 영속화되지 않는다.
-    // 조용히 사라지지 않도록 1회 경고만 한다(F3b).
-    if (cards.some((c) => c.passage)) {
-      toast.warning("일부 문항의 지문은 아직 저장되지 않아요.");
-    }
     setSaving(true);
     try {
+      // 1) 지문 영속화 — 같은 지문(평문 일치)은 한 번만 생성해 passageId를 공유한다.
+      const passageIdByKey = new Map<string, string>();
+      for (const c of cards) {
+        const key = passageKey(c);
+        if (!key || passageIdByKey.has(key)) continue;
+        try {
+          const p = await createPassage(c.passage);
+          await publishPassage(p.id).catch(() => null); // 발행 실패는 담기에 치명적이지 않음
+          passageIdByKey.set(key, p.id);
+        } catch (e) {
+          console.error("지문 저장 실패:", e);
+          toast.error("일부 지문 저장에 실패했어요 — 해당 문항은 지문 없이 저장됩니다.");
+        }
+      }
+
+      // 2) 문항 영속화 + 발행 + 문제집 연결.
       let failed = 0;
       for (const c of cards) {
         if (!extractPlainText(c.stem).trim()) continue;
+        const key = passageKey(c);
         try {
           const created = await createQuestion({
             subjectId,
             questionType: c.type,
+            ...(key && passageIdByKey.has(key) ? { passageId: passageIdByKey.get(key) } : {}),
             stem: c.stem,
             choices:
               c.type === "객관식"

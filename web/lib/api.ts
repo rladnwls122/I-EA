@@ -152,6 +152,19 @@ export function fetchQuestion(id: string) {
 }
 
 /** 지문(본문) 상세 — content(ProseMirror) 포함 */
+/** 지문 생성 — content는 ProseMirror doc JSON. */
+export function createPassage(content: any) {
+  return apiFetch<Passage>('/passages', {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
+}
+
+/** 지문 발행 */
+export function publishPassage(id: string) {
+  return apiFetch<Passage>(`/passages/${id}/publish`, { method: 'POST' });
+}
+
 export function fetchPassage(id: string) {
   return apiFetch<Passage>(`/passages/${id}`);
 }
