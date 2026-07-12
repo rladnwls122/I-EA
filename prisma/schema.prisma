@@ -76,6 +76,9 @@ enum PurchaseStatus {
 enum CoinHistoryReason {
   BOX_OPEN
   PURCHASE
+  AUTHOR_PUBLISH
+  WORKBOOK_FORK
+  SOLVE_MILESTONE
 }
 
 // ---------------------------------------------------------------------
@@ -106,6 +109,9 @@ model User {
   // 힌트 하루 무료 소진 카운트(날짜 바뀌면 리셋). D-3 게이팅용.
   hintFreeDate   DateTime? @map("hint_free_date") @db.Date
   hintFreeUsed   Int       @default(0) @map("hint_free_used")
+  // 저자 발행 보상 하루 캡(날짜 바뀌면 리셋). hintFreeDate/hintFreeUsed와 동일 패턴.
+  authorRewardDate  DateTime? @map("author_reward_date") @db.Date
+  authorRewardCount Int       @default(0) @map("author_reward_count")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
@@ -303,6 +309,8 @@ model Question {
   // --- 정답률 캐시 컬럼 ---
   totalSolvedCount   Int @default(0) @map("total_solved_count")
   correctSolvedCount Int @default(0) @map("correct_solved_count")
+  // 누적 10솔브 1회성 저자 보너스(+20코인) 지급 여부. 임계 체크만으로는 매 풀이마다 재발동하므로 플래그로 최초 1회만.
+  solveBonusAwarded  Boolean @default(false) @map("solve_bonus_awarded")
   // 인기순 정렬 성능 최적화용 누적 조회수 캐시
   viewCount          Int @default(0) @map("view_count")
 
