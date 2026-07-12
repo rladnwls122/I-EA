@@ -253,7 +253,7 @@ export function NotesDashboard() {
             <div className="space-y-3">
               {filteredQuestions.map((q, i) => (
                 <Link
-                  href={`/notes/${q.questionId}`}
+                  href={`/notes/${q.questionId}?sessionId=${q.sessionId}`}
                   key={`${q.questionId}-${q.sessionId}`}
                   className="group flex items-start gap-4 rounded-xl border border-border bg-card p-5 transition-all duration-150 hover:border-primary/40 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:translate-y-0"
                 >
