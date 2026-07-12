@@ -122,7 +122,8 @@ export function SessionPage({ id }: { id: string }) {
           reward={justSubmitted?.reward}
         />
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* 시험지 느낌 — 2열 사이 중앙 hairline (md 이상) */}
+        <div className="relative grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-x-10 md:before:absolute md:before:inset-y-0 md:before:left-1/2 md:before:w-px md:before:bg-border">
           {sortedQuestions.map((q) => (
             <ResultQuestionCard
               key={q.sessionQuestionId}
@@ -182,8 +183,9 @@ export function SessionPage({ id }: { id: string }) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <div className="flex flex-1 gap-4 p-6">
-        <div className="flex-1 grid grid-cols-1 gap-4 md:grid-cols-2">
+      <div className="mx-auto flex w-full max-w-6xl flex-1 gap-4 p-6">
+        {/* 시험지 느낌 — 중앙 정렬 + 2열 사이 중앙 hairline (md 이상) */}
+        <div className="relative flex-1 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-x-10 md:before:absolute md:before:inset-y-0 md:before:left-1/2 md:before:w-px md:before:bg-border">
           {session.questions
             .slice()
             .sort((a, b) => a.displayOrder - b.displayOrder)

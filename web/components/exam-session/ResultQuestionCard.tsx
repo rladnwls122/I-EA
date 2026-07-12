@@ -40,6 +40,15 @@ export function ResultQuestionCard({
     );
   };
 
+  // 문항 정답률(조립 시점 스냅샷 기준) — 표본이 10명 미만이면 노이즈라 숨긴다.
+  const { totalSolvedCount, correctSolvedCount } = item.snapshot;
+  const accuracyPercent =
+    typeof totalSolvedCount === "number" &&
+    typeof correctSolvedCount === "number" &&
+    totalSolvedCount >= 10
+      ? Math.round((correctSolvedCount / totalSolvedCount) * 100)
+      : null;
+
   return (
     <article className={`rounded-xl border ${borderColor} bg-card p-5`}>
       <div className="mb-3 flex items-center gap-2">
@@ -134,12 +143,19 @@ export function ResultQuestionCard({
         </p>
       )}
 
-      <Link
-        href={`/questions/${item.questionId}?reveal=1`}
-        className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
-      >
-        문항 상세 보기 <ArrowUpRight size={12} />
-      </Link>
+      <div className="mt-3 flex items-center justify-between">
+        <Link
+          href={`/questions/${item.questionId}?reveal=1`}
+          className="inline-flex items-center gap-1 text-xs font-medium text-primary transition-colors hover:text-primary/80"
+        >
+          문항 상세 보기 <ArrowUpRight size={12} />
+        </Link>
+        {accuracyPercent !== null && (
+          <span className="font-mono text-xs tabular-nums text-muted-foreground">
+            (정답률: {accuracyPercent}%)
+          </span>
+        )}
+      </div>
     </article>
   );
 }

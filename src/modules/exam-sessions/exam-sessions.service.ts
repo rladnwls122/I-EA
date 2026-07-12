@@ -95,6 +95,9 @@ export class ExamSessionsService {
         correctAnswerText: true,
         points: true,
         difficulty: true,
+        // 결과 화면 정답률 배지용 — 조립 시점 값을 스냅샷에 고정한다.
+        totalSolvedCount: true,
+        correctSolvedCount: true,
       },
     });
     // picked 순서를 유지해 displayOrder를 안정적으로 부여한다.
@@ -129,6 +132,8 @@ export class ExamSessionsService {
               correctAnswerText: q.correctAnswerText,
               points: Number(q.points),
               difficulty: q.difficulty,
+              totalSolvedCount: q.totalSolvedCount,
+              correctSolvedCount: q.correctSolvedCount,
             };
             return {
               examSessionId: created.id,

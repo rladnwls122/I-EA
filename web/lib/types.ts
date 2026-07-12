@@ -369,6 +369,9 @@ export interface SessionQuestionSnapshot {
   explanation?: any;
   /** 주관식 단답 정답. IN_PROGRESS에는 없음(undefined) */
   correctAnswerText?: string | null;
+  /** 조립 시점 풀이 통계 — 결과 화면 정답률 배지용(선택, 구세션 스냅샷엔 없음) */
+  totalSolvedCount?: number;
+  correctSolvedCount?: number;
   points: number;
   difficulty: number;
 }

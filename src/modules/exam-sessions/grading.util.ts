@@ -11,6 +11,9 @@ export interface QuestionSnapshot {
   correctAnswerText?: string | null;
   points: number;
   difficulty: number;
+  // 조립 시점의 풀이 통계 — 결과 화면 정답률 배지용(선택). 스냅샷 원칙대로 이후 변동과 무관.
+  totalSolvedCount?: number;
+  correctSolvedCount?: number;
 }
 
 export interface AnswerPayload {
