@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { Providers } from "./providers";
 import { AppSidebar } from "@/components/layout/AppSidebar";
+import { AuthGuard } from "@/components/auth/AuthGuard";
 
 // Geist — 본문/제목. Solves와 같은 서체 계열로 정돈된 인상.
 const geistSans = localFont({
@@ -27,7 +28,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <Providers>
           <AppSidebar />
           <main className="w-full min-h-screen selection:bg-primary selection:text-primary-foreground">
-            {children}
+            <AuthGuard>{children}</AuthGuard>
           </main>
         </Providers>
       </body>

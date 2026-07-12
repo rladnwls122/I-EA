@@ -27,7 +27,15 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         ? await register(email, password, name)
         : await login(email, password);
       localStorage.setItem("token", res.accessToken);
-      router.push("/");
+      // 가드가 붙여준 callbackUrl이 있으면 원래 하던 페이지로 복귀.
+      // 내부 경로("/...")만 허용 — 외부 주소로 튕기는 open redirect 방지.
+      // (useSearchParams는 프리렌더 시 Suspense 경계를 요구하므로 제출 시점에 직접 읽는다)
+      const callbackUrl = new URLSearchParams(window.location.search).get("callbackUrl");
+      const safeCallback =
+        callbackUrl && callbackUrl.startsWith("/") && !callbackUrl.startsWith("//")
+          ? callbackUrl
+          : "/";
+      router.push(safeCallback);
     } catch (err) {
       setError(err instanceof Error ? err.message : "요청에 실패했습니다.");
     } finally {

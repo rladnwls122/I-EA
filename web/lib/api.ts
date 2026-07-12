@@ -45,7 +45,23 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 /**
- * 인증 토큰을 자동 첨부하는 범용 API 호출 래퍼
+ * 인증이 만료/무효(401)일 때 토큰을 지우고 로그인으로 보낸다.
+ * 원래 있던 주소를 callbackUrl로 들고 가 로그인 후 복귀한다.
+ * /login·/signup에서는 리다이렉트하지 않는다(로그인 실패 401은 폼이 처리).
+ */
+export function handleUnauthorized(): void {
+  if (typeof window === 'undefined') return;
+  const path = window.location.pathname;
+  if (path === '/login' || path === '/signup') return;
+  localStorage.removeItem('token');
+  const callbackUrl = encodeURIComponent(path + window.location.search);
+  window.location.replace(`/login?callbackUrl=${callbackUrl}`);
+}
+
+/**
+ * 인증 토큰을 자동 첨부하는 범용 API 호출 래퍼.
+ * 401 응답은 중앙에서 처리 — 만료/무효 토큰으로 인한 "로그인했는데 Unauthorized"를
+ * 페이지마다 방치하지 않고 즉시 재로그인 흐름으로 보낸다.
  */
 async function apiFetch<T>(
   path: string,
@@ -66,6 +82,7 @@ async function apiFetch<T>(
   });
 
   if (!res.ok) {
+    if (res.status === 401) handleUnauthorized();
     const body = await res.json().catch(() => null);
     throw new Error(body?.message || `API 오류: ${res.status}`);
   }

@@ -144,6 +144,11 @@ export async function streamAuthoringChat(
     body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) {
+    if (res.status === 401) {
+      // 만료/무효 토큰 — 중앙 처리(토큰 클리어 + /login?callbackUrl=)로 위임.
+      const { handleUnauthorized } = await import('./api');
+      handleUnauthorized();
+    }
     handlers.onError(`요청 실패 (${res.status})`);
     return;
   }
