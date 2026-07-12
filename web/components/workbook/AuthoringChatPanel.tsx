@@ -103,11 +103,20 @@ export function AuthoringChatPanel({
         },
         onDone: (full) => {
           const questions = parseQuestionBlocks(full);
+          const prose = stripQuestionBlocks(full);
+          // 파싱된 문항이 없으면 "만들었다"는 식의 문구를 지어내지 않는다 —
+          // 산문이 있으면 그대로(모델이 대화만 한 정상 케이스), 산문마저 없으면
+          // 블록 파싱 실패이므로 정직하게 재시도를 안내한다.
+          const text =
+            prose ||
+            (questions.length
+              ? "문항을 만들었어요. 아래에서 확인하고 적용해주세요."
+              : "⚠ 문항 데이터를 읽지 못했어요. \"다시 만들어줘\"라고 요청해보세요.");
           setMessages((p) => {
             const copy = [...p];
             copy[copy.length - 1] = {
               role: "ai",
-              text: stripQuestionBlocks(full) || "문항을 만들었어요.",
+              text,
               questions: questions.length ? questions : undefined,
               appliedKeys: new Set(),
             };
@@ -172,14 +181,58 @@ export function AuthoringChatPanel({
               const applied = m.appliedKeys?.has(String(qi));
               return (
                 <div key={qi} className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
-                  <div className="mb-1 text-xs font-medium text-muted-foreground">{q.questionType}</div>
-                  <p>{q.stem}</p>
+                  <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <span>{q.questionType}</span>
+                    {q.passage && (
+                      <span className="rounded bg-surface-raised px-1.5 py-0.5 text-[10px]">지문 포함</span>
+                    )}
+                    {q.target?.startsWith("replace:") && (
+                      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+                        문제 {q.target.slice(8)} 교체안
+                      </span>
+                    )}
+                  </div>
+                  {q.passage && (
+                    <p className="mb-2 max-h-24 overflow-y-auto whitespace-pre-wrap rounded-lg bg-surface-raised px-2.5 py-2 text-xs leading-relaxed text-muted-foreground">
+                      {q.passage}
+                    </p>
+                  )}
+                  <p className="whitespace-pre-wrap leading-relaxed">{q.stem}</p>
+                  {/* 선지 미리보기 — 정답 강조 */}
+                  {q.questionType === "객관식" && q.choices && (
+                    <ol className="mt-2 space-y-1">
+                      {q.choices.map((ch, ci) => (
+                        <li
+                          key={ci}
+                          className={`flex items-start gap-1.5 rounded-md border px-2 py-1 text-xs ${
+                            ci === q.correctIndex
+                              ? "border-primary/40 bg-primary/10 text-foreground"
+                              : "border-border text-muted-foreground"
+                          }`}
+                        >
+                          <span className="font-mono">{ci + 1}.</span>
+                          <span className="whitespace-pre-wrap">{ch}</span>
+                          {ci === q.correctIndex && <span className="ml-auto flex-none text-primary">✓</span>}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                  {q.questionType === "주관식" && (
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      정답: {q.answerText?.trim() || "서술형 (자기채점)"}
+                    </p>
+                  )}
+                  {q.explanation && (
+                    <p className="mt-2 whitespace-pre-wrap border-t border-border pt-1.5 text-xs leading-relaxed text-muted-foreground">
+                      {q.explanation}
+                    </p>
+                  )}
                   {applied ? (
                     <p className="mt-2 text-xs text-primary">✓ 문제집에 추가되었어요</p>
                   ) : (
                     <button
                       onClick={() => apply(mi, qi, q)}
-                      className="mt-2 w-full rounded-lg bg-primary py-1.5 text-xs font-medium text-primary-foreground"
+                      className="mt-2 w-full rounded-lg bg-primary py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
                     >
                       {q.target?.startsWith("replace:") ? "이 문항으로 교체하기" : "문제집에 적용하기"}
                     </button>

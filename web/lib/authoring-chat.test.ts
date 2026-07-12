@@ -30,6 +30,46 @@ describe('parseQuestionBlocks', () => {
       '```qidea-questions\n[{"target":"new","questionType":"주관식","stem":"q2"}]\n```';
     expect(parseQuestionBlocks(two)).toHaveLength(2);
   });
+
+  // ── 모델 출력 드리프트 관대화 ──
+
+  it('json 언어 태그로 흘려도 문항 배열이면 수용한다', () => {
+    const t = '```json\n[{"target":"new","questionType":"객관식","stem":"s","choices":["a","b"],"correctIndex":0}]\n```';
+    expect(parseQuestionBlocks(t)).toHaveLength(1);
+  });
+
+  it('트레일링 콤마·주석이 섞여도 정화 후 파싱한다', () => {
+    const t = [
+      '```qidea-questions',
+      '[',
+      '  {',
+      '    "target": "new", // 새 문항',
+      '    "questionType": "객관식",',
+      '    "stem": "s",',
+      '    "choices": ["a", "b"],',
+      '    "correctIndex": 1,',
+      '  },',
+      ']',
+      '```',
+    ].join('\n');
+    const out = parseQuestionBlocks(t);
+    expect(out).toHaveLength(1);
+    expect(out[0].correctIndex).toBe(1);
+  });
+
+  it('닫는 펜스가 잘려도(스트림 중단) 마지막 블록을 살린다', () => {
+    const t = '```qidea-questions\n[{"target":"new","questionType":"주관식","stem":"잘림"}]';
+    expect(parseQuestionBlocks(t)).toHaveLength(1);
+  });
+
+  it('questionType 변형("객관식(5지선다)")과 문자열 correctIndex를 정규화한다', () => {
+    const t =
+      '```qidea-questions\n[{"target":"new","questionType":"객관식(5지선다)","stem":"s","choices":["a","b"],"correctIndex":"1"}]\n```';
+    const out = parseQuestionBlocks(t);
+    expect(out).toHaveLength(1);
+    expect(out[0].questionType).toBe('객관식');
+    expect(out[0].correctIndex).toBe(1);
+  });
 });
 
 describe('stripQuestionBlocks', () => {

@@ -57,5 +57,7 @@ export function buildAuthoringSystemPrompt(ctx: PromptCtx): string {
     '```',
     ``,
     `대화만 하고 문항을 아직 안 낼 때는 펜스 블록을 붙이지 마세요.`,
+    `반대로, "문항을 만들었다"고 말할 때는 반드시 같은 응답 안에 펜스 블록이 있어야 합니다 — 블록 없이 만들었다고 말하지 마세요.`,
+    `블록 안은 표준 JSON만: 트레일링 콤마 금지, correctIndex는 문자열이 아닌 숫자, 모든 키는 큰따옴표.`,
   ].join('\n');
 }
