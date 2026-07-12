@@ -2,13 +2,13 @@
 import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Bot, Check, PencilLine, Sparkles, Loader2 } from "lucide-react";
+import { ArrowRight, Check, Loader2, PencilLine } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useSubjectTree, useGenerationPolling, useCreateWorkbook, useCreateAiGeneration, useAddQuestionToWorkbook, usePublishQuestion } from "@/lib/hooks";
 import type { Subject } from "@/lib/types";
+import { AiGenerationChat } from "./AiGenerationChat";
 
 /** 선택 pill 공통 스타일 — 선택 시 emerald, 미선택 시 hairline. */
 const pillBase =
@@ -33,15 +33,18 @@ export function WorkbookBuilder() {
   const [selectedSubjects, setSelectedSubjects] = useState<Subject[]>([]);
 
   /* ── AI 트랙 조건(문항별로 지정 — 상세조건 스텝을 없애고 여기로 옮김) ── */
-  const [questionType, setQuestionType] = useState<"객관식" | "주관식">("객관식");
-  const [difficulty, setDifficulty] = useState(3);
-  const [includePassage, setIncludePassage] = useState(false);
+  const [aiSettings, setAiSettings] = useState({
+    questionType: "객관식" as "객관식" | "주관식",
+    difficulty: 3,
+    count: 5,
+    includePassage: false,
+    ox: false,
+  });
 
   /* ── 문제집 자동 생성 + 2-트랙 ── */
   const [createdWorkbookId, setCreatedWorkbookId] = useState<string | null>(null);
   const [creatingWorkbook, setCreatingWorkbook] = useState(false);
   const [aiTopic, setAiTopic] = useState("");
-  const [aiCount, setAiCount] = useState(5);
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [linkedGenerationId, setLinkedGenerationId] = useState<string | null>(null);
 
@@ -98,10 +101,11 @@ export function WorkbookBuilder() {
       const gen = await createAiGen.mutateAsync({
         subjectId: selectedSubjects[0].id,
         prompt: aiTopic,
-        difficulty,
-        questionCount: aiCount,
-        questionType,
-        includePassage,
+        difficulty: aiSettings.difficulty,
+        questionCount: aiSettings.count,
+        questionType: aiSettings.questionType,
+        includePassage: aiSettings.includePassage,
+        ox: aiSettings.ox,
       });
       setGenerationId(gen.id);
     } catch (e) {
@@ -253,146 +257,41 @@ export function WorkbookBuilder() {
         </section>
       )}
 
-      {/* ── Step 2: 2-Track 선택 (POST /ai-generations 연동) ── */}
+      {/* ── Step 2: AI 채팅 패널 중심 + 직접 출제는 보조 링크 ── */}
       {createdWorkbookId && (
         <section className="mt-2">
-          <div className="mb-5">
-            <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
-              {examType} · {category} · {selectedSubjects.map((s) => s.name).join(", ")}
-            </span>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight">어떻게 문제집을 채울까요?</h2>
+          <div className="mb-5 flex items-end justify-between gap-4">
+            <div>
+              <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                {examType} · {category} · {selectedSubjects.map((s) => s.name).join(", ")}
+              </span>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight">어떻게 문제집을 채울까요?</h2>
+            </div>
+            <Link
+              href={`/studio/editor?workbookId=${createdWorkbookId}`}
+              className="flex flex-none items-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+            >
+              <PencilLine size={14} strokeWidth={2} /> 직접 문항 만들기
+            </Link>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {/* AI 트랙 */}
-            <div className="flex min-h-[320px] flex-col items-start rounded-xl border border-primary/30 bg-card p-7">
-              <Sparkles className="text-primary" size={28} strokeWidth={2} />
-              <h3 className="mb-2 mt-6 text-xl font-semibold">AI와 대화하며 만들기</h3>
-              <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
-                주제와 출제 의도를 말하면 AI가 문항 초안을 제안합니다.
-              </p>
-              <div className="mb-4 w-full space-y-3">
-                <textarea value={aiTopic} onChange={(e) => setAiTopic(e.target.value)}
-                  placeholder="예: 현대시 화자의 태도를 묻는 상 난이도 문항" rows={2}
-                  className="w-full resize-none rounded-md border border-input bg-transparent px-3 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring" />
+          <AiGenerationChat
+            topic={aiTopic}
+            onTopicChange={setAiTopic}
+            settings={aiSettings}
+            onSettingsChange={setAiSettings}
+            isGenerating={isGenerating}
+            isCompleted={isCompleted}
+            isFailed={isFailed}
+            isSending={createAiGen.isPending}
+            generatedQuestions={generation?.questions}
+            onSend={handleAiGenerate}
+          />
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="text-xs font-medium text-muted-foreground">유형</label>
-                  {(["객관식", "주관식"] as const).map((t) => (
-                    <button key={t} type="button" onClick={() => setQuestionType(t)}
-                      className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${questionType === t ? pillOn : pillOff}`}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <label className="text-xs font-medium text-muted-foreground">난이도</label>
-                  {[1, 2, 3, 4, 5].map((d) => (
-                    <button key={d} type="button" onClick={() => setDifficulty(d)}
-                      className={`flex h-8 w-8 items-center justify-center rounded-md border font-mono text-xs tabular-nums transition-colors ${difficulty === d ? pillOn : pillOff}`}>
-                      {d}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <label className="text-xs font-medium text-muted-foreground">문항 수</label>
-                  <Input type="number" min={1} max={20} value={aiCount}
-                    onChange={(e) => setAiCount(Number(e.target.value))}
-                    className="h-9 w-20 font-mono tabular-nums" />
-                </div>
-
-                <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={includePassage}
-                    onChange={(e) => setIncludePassage(e.target.checked)}
-                    className="h-3.5 w-3.5 rounded border-border accent-primary"
-                  />
-                  지문(본문)도 함께 생성
-                </label>
-              </div>
-              <Button onClick={handleAiGenerate} disabled={isGenerating || !aiTopic.trim() || createAiGen.isPending}
-                className="mt-auto">
-                {isGenerating || createAiGen.isPending ? <Loader2 size={16} className="animate-spin" /> : <Bot size={18} strokeWidth={2} />}
-                {isGenerating ? "생성 중..." : "AI 대화 시작"}
-              </Button>
-            </div>
-
-            {/* 직접 출제 트랙 */}
-            <div className="flex min-h-[320px] flex-col items-start rounded-xl border border-border bg-card p-7">
-              <PencilLine className="text-primary" size={28} strokeWidth={2} />
-              <h3 className="mb-2 mt-6 text-xl font-semibold">직접 문항 만들기</h3>
-              <p className="text-sm leading-relaxed text-muted-foreground">빈 문항부터 시작해 지문, 선지, 해설을 자유롭게 작성합니다.</p>
-              <Button asChild variant="outline" className="mt-auto">
-                <Link href={`/studio/editor?workbookId=${createdWorkbookId}`}>
-                  에디터 열기 <ArrowRight size={18} strokeWidth={2} />
-                </Link>
-              </Button>
-            </div>
-          </div>
-
-          {/* AI 생성 대기: 스켈레톤 카드 (3초 폴링) */}
-          {isGenerating && (
-            <div className="mt-6 space-y-3">
-              <p className="text-sm text-muted-foreground">
-                <span className="font-mono tabular-nums">{aiCount}</span>개의 문항을 생성하고 있어요...
-              </p>
-              {Array.from({ length: aiCount }).map((_, i) => (
-                <div key={i} className="relative overflow-hidden rounded-xl border border-border bg-surface-raised p-5"
-                  style={{ transitionDelay: `${i * 80}ms` }}>
-                  <div className="space-y-3">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-5 w-full" />
-                    <Skeleton className="h-5 w-3/4" />
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <Skeleton className="h-10 rounded-lg" />
-                      <Skeleton className="h-10 rounded-lg" />
-                    </div>
-                  </div>
-                  <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/5 to-transparent" />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* AI 생성 완료 */}
-          {isCompleted && generation?.questions && (
-            <div className="mt-6">
-              <p className="mb-3 flex items-center gap-2 text-sm font-medium text-primary">
-                <Check size={16} strokeWidth={2} />
-                <span className="font-mono tabular-nums">{generation.questions.length}</span>개 문항이 생성되어 문제집에 추가되었습니다.
-              </p>
-              <div className="space-y-3">
-                {generation.questions.map((q, i) => (
-                  <div key={q.id} className="rounded-xl border border-border bg-card p-5 transition-colors duration-150 hover:border-primary/40 motion-reduce:transition-none"
-                    style={{ animationDelay: `${i * 80}ms` }}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-foreground">
-                        <span className="font-mono tabular-nums">문항 {i + 1}</span> · {q.questionType}
-                      </span>
-                      <Link href={`/studio/editor?questionId=${q.id}`}
-                        className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
-                        <PencilLine size={13} strokeWidth={2} /> 정밀 편집
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Button className="mt-5" onClick={() => router.push(`/workbook/mine`)}>
-                문제집으로 이동 <ArrowRight size={18} strokeWidth={2} />
-              </Button>
-            </div>
-          )}
-
-          {/* AI 생성 실패 */}
-          {isFailed && (
-            <div className="mt-6 rounded-xl border border-wrong/30 bg-wrong/10 p-4">
-              <p className="text-sm font-medium text-wrong">
-                문항 생성에 실패했습니다. 모델이 유효한 문항을 반환하지 못했어요 — 출제 지시를 조금 더 구체적으로 써보거나 다시 시도해주세요.
-              </p>
-            </div>
+          {isCompleted && (
+            <Button className="mt-5" onClick={() => router.push(`/workbook/mine`)}>
+              문제집으로 이동 <ArrowRight size={18} strokeWidth={2} />
+            </Button>
           )}
         </section>
       )}
