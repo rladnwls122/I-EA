@@ -10,6 +10,7 @@ import type { Response } from 'express';
 import Redis from 'ioredis';
 import { PrismaService } from '@/prisma/prisma.service';
 import { REDIS_CLIENT } from '@/redis/redis.module';
+import { KEYWORD_TAG_CATEGORY } from '@/common/constants/question';
 import { GeminiLlmService } from './llm/gemini-llm.service';
 import type { TutorTurn } from './llm/llm.types';
 import { AuthoringChatDto } from './dto/authoring-chat.dto';
@@ -78,6 +79,7 @@ export class AuthoringChatService {
       ox: dto.ox,
       difficulty: dto.difficulty,
       currentQuestions: dto.currentQuestions,
+      existingKeywords: await this.fetchExistingKeywords(),
     });
     const history = await this.loadHistory(dto.workbookId);
 
@@ -143,6 +145,20 @@ export class AuthoringChatService {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
+  }
+
+  /**
+   * 기존 #키워드 풀(태그명) — 상한 60개. 프롬프트에 실어 LLM이 같은 개념엔
+   * 같은 키워드를 재사용하게 유도한다(오답노트 개념별 통계가 모이도록).
+   */
+  private async fetchExistingKeywords(): Promise<string[]> {
+    const tags = await this.prisma.tag.findMany({
+      where: { category: KEYWORD_TAG_CATEGORY },
+      orderBy: { name: 'asc' },
+      take: 60,
+      select: { name: true },
+    });
+    return tags.map((t) => t.name);
   }
 
   /** workbookId가 요청자 소유인지 확인하고 subjectId의 분류 정보를 반환. */

@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
-import { REASON_LABELS, ReasonCode } from '@/common/constants/question';
+import {
+  KEYWORD_TAG_CATEGORY,
+  REASON_LABELS,
+  ReasonCode,
+} from '@/common/constants/question';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import {
   MILESTONES,
@@ -172,6 +176,11 @@ export class MeService {
                 stem: true,
                 difficulty: true,
                 subject: { select: { name: true } },
+                // 개념별(#키워드) 오답 통계용 — "키워드" 카테고리 태그만.
+                questionTags: {
+                  where: { tag: { category: KEYWORD_TAG_CATEGORY } },
+                  select: { tag: { select: { id: true, name: true } } },
+                },
               },
             },
           },
@@ -181,6 +190,8 @@ export class MeService {
 
     const subjectMap = new Map<string, WrongStat>();
     const typeMap = new Map<string, WrongStat>();
+    // 개념별(#키워드) 오답 통계 — 태그 id로 집계하고 라벨은 태그명을 쓴다.
+    const keywordMap = new Map<string, WrongStat>();
     const sessionIds = new Set<string>();
     const wrongList: {
       questionId: string;
@@ -211,6 +222,9 @@ export class MeService {
       sessionIds.add(sq.examSessionId);
       bump(subjectMap, q.subjectId, q.subject.name, isWrong);
       bump(typeMap, q.questionType, q.questionType, isWrong);
+      for (const qt of q.questionTags) {
+        bump(keywordMap, qt.tag.id, qt.tag.name, isWrong);
+      }
       if (isWrong) {
         wrongList.push({
           questionId: sq.questionId,
@@ -264,6 +278,10 @@ export class MeService {
         bySubject: [...subjectMap.values()],
         byType: [...typeMap.values()],
         byReason,
+        // 개념별 오답 — 틀린 횟수 많은 순. 오답이 하나도 없는 키워드는 노출하지 않는다.
+        byKeyword: [...keywordMap.values()]
+          .filter((k) => k.wrong > 0)
+          .sort((a, b) => b.wrong - a.wrong || b.wrongRatio - a.wrongRatio),
       },
       wrongQuestions,
     };

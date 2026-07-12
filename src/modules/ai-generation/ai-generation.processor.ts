@@ -59,6 +59,7 @@ export class AiGenerationProcessor extends WorkerHost {
       subjectName: generation.subject?.name,
       examCategory: generation.subject?.examCategory,
       examType: generation.subject?.examType,
+      existingKeywords: await this.fetchExistingKeywords(),
     };
 
     try {
@@ -178,6 +179,20 @@ export class AiGenerationProcessor extends WorkerHost {
     if (q.keywords?.length) parts.push(q.keywords.join(' '));
     if (passageBody) parts.push(passageBody);
     return parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim().slice(0, 5000);
+  }
+
+  /**
+   * 기존 #키워드 풀(태그명) — 최근 생성 순 상한 60개. 프롬프트에 실어 LLM이
+   * 같은 개념엔 같은 키워드를 재사용하게 유도한다(개념별 통계가 모이도록).
+   */
+  private async fetchExistingKeywords(): Promise<string[]> {
+    const tags = await this.prisma.tag.findMany({
+      where: { category: KEYWORD_TAG_CATEGORY },
+      orderBy: { name: 'asc' },
+      take: 60,
+      select: { name: true },
+    });
+    return tags.map((t) => t.name);
   }
 
   /**

@@ -118,6 +118,19 @@ export function WorkbookPreviewSidebar({
                 </span>
               </div>
             )}
+            {/* 문제집 #키워드 — 표시 전용(탐색/미리보기 식별용). 통계는 문항 키워드가 담당. */}
+            {(workbook?.tags?.length ?? 0) > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {workbook!.tags!.map((t) => (
+                  <span
+                    key={t.id}
+                    className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+                  >
+                    #{t.name}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 인덱스 목록 */}

@@ -12,7 +12,12 @@ describe('MeService.notes', () => {
             examSessionQuestion: {
               examSessionId: 's1',
               questionId: 'q1',
-              question: { subjectId: 'sub1', questionType: '객관식', subject: { name: '문학' } },
+              question: {
+                subjectId: 'sub1',
+                questionType: '객관식',
+                subject: { name: '문학' },
+                questionTags: [{ tag: { id: 't-meta', name: '비유' } }],
+              },
             },
           },
           {
@@ -20,7 +25,12 @@ describe('MeService.notes', () => {
             examSessionQuestion: {
               examSessionId: 's1',
               questionId: 'q2',
-              question: { subjectId: 'sub1', questionType: '객관식', subject: { name: '문학' } },
+              question: {
+                subjectId: 'sub1',
+                questionType: '객관식',
+                subject: { name: '문학' },
+                questionTags: [{ tag: { id: 't-meta', name: '비유' } }],
+              },
             },
           },
         ]),
@@ -43,6 +53,10 @@ describe('MeService.notes', () => {
     ]);
     expect(result.summary.byType[0]).toMatchObject({ key: '객관식', wrong: 1, total: 2 });
     expect(result.summary.byReason).toEqual([{ code: 'CONCEPT', label: '개념부족', count: 1 }]);
+    // 개념별 오답 — 같은 키워드를 2문항이 공유(1오답/1정답) → wrong>0만 노출.
+    expect(result.summary.byKeyword).toEqual([
+      { key: 't-meta', label: '비유', total: 2, wrong: 1, wrongRatio: 0.5 },
+    ]);
     expect(result.wrongQuestions).toEqual([
       {
         questionId: 'q1',

@@ -80,4 +80,9 @@ export interface LlmGenerationContext {
   examCategory?: string;
   /** 시험 (예: 수능, 내신). 누락 시 LLM이 수능 스타일로 치우친다. */
   examType?: string;
+  /**
+   * 이미 존재하는 #키워드 풀(태그명). LLM이 새 키워드를 남발하지 않고 가능한 한
+   * 이 목록에서 골라 쓰게 해, 오답노트 개념별 통계가 흩어지지 않고 모이게 한다.
+   */
+  existingKeywords?: string[];
 }

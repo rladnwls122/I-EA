@@ -562,6 +562,13 @@ export class GeminiLlmService {
       `지문 포함: ${ctx.includePassage ? '예' : '아니오'}`,
     ];
     if (ctx.questionType) lines.push(`선호 유형: ${ctx.questionType}`);
+    if (ctx.existingKeywords?.length) {
+      lines.push(
+        '',
+        '기존 #키워드 풀(개념별 통계가 모이도록 가능하면 아래에서 골라 재사용하고, 정말 없을 때만 새로 만든다):',
+        ctx.existingKeywords.join(', '),
+      );
+    }
     if (ctx.ox) {
       lines.push(
         'OX 스타일: 객관식 문항은 OX(참/거짓) 2지선다 형태로 만들어줘. 선택지는 정확히 2개("O","X" 또는 "참","거짓")로 하고, isCorrect는 정답 선지 1개에만 true.',

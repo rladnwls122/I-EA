@@ -323,6 +323,8 @@ export interface MyNotesResponse {
     bySubject: WrongStat[];
     byType: WrongStat[];
     byReason: ReasonStat[];
+    /** 개념별(#키워드) 오답 — 틀린 횟수 많은 순. key=태그 id, label=키워드명. */
+    byKeyword: WrongStat[];
   };
   wrongQuestions: WrongQuestionItem[];
 }

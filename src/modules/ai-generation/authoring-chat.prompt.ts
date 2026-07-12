@@ -14,6 +14,8 @@ interface PromptCtx {
   /** 난이도 1(쉬움)~5(어려움). */
   difficulty?: number;
   currentQuestions?: CurrentQuestionRef[];
+  /** 기존 #키워드 풀 — 개념별 통계가 모이도록 LLM이 재사용하게 유도한다. */
+  existingKeywords?: string[];
 }
 
 /**
@@ -63,6 +65,12 @@ export function buildAuthoringSystemPrompt(ctx: PromptCtx): string {
     `explanation(해설 평문)과 passage(지문 평문)는 선택 필드입니다.`,
     `keywords는 이 문항이 다루는 핵심 개념/출제 포인트를 짧은 명사(구)로 2~4개, 배열로 채우세요.`,
     `(예: "이차방정식의 근과 계수", "인과관계 오류" — 오답노트에서 "어느 개념에서 틀렸는지" 통계에 쓰입니다. 빈 배열 금지.)`,
+    ...(ctx.existingKeywords && ctx.existingKeywords.length > 0
+      ? [
+          `keywords는 개념별 통계가 흩어지지 않게, 가능하면 아래 기존 키워드에서 골라 그대로 쓰세요(정말 없을 때만 새로 만드세요):`,
+          ctx.existingKeywords.join(', '),
+        ]
+      : []),
     '```' + QUESTION_BLOCK_LANG,
     `[`,
     `  {`,

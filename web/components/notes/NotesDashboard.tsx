@@ -133,6 +133,10 @@ export function NotesDashboard() {
   const byReason = data?.summary?.byReason ?? [];
   const reasonTotal = byReason.reduce((sum, s) => sum + s.count, 0);
 
+  // 개념별(#키워드) 오답 — 백엔드가 이미 틀린 횟수 많은 순으로 정렬해 내려준다.
+  const byKeyword = data?.summary?.byKeyword ?? [];
+  const keywordMaxWrong = byKeyword.reduce((m, s) => Math.max(m, s.wrong), 0);
+
   const filteredQuestions = useMemo(() => {
     const list = data?.wrongQuestions ?? [];
     if (!search) return list;
@@ -213,6 +217,46 @@ export function NotesDashboard() {
                       })
                   )}
                 </div>
+              </div>
+            )}
+          </section>
+
+          {/* 개념별 오답 — 어떤 #키워드(개념)에서 자주 틀리는지. 문항 키워드 기반. */}
+          <section className="mb-6 rounded-xl border border-border bg-card p-6">
+            <div className="mb-4 flex items-baseline justify-between gap-3">
+              <h2 className="text-sm font-semibold text-foreground">개념별 오답 (약점 개념)</h2>
+              <span className="font-mono text-[11px] text-muted-foreground">
+                틀린 횟수순 · 상위 {Math.min(byKeyword.length, 12)}개
+              </span>
+            </div>
+            {isLoading ? (
+              <div className="h-24 animate-pulse rounded-lg bg-surface-raised" />
+            ) : byKeyword.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                아직 개념별 오답이 없어요. AI로 문항을 만들면 개념 #키워드가 자동으로 붙어, 어떤 개념에서
+                자주 틀리는지 여기에 모여요.
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                {byKeyword.slice(0, 12).map((k) => {
+                  const barRatio = keywordMaxWrong > 0 ? k.wrong / keywordMaxWrong : 0;
+                  return (
+                    <div key={k.key} className="flex items-center gap-3">
+                      <span className="w-32 shrink-0 truncate text-sm text-foreground" title={k.label}>
+                        #{k.label}
+                      </span>
+                      <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-raised">
+                        <div
+                          className="h-full rounded-full bg-wrong transition-[width] duration-700 ease-out motion-reduce:transition-none"
+                          style={{ width: `${Math.round(barRatio * 100)}%` }}
+                        />
+                      </div>
+                      <span className="w-24 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+                        {k.wrong}/{k.total} · {Math.round(k.wrongRatio * 100)}%
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>
