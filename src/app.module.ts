@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard';
 import { AuthModule } from './modules/auth/auth.module';
@@ -23,6 +24,8 @@ import { RedisModule } from './redis/redis.module';
   imports: [
     // .env 전역 로드
     ConfigModule.forRoot({ isGlobal: true }),
+    // @Cron 데코레이터 활성화 — TiDB keep-alive 등 스케줄 잡이 쓴다.
+    ScheduleModule.forRoot(),
     // BullMQ(Redis) 전역 연결 — AI 생성 등 비동기 잡 큐가 공유한다.
     BullModule.forRootAsync({
       imports: [ConfigModule],
