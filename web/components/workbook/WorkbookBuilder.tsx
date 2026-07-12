@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Bot, Check, PencilLine, Sparkles, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,6 +84,7 @@ export function WorkbookBuilder() {
       setCreatedWorkbookId(wb.id);
     } catch (e) {
       console.error("문제집 생성 실패:", e);
+      toast.error(e instanceof Error ? e.message : "문제집 생성에 실패했습니다.");
     } finally {
       setCreatingWorkbook(false);
     }
@@ -103,6 +105,7 @@ export function WorkbookBuilder() {
       setGenerationId(gen.id);
     } catch (e) {
       console.error("AI 생성 요청 실패:", e);
+      toast.error(e instanceof Error ? e.message : "AI 생성 요청에 실패했습니다.");
     }
   };
 
