@@ -26,6 +26,9 @@ export function WorkbookBuilder() {
   const [examType, setExamType] = useState<string>("");
   const [category, setCategory] = useState<string>("");
   const [selectedSubjects, setSelectedSubjects] = useState<Subject[]>([]);
+  // "전체" — 개별 칩과 별개 상태. 활성화돼도 개별 칩은 안 눌린 채로 남지만,
+  // 실제 문제집 생성엔 이 대분류 소과목 전체를 고른 것과 같은 효과를 낸다.
+  const [categoryAll, setCategoryAll] = useState(false);
 
   /* ── 문제집 자동 생성 ── */
   const [createdWorkbookId, setCreatedWorkbookId] = useState<string | null>(null);
@@ -35,21 +38,29 @@ export function WorkbookBuilder() {
   const examTypes = subjectTree ? Object.keys(subjectTree) : [];
   const categories = (examType && subjectTree) ? Object.keys(subjectTree[examType] ?? {}) : [];
   const subjects = (examType && category && subjectTree) ? subjectTree[examType]?.[category] ?? [] : [];
-  const canProceed = selectedSubjects.length > 0;
+  // 실제 생성에 쓸 과목 — "전체"면 이 대분류의 소과목 전체, 아니면 직접 고른 것들.
+  const effectiveSubjects = categoryAll ? subjects : selectedSubjects;
+  const canProceed = effectiveSubjects.length > 0;
 
   /* ── 이벤트 핸들러 ── */
+  const clearSubjects = useCallback(() => {
+    setSelectedSubjects([]);
+    setCategoryAll(false);
+  }, []);
+
   const handleExamTypeChange = useCallback((type: string) => {
     setExamType(type);
     setCategory("");
-    setSelectedSubjects([]);
-  }, []);
+    clearSubjects();
+  }, [clearSubjects]);
 
   const handleCategoryChange = useCallback((cat: string) => {
     setCategory(cat);
-    setSelectedSubjects([]);
-  }, []);
+    clearSubjects();
+  }, [clearSubjects]);
 
   const toggleSubject = useCallback((s: Subject) => {
+    setCategoryAll(false); // 개별 소과목을 직접 고르면 "전체"는 해제.
     setSelectedSubjects((prev) =>
       prev.some((p) => p.id === s.id) ? prev.filter((p) => p.id !== s.id) : [...prev, s],
     );
@@ -60,12 +71,14 @@ export function WorkbookBuilder() {
     if (!canProceed || creatingWorkbook) return;
     setCreatingWorkbook(true);
     try {
-      const title = `${examType} ${category} ${selectedSubjects.map((s) => s.name).join("·")} 문제집`;
+      const title = categoryAll
+        ? `${examType} ${category} 전체 문제집`
+        : `${examType} ${category} ${effectiveSubjects.map((s) => s.name).join("·")} 문제집`;
       const wb = await createWorkbook.mutateAsync({ title, visibility: "PRIVATE" });
       setCreatedWorkbookId(wb.id);
       // 여기서 고른 과목을 캔버스로 넘긴다 — 안 넘기면 AI 채팅이 과목 목록에서
       // 임의로(첫 번째로) 골라버려 방금 고른 과목과 다른 문항이 만들어질 수 있다.
-      router.push(`/edit?workbookId=${wb.id}&subjectId=${selectedSubjects[0].id}`);
+      router.push(`/edit?workbookId=${wb.id}&subjectId=${effectiveSubjects[0].id}`);
     } catch (e) {
       console.error("문제집 생성 실패:", e);
       toast.error(e instanceof Error ? e.message : "문제집 생성에 실패했습니다.");
@@ -154,31 +167,38 @@ export function WorkbookBuilder() {
                 </div>
               )}
 
-              {/* 소과목 — 다중 선택. "전체"는 이 대분류의 소과목을 한 번에 다 담는다. */}
+              {/* 소과목 — 다중 선택. "전체"는 개별 칩을 누르지 않고도 이 대분류 소과목
+                  전체를 고른 효과를 낸다(배타 상태). "취소"는 맨 끝 — 여러 개 골랐을 때
+                  하나씩 해제하지 않고 한 번에 비운다. */}
               {category && (
                 <div className="mt-5 flex flex-col gap-2">
                   <label className="text-sm font-medium text-foreground/80">소과목 (여러 개 선택 가능)</label>
                   <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() =>
-                        setSelectedSubjects(
-                          subjects.every((s) => selectedSubjects.some((p) => p.id === s.id))
-                            ? []
-                            : subjects,
-                        )
-                      }
-                      aria-pressed={subjects.every((s) => selectedSubjects.some((p) => p.id === s.id))}
-                      className={`${pillBase} ${subjects.every((s) => selectedSubjects.some((p) => p.id === s.id)) ? pillOn : pillOff}`}
+                      onClick={() => {
+                        setSelectedSubjects([]);
+                        setCategoryAll((v) => !v);
+                      }}
+                      aria-pressed={categoryAll}
+                      className={`${pillBase} ${categoryAll ? pillOn : pillOff}`}
                     >
                       전체
                     </button>
                     {subjects.map((s) => (
                       <button key={s.id} onClick={() => toggleSubject(s)}
-                        aria-pressed={selectedSubjects.some((p) => p.id === s.id)}
-                        className={`${pillBase} ${selectedSubjects.some((p) => p.id === s.id) ? pillOn : pillOff}`}>
+                        aria-pressed={!categoryAll && selectedSubjects.some((p) => p.id === s.id)}
+                        className={`${pillBase} ${!categoryAll && selectedSubjects.some((p) => p.id === s.id) ? pillOn : pillOff}`}>
                         {s.name}
                       </button>
                     ))}
+                    {(categoryAll || selectedSubjects.length > 0) && (
+                      <button
+                        onClick={clearSubjects}
+                        className={`${pillBase} border-destructive/40 text-destructive hover:bg-destructive/10`}
+                      >
+                        취소
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
