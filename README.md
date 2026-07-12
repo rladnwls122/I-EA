@@ -1,52 +1,271 @@
-# IΔEA
+# IΔEA / Q-Idea
 
-AI 문항 출제 · 모의고사 조립/응시 플랫폼의 백엔드 API. **NestJS 10 + Prisma(MySQL) + BullMQ(Redis)** 기반이며,
-MVP 리팩터링이 완료된 최신 스펙([prisma/schema.prisma](prisma/schema.prisma))을 구현합니다.
+AI 문항 출제 및 모의고사 플랫폼 **IΔEA / Q-Idea** 프로젝트입니다. 본 프로젝트는 한국 교육 환경에 최적화된 AI 기반 학습 도구를 제공하며, 사용자가 직접 문항을 생성하고 모의고사를 구성하여 학습 효율을 극대화할 수 있도록 돕습니다.
 
-## 실행
+## 🚀 주요 기능
 
-```bash
-cp .env.example .env      # DB/Redis/JWT/Gemini 키 채우기
-npm install
-npm run prisma:generate   # Prisma Client 생성
-npm run prisma:migrate    # 스키마 마이그레이션(개발)
-npm run start:dev
+- **AI 기반 문항 생성**: Gemini LLM을 활용하여 다양한 유형의 문항 자동 생성
+- **모의고사 구성 및 응시**: 사용자 맞춤형 모의고사 생성, 응시 및 채점 기능
+- **오답노트 2.0**: 텍스트 기반 주석 및 오답 원인 분석을 통한 심층 학습 지원
+- **문제집 (Workbook)**: 문항을 큐레이션하고 공유할 수 있는 문제집 기능
+- **게이미피케이션**: XP, 레벨, 스트릭, 마일스톤, 루팅 박스 등 학습 동기 부여 요소
+- **미디어 관리**: AWS S3를 활용한 이미지 업로드 및 관리
+- **사용자 인증 및 권한 관리**: JWT 기반 인증 및 역할(CREATOR, CONSUMER, ADMIN) 기반 권한 시스템
+
+## 🏗️ 아키텍처 개요
+
+본 프로젝트는 백엔드와 프론트엔드가 독립적으로 구성된 모놀리식 저장소(monorepo) 형태로 개발되었습니다. 두 애플리케이션은 HTTP를 통해 통신하며, 대부분의 핵심 로직은 백엔드에서 처리됩니다.
+
+### 백엔드 (Backend)
+
+- **프레임워크**: [NestJS 10](https://nestjs.com/) (Node.js)
+- **데이터베이스**: [MySQL](https://www.mysql.com/) (Prisma ORM)
+- **비동기 작업 큐**: [BullMQ](https://bullmq.io/) (Redis 기반)
+- **캐싱/세션**: [Redis](https://redis.io/)
+- **파일 스토리지**: [AWS S3](https://aws.amazon.com/s3/) (이미지 업로드)
+- **LLM 연동**: Google Gemini API
+- **배포**: [Railway](https://railway.app/)
+
+NestJS는 모듈 기반 아키텍처를 채택하여 각 기능(예: `auth`, `questions`, `exam-sessions`, `ai-generation`)이 독립적인 모듈로 구성되어 있습니다. `JwtAuthGuard`를 통한 전역 인증 가드가 기본으로 적용되며, `@Public()` 데코레이터를 통해 특정 라우트만 인증을 우회할 수 있습니다.
+
+### 프론트엔드 (Frontend)
+
+- **프레임워크**: [Next.js 14](https://nextjs.org/) (App Router)
+- **UI 라이브러리**: [shadcn/ui](https://ui.shadcn.com/) (TailwindCSS 기반)
+- **상태 관리**: [Zustand](https://zustand-bear.github.io/)
+- **데이터 페칭**: [TanStack Query](https://tanstack.com/query/latest)
+- **리치 텍스트 에디터**: [Tiptap](https://tiptap.dev/) (ProseMirror 기반)
+- **배포**: [Vercel](https://vercel.com/)
+
+프론트엔드는 백엔드 API와 통신하여 데이터를 처리하며, `localStorage`에 저장된 인증 토큰을 활용합니다. Vega 차트와 같은 시각화 요소는 클라이언트 측에서만 렌더링되도록 `next/dynamic`과 `ssr: false`를 사용합니다.
+
+## 📊 데이터베이스 스키마
+
+본 프로젝트의 데이터베이스 스키마는 `prisma/schema.prisma` 파일을 통해 정의됩니다. 주요 엔티티 및 관계는 다음과 같습니다.
+
+### 핵심 엔티티
+
+| 엔티티 명 | 설명 | 주요 필드 | 관계 |
+|---|---|---|---|
+| `User` | 사용자 정보 | `email`, `passwordHash`, `nickname`, `xp`, `level`, `currentStreak`, `coins` | `UserRole`, `AiGeneration`, `Passage`, `Question`, `MediaAsset`, `ExamSession`, `QuestionReview`, `QuestionComment`, `UserQuestionAnnotation`, `Workbook`, `XpHistory`, `MilestoneAchievement`, `LootBox`, `UserInventory`, `Purchase`, `CoinHistory` |
+| `Subject` | 과목 분류 (수능, 국어, 문학 등 3단계) | `examType`, `examCategory`, `name` | `AiGeneration`, `ExamSession`, `Question` |
+| `Question` | 문항 정보 | `creatorId`, `subjectId`, `questionType` (`객관식` / `주관식`), `stem` (ProseMirror JSON), `choices` (ProseMirror JSON), `explanation` (ProseMirror JSON), `correctAnswerText`, `difficulty`, `totalSolvedCount`, `correctSolvedCount` | `MediaAsset`, `QuestionTag`, `ExamSessionQuestion`, `QuestionReview`, `QuestionComment`, `UserQuestionAnnotation`, `WorkbookQuestion`, `QuestionChoiceStat` |
+| `Passage` | 지문 정보 | `creatorId`, `generationId`, `content` (ProseMirror JSON) | `Question`, `MediaAsset` |
+| `AiGeneration` | AI 생성 작업 기록 | `creatorId`, `subjectId`, `inputParams`, `model`, `status` | `Passage`, `Question`, `MediaAsset` |
+| `ExamSession` | 모의고사/학습 세션 | `userId`, `subjectId`, `workbookId`, `isReview`, `filterCriteria`, `status`, `durationSec` | `ExamSessionQuestion` |
+| `UserQuestionAnnotation` | 오답노트 주석 | `userId`, `questionId`, `target`, `markStyle`, `color`, `selectedText`, `reasonCode`, `memoText` | `User`, `Question` |
+| `Workbook` | 문제집 | `ownerId`, `title`, `description`, `visibility`, `forkedFromId`, `viewCount`, `forkCount`, `questionCount`, `attemptCount`, `scoreSumPercent` | `WorkbookQuestion`, `ExamSession`, `WorkbookTag` | 
+
+### 스키마 다이어그램 (개념적)
+
+```mermaid
+graph TD
+    User -- has --> UserRole
+    User -- creates --> AiGeneration
+    User -- creates --> Passage
+    User -- creates --> Question
+    User -- uploads --> MediaAsset
+    User -- takes --> ExamSession
+    User -- reviews --> QuestionReview
+    User -- comments on --> QuestionComment
+    User -- annotates --> UserQuestionAnnotation
+    User -- creates --> Workbook
+    User -- tracks --> XpHistory
+    User -- achieves --> MilestoneAchievement
+    User -- opens --> LootBox
+    User -- owns --> UserInventory
+    User -- makes --> Purchase
+    User -- logs --> CoinHistory
+
+    AiGeneration -- generates --> Passage
+    AiGeneration -- generates --> Question
+    AiGeneration -- generates --> MediaAsset
+
+    Subject -- relates to --> AiGeneration
+    Subject -- relates to --> ExamSession
+    Subject -- relates to --> Question
+
+    Passage -- contains --> Question
+    Passage -- contains --> MediaAsset
+
+    Question -- has --> MediaAsset
+    Question -- has --> QuestionTag
+    Question -- part of --> ExamSessionQuestion
+    Question -- has --> QuestionReview
+    Question -- has --> QuestionComment
+    Question -- has --> UserQuestionAnnotation
+    Question -- part of --> WorkbookQuestion
+    Question -- has --> QuestionChoiceStat
+
+    Tag -- applies to --> QuestionTag
+    Tag -- applies to --> WorkbookTag
+
+    ExamSession -- contains --> ExamSessionQuestion
+    ExamSessionQuestion -- has --> ExamSessionAnswer
+
+    Workbook -- contains --> WorkbookQuestion
+    Workbook -- has --> WorkbookTag
+    Workbook -- forks from --> Workbook
+
+    QuestionTag -- links --> Question
+    QuestionTag -- links --> Tag
+
+    WorkbookTag -- links --> Workbook
+    WorkbookTag -- links --> Tag
+
+    WorkbookQuestion -- links --> Workbook
+    WorkbookQuestion -- links --> Question
+    WorkbookQuestion -- sourced from --> Workbook
+
+    ExamSessionQuestion -- links --> ExamSession
+    ExamSessionQuestion -- links --> Question
+    ExamSessionQuestion -- has --> ExamSessionAnswer
+
+    ExamSessionAnswer -- links --> ExamSessionQuestion
+
+    QuestionReview -- links --> Question
+    QuestionReview -- links --> User
+
+    QuestionComment -- links --> Question
+    QuestionComment -- links --> User
+    QuestionComment -- replies to --> QuestionComment
+
+    UserQuestionAnnotation -- links --> User
+    UserQuestionAnnotation -- links --> Question
+
+    QuestionChoiceStat -- links --> Question
+
+    XpHistory -- links --> User
+
+    MilestoneAchievement -- links --> User
+
+    LootBox -- links --> User
+
+    UserInventory -- links --> User
+
+    Purchase -- links --> User
+
+    CoinHistory -- links --> User
+
+
+    subgraph Core Entities
+        User
+        Subject
+        Question
+        Passage
+        AiGeneration
+    end
+
+    subgraph Exam & Learning
+        ExamSession
+        ExamSessionQuestion
+        ExamSessionAnswer
+        UserQuestionAnnotation
+        Workbook
+        WorkbookQuestion
+    end
+
+    subgraph Gamification & Commerce
+        XpHistory
+        MilestoneAchievement
+        LootBox
+        UserInventory
+        Purchase
+        CoinHistory
+    end
+
+    subgraph Content Management
+        MediaAsset
+        Tag
+        QuestionTag
+        WorkbookTag
+    end
+
+    subgraph Community
+        QuestionReview
+        QuestionComment
+    end
 ```
 
-- **API 프리픽스**: `/api`
-- **Swagger 문서**: `http://localhost:3000/api/docs`
-- **인증**: 전역 `JwtAuthGuard`(Bearer JWT). `@Public()`이 붙은 라우트만 예외이며, 모든 API는 기본적으로 인증이 필요합니다.
+## 🛠️ 로컬 개발 환경 설정
 
-## 모듈 구성 (핵심 엔드포인트)
+프로젝트를 로컬에서 실행하기 위한 단계는 다음과 같습니다.
 
-| 모듈 | 담당 내용 | 핵심 엔드포인트 |
-| --- | --- | --- |
-| `auth` | 인증/인가 | `POST /auth/register`, `POST /auth/login`(이메일+비번), `GET /auth/me` |
-| `catalog` | 분류/태그 | `GET /subjects`(3단 분류), `POST /subjects`(ADMIN), `GET/POST /tags` |
-| `questions` | 문항 관리 | `GET /questions`(검색), `GET /questions/:id/stats`(통계), `POST /questions/:id/choices/regenerate`(AI) |
-| `workbooks` | 문제집 | `GET /workbooks`(탐색), `POST /workbooks/:id/fork`, `POST /workbooks/:id/start`(바로풀기) |
-| `exam-sessions`| 응시/채점 | `POST /exam-sessions`(조립), `PUT /exam-sessions/questions/:id/self-grade`(자기채점) |
-| `ai-generation`| AI 자동생성 | `POST /ai-generations`(비동기 202), `GET /ai-generations/:id`(상태 폴링) |
-| `media` | 미디어 | `POST /media-assets/presign`(S3 직접 업로드), `POST /media-assets`(등록) |
-| `annotations` | 오답노트  | `GET/POST /questions/:id/annotations`, `PATCH/DELETE /annotations/:id` |
-| `me` | 개인화 | `GET /me/exam-sessions`(풀이기록), `GET /me/notes`(통합 오답노트/통계) |
-| `tutor` | AI 튜터 | `POST /tutor/chat`(SSE 스트리밍), `GET /tutor/history` |
-| `passages` | 지문 관리 | `GET/POST /passages`, `PATCH /passages/:id`, `POST /passages/:id/publish` |
-| `comments` | 댓글 | `GET/POST /questions/:id/comments`(트리), `PATCH/DELETE /comments/:id` |
-| `reviews` | 평가 | `GET /questions/:id/reviews`, `PUT /questions/:id/reviews`(별점/난이도) |
+### 필수 요구사항
 
-## 설계 포인트
+- Node.js (20.x 버전 권장)
+- Docker (MySQL 및 Redis 실행용)
+- Git
 
-- **3단 분류 체계**: 기존 단원(units) 트리를 제거하고 `Subject`를 **시험(examType) - 대분류(examCategory) - 소분류(name)**의 3단 분류 리프로 직접 사용합니다.
-- **문항 스냅샷**: 세션 조립 시 문제를 `exam_session_questions.snapshot`에 통째로 보존해, 원본이 이후 수정돼도 채점 근거가 고정됩니다.
-- **정답 마스킹**: 진행 중(`IN_PROGRESS`) 세션 조회 시 선지 `isCorrect`·주관식 정답·해설을 숨깁니다.
-- **채점 시스템**: 객관식 및 단답형 주관식은 자동 채점되며, 서술형 주관식은 응시 후 **자기채점(`self-grade`)**을 통해 정오를 확정합니다.
-- **콘텐츠 포맷**: 모든 리치 텍스트는 Tiptap/ProseMirror JSON으로 저장됩니다. [prosemirror.util.ts](src/common/prosemirror/prosemirror.util.ts)가 조립 및 평문 추출을 담당합니다.
-- **오답노트**: 단순 메모를 넘어 문항 내 특정 텍스트 영역에 하이라이트/밑줄과 함께 오답 원인 태그 및 메모를 남기는 **주석(Annotation)** 시스템을 제공합니다.
-- **미디어 업로드**: 서버를 거치지 않고 클라이언트가 S3에 직접 업로드하는 **Presigned POST** 방식을 사용합니다.
+### 설치 및 실행
 
-## 참고 문서
+1.  **저장소 클론**: 
+    ```bash
+    git clone https://github.com/rladnwls122/I-EA.git
+    cd I-EA
+    ```
 
-- [AGENTS.md](AGENTS.md): 개발 가이드 및 아키텍처 상세
-- [LOCAL_TEST_GUIDE.md](LOCAL_TEST_GUIDE.md): 로컬 인프라 설정 및 API 테스트 시나리오
-- `docs/superpowers/plans/`: MVP 리팩터링 및 기능별 상세 설계 문서
+2.  **종속성 설치**: 백엔드 및 프론트엔드 종속성을 설치합니다.
+    ```bash
+    npm install # 백엔드 종속성 설치 및 Prisma Client 생성
+    cd web
+    npm install # 프론트엔드 종속성 설치
+    cd ..
+    ```
+
+3.  **.env 파일 설정**: 프로젝트 루트에 `.env` 파일을 생성하고 다음 환경 변수를 설정합니다. `AGENTS.md`에 언급된 주요 변수들을 포함합니다.
+    ```env
+    DATABASE_URL="mysql://user:password@localhost:3306/qidea"
+    REDIS_HOST="localhost"
+    REDIS_PORT=6379
+    REDIS_PASSWORD=
+    REDIS_TLS=false
+    JWT_SECRET="your_jwt_secret_key"
+    GEMINI_API_KEY="your_gemini_api_key"
+    GEMINI_MODEL="gemini-pro"
+    GEMINI_MAX_TOKENS=2000
+    ALLOWED_ORIGINS="http://localhost:3000,http://localhost:3001"
+    PORT=3000
+    ```
+
+4.  **데이터베이스 및 Redis 실행 (Docker)**:
+    `LOCAL_TEST_GUIDE.md`에 상세한 Docker Compose 설정이 있지만, 간략하게는 MySQL과 Redis 컨테이너를 실행해야 합니다.
+
+5.  **데이터베이스 마이그레이션 및 시드**: 
+    ```bash
+    npm run prisma:migrate # 개발 마이그레이션 적용
+    npm run db:seed        # 초기 데이터 시드
+    ```
+
+6.  **백엔드 개발 서버 실행**: 
+    ```bash
+    npm run start:dev
+    ```
+    API는 `http://localhost:3000/api`에서 제공됩니다. Swagger UI는 `http://localhost:3000/api/docs`에서 확인할 수 있습니다.
+
+7.  **프론트엔드 개발 서버 실행**: 
+    ```bash
+    cd web
+    npm run dev
+    ```
+    프론트엔드는 `http://localhost:3001` (또는 `.env`의 `ALLOWED_ORIGINS`에 설정된 포트)에서 실행됩니다.
+
+## 🚀 배포
+
+- **백엔드**: [Railway](https://railway.app/)를 통해 배포됩니다. `railway.json` 파일에 정의된 빌드 및 배포 스크립트(`npm run start:railway`)를 사용합니다. 프로덕션 환경에서는 `prisma db push`를 사용하여 스키마를 동기화합니다.
+- **프론트엔드**: [Vercel](https://vercel.com/)을 통해 배포됩니다. `https://i-ea.vercel.app`에서 서비스됩니다.
+
+## 🤝 기여 가이드라인
+
+- **코드 컨벤션**: TypeScript strict 모드 및 ESLint를 준수합니다.
+- **커밋 메시지**: 명확하고 간결한 커밋 메시지를 작성합니다.
+- **테스트**: Jest를 사용하여 유닛 및 통합 테스트를 작성합니다.
+- **언어**: 주석 및 사용자 대면 메시지(유효성 검사 오류, 예외)는 **한국어**로 작성합니다.
+
+## 📄 라이선스
+
+UNLICENSED
+
+---
+
+**Manus AI**에 의해 작성되었습니다. (2026년 7월 13일)
