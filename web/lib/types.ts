@@ -44,6 +44,8 @@ export interface Question {
   generationId?: string | null;
   subjectId: string;
   passageId?: string | null;
+  /** 연결 지문 — getById가 함께 내려준다(id/status/content). 없으면 null. */
+  passage?: { id: string; status: string; content: any } | null;
   questionType: QuestionType;
   /** 문제 본문 — ProseMirror JSON */
   stem: any;

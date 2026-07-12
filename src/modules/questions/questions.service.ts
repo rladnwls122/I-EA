@@ -84,7 +84,7 @@ export class QuestionsService {
         data: { viewCount: { increment: 1 } },
         include: {
           subject: { select: { id: true, name: true, examCategory: true, examType: true } },
-          passage: { select: { id: true, status: true } },
+          passage: { select: { id: true, status: true, content: true } },
           questionTags: { include: { tag: { select: { id: true, name: true, category: true } } } },
           mediaAssets: { select: { id: true, assetType: true, storageUrl: true } },
           _count: { select: { reviews: true, comments: true } },
