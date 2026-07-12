@@ -183,7 +183,7 @@ export function SessionPage({ id }: { id: string }) {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 gap-4 p-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:flex-row md:p-6">
         {/* 시험지 느낌 — 중앙 정렬 + 2열 사이 중앙 hairline (md 이상) */}
         <div className="relative flex-1 grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-x-10 md:before:absolute md:before:inset-y-0 md:before:left-1/2 md:before:w-px md:before:bg-border">
           {session.questions

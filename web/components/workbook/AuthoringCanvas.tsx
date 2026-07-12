@@ -137,6 +137,12 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
 
   /* ── ✨AI → 채팅 프리필 ── */
   const [chatPrefill, setChatPrefill] = useState<string | null>(null);
+  // AI가 지금 응답을 만들고 있는지(ChatPanel이 올려줌) — 모바일에서 사용자가
+  // 캔버스 탭을 보고 있어도 "AI 도우미" 탭에 살아있는 점으로 알려준다.
+  const [aiStreaming, setAiStreaming] = useState(false);
+
+  /* ── 모바일 전용 탭 전환 — md 이상에서는 항상 둘 다 나란히 보인다 ── */
+  const [mobileTab, setMobileTab] = useState<"canvas" | "chat">("canvas");
 
   /* ── 문제집 제목 ── */
   const { data: workbook, isError: workbookError } = useWorkbook(workbookId);
@@ -246,9 +252,10 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
     [editingId],
   );
 
-  /** ✨AI — 채팅 입력창에 "문제 N 수정: " 프리필. */
+  /** ✨AI — 채팅 입력창에 "문제 N 수정: " 프리필. 모바일에선 채팅 탭으로도 전환. */
   const askAi = useCallback((index: number) => {
     setChatPrefill(`문제 ${index + 1} 수정: `);
+    setMobileTab("chat");
   }, []);
 
   const addManualCard = useCallback(() => {
@@ -400,9 +407,41 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden md:h-screen md:flex-row">
+      {/* 모바일 전용 탭 전환 — md 이상에서는 좌우 나란히 보이므로 숨긴다. */}
+      <div className="flex border-b border-border md:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileTab("canvas")}
+          aria-pressed={mobileTab === "canvas"}
+          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+            mobileTab === "canvas" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground"
+          }`}
+        >
+          문제집
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileTab("chat")}
+          aria-pressed={mobileTab === "chat"}
+          className={`relative flex-1 py-2.5 text-sm font-medium transition-colors ${
+            mobileTab === "chat" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground"
+          }`}
+        >
+          AI 도우미
+          {/* AI가 캔버스 탭 보는 동안에도 응답 중임을 알리는 신호 — 장식이 아니라 실제 상태. */}
+          {aiStreaming && mobileTab !== "chat" && (
+            <span className="absolute right-[calc(50%-2.75rem)] top-2 h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+          )}
+        </button>
+      </div>
+
       {/* 좌: 캔버스 */}
-      <section className="flex-1 flex flex-col min-w-0 border-r border-border">
+      <section
+        className={`flex-1 min-w-0 flex-col border-r border-border md:flex ${
+          mobileTab === "canvas" ? "flex" : "hidden"
+        }`}
+      >
         <header className="flex items-center justify-between gap-4 px-6 py-4 border-b border-border">
           <div className="flex min-w-0 items-center gap-3">
             <Link
@@ -525,17 +564,20 @@ export function AuthoringCanvas({ workbookId }: { workbookId: string }) {
         </div>
       </section>
 
-      {/* 우: 채팅 */}
-      <AuthoringChatPanel
-        workbookId={workbookId}
-        cards={cards}
-        settings={aiSettings}
-        onSettingsChange={setAiSettings}
-        onSubjectResolved={setSubjectId}
-        onApplyQuestion={applyQuestion}
-        prefill={chatPrefill}
-        onPrefillConsumed={() => setChatPrefill(null)}
-      />
+      {/* 우: 채팅 — 모바일에선 탭 선택 시에만, md 이상에서는 항상 나란히. */}
+      <div className={`min-w-0 flex-1 md:flex md:flex-none ${mobileTab === "chat" ? "flex flex-1" : "hidden"}`}>
+        <AuthoringChatPanel
+          workbookId={workbookId}
+          cards={cards}
+          settings={aiSettings}
+          onSettingsChange={setAiSettings}
+          onSubjectResolved={setSubjectId}
+          onApplyQuestion={applyQuestion}
+          prefill={chatPrefill}
+          onPrefillConsumed={() => setChatPrefill(null)}
+          onStreamingChange={setAiStreaming}
+        />
+      </div>
     </div>
   );
 }

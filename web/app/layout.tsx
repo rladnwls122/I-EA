@@ -24,7 +24,7 @@ export const metadata: Metadata = { title: "IΔEA | 공부의 흐름을 설계�
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ko" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="bg-background text-foreground min-h-screen pl-[64px] font-sans antialiased">
+      <body className="bg-background text-foreground min-h-screen pb-14 font-sans antialiased md:pb-0 md:pl-[64px]">
         <Providers>
           <AppSidebar />
           <main className="w-full min-h-screen selection:bg-primary selection:text-primary-foreground">

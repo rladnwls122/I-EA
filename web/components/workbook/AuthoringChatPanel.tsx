@@ -36,6 +36,7 @@ export function AuthoringChatPanel({
   onApplyQuestion,
   prefill,
   onPrefillConsumed,
+  onStreamingChange,
 }: {
   workbookId: string;
   cards: CanvasCard[];
@@ -47,10 +48,16 @@ export function AuthoringChatPanel({
   /** 카드 ✨AI 버튼이 넣어주는 입력창 프리필(예: "문제 2 수정: "). */
   prefill?: string | null;
   onPrefillConsumed?: () => void;
+  /** 모바일 탭바가 "지금 AI가 응답 중"임을 표시할 수 있게 스트리밍 상태를 올려준다. */
+  onStreamingChange?: (streaming: boolean) => void;
 }) {
   const [subjectId, setSubjectId] = useState("");
   const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
+  const [streaming, setStreamingState] = useState(false);
+  const setStreaming = (v: boolean) => {
+    setStreamingState(v);
+    onStreamingChange?.(v);
+  };
   const [messages, setMessages] = useState<Msg[]>([
     { role: "ai", text: "원하는 주제·난이도·출제 포인트를 알려주세요. 한 문제씩 신중히 만들 수도, 한 번에 여러 개 만들 수도 있어요." },
   ]);
@@ -172,7 +179,7 @@ export function AuthoringChatPanel({
   };
 
   return (
-    <aside className="flex w-[440px] flex-none flex-col border-l border-border">
+    <aside className="flex w-full flex-1 flex-col border-l-0 border-border md:w-[440px] md:flex-none md:border-l">
       {/* 헤더 */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <span className="text-sm font-semibold">AI 출제 도우미</span>

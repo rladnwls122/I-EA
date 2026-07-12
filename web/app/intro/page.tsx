@@ -86,8 +86,8 @@ export default function IntroPage() {
   };
 
   return (
-    // 사이드바가 숨는 대신 body의 pl-[64px]가 남으므로 여기서 상쇄한다(AppSidebar 참고).
-    <div className="-ml-[64px] min-h-screen bg-background">
+    // 사이드바가 숨는 대신 body의 패딩(모바일 pb-14 / md 이상 pl-[64px])이 남으므로 상쇄한다(AppSidebar 참고).
+    <div className="-mb-14 min-h-screen bg-background md:-ml-[64px] md:mb-0">
       {/* 최소 내비 — 몰입 유지: 로고와 로그인만 */}
       <nav className="fixed inset-x-0 top-0 z-50 flex items-center justify-between border-b border-border bg-background/70 px-8 py-4 backdrop-blur">
         <span className="text-xl font-semibold tracking-tight">
