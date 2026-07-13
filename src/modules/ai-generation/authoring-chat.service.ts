@@ -79,7 +79,7 @@ export class AuthoringChatService {
       ox: dto.ox,
       difficulty: dto.difficulty,
       currentQuestions: dto.currentQuestions,
-      existingKeywords: await this.fetchExistingKeywords(),
+      existingKeywords: await this.fetchExistingKeywords(dto.subjectId),
     });
     const history = await this.loadHistory(dto.workbookId);
 
@@ -150,10 +150,17 @@ export class AuthoringChatService {
   /**
    * 기존 #키워드 풀(태그명) — 상한 60개. 프롬프트에 실어 LLM이 같은 개념엔
    * 같은 키워드를 재사용하게 유도한다(오답노트 개념별 통계가 모이도록).
+   *
+   * 반드시 "같은 과목(subjectId)의 문항에 실제로 붙은" 키워드만 넘긴다.
+   * 전역 풀을 넘기면 무관한 이전 생성물의 주제/키워드가 섞여 나온다.
    */
-  private async fetchExistingKeywords(): Promise<string[]> {
+  private async fetchExistingKeywords(subjectId?: string | null): Promise<string[]> {
+    if (!subjectId) return [];
     const tags = await this.prisma.tag.findMany({
-      where: { category: KEYWORD_TAG_CATEGORY },
+      where: {
+        category: KEYWORD_TAG_CATEGORY,
+        questionTags: { some: { question: { subjectId } } },
+      },
       orderBy: { name: 'asc' },
       take: 60,
       select: { name: true },

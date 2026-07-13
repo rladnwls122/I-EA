@@ -100,6 +100,11 @@
     @apply border-border;
     box-sizing: border-box;
   }
+  html {
+    /* 모바일: 문서 최상단에서 아래로 당길 때 브라우저 pull-to-refresh가
+       발동해 스크롤을 삼키는 현상 차단(위로 스크롤이 안 되는 증상의 원인). */
+    overscroll-behavior-y: contain;
+  }
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
@@ -107,6 +112,7 @@
     font-weight: 460;
     letter-spacing: -0.011em;
     min-height: 100vh;
+    overscroll-behavior-y: contain;
   }
   h1, h2, h3, h4 {
     letter-spacing: -0.02em;
@@ -266,4 +272,35 @@ label {
 }
 @media (prefers-reduced-motion: reduce) {
   .reward-pop { animation: none; }
+}
+
+/* 삭제 소멸 — 카드가 가루로 흩어지듯 사라진다(내 문제집 삭제 모드).
+   본체는 blur+상승하며 사라지고, 위에 겹친 파티클이 위/바깥으로 날아간다. */
+@keyframes wb-disintegrate {
+  0%   { opacity: 1; filter: blur(0); transform: translateY(0) scale(1); }
+  30%  { opacity: 0.9; filter: blur(1px); transform: translateY(-2px) scale(0.99); }
+  100% { opacity: 0; filter: blur(9px); transform: translateY(-16px) scale(0.93); }
+}
+.wb-disintegrate {
+  animation: wb-disintegrate 700ms cubic-bezier(0.4, 0, 0.6, 1) forwards;
+  will-change: opacity, filter, transform;
+  pointer-events: none;
+}
+@keyframes wb-dust {
+  0%   { opacity: 0; transform: translate(0, 0) scale(1); }
+  12%  { opacity: 0.85; }
+  100% { opacity: 0; transform: translate(var(--dx, 0), var(--dy, -40px)) scale(0.25); }
+}
+.wb-dust-particle {
+  animation: wb-dust 700ms cubic-bezier(0.2, 0.4, 0.4, 1) var(--delay, 0s) forwards;
+  will-change: opacity, transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 모션 최소화: 흩어짐 없이 빠르게 페이드만 */
+  .wb-disintegrate {
+    animation: none;
+    opacity: 0;
+    transition: opacity 200ms linear;
+  }
+  .wb-dust-particle { display: none; }
 }

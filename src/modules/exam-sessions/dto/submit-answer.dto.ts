@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsInt, IsObject, IsOptional, IsPositive, IsString } from 'class-validator';
+import { IsArray, IsInt, IsObject, IsOptional, IsString, Min } from 'class-validator';
 
 /**
  * 실시간 OMR 답안 제출. 문제 유형별로 사용하는 필드가 다르다.
@@ -27,6 +27,6 @@ export class SubmitAnswerDto {
   @ApiPropertyOptional({ description: '이 문항에 소요한 시간(초)' })
   @IsOptional()
   @IsInt()
-  @IsPositive()
+  @Min(0)
   timeSpentSec?: number;
 }

@@ -3,8 +3,8 @@
 export const BOX_TIERS = ['COMMON', 'RARE', 'LEGENDARY'] as const;
 export type BoxTier = (typeof BOX_TIERS)[number];
 
-/** 제출당 상자 드롭 확률. */
-export const BOX_DROP_CHANCE = 0.6;
+/** 제출당 상자 드롭 확률. 1.0 = 제출 시 항상 상자 드롭(100%). */
+export const BOX_DROP_CHANCE = 1.0;
 
 /** 정답률(0~100)별 등급 가중치. 높을수록 상위 등급↑. */
 export function tierWeights(scorePercent: number): Record<BoxTier, number> {

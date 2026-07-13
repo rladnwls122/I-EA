@@ -7,7 +7,11 @@ import { Input } from "@/components/ui/input";
 import { useMe, useWorkbooks, useDeleteWorkbook } from "@/lib/hooks";
 import { WorkbookPreviewSidebar } from "@/components/workbook/WorkbookPreviewSidebar";
 import { WorkbookCard } from "@/components/workbook/WorkbookCard";
+import { DissolveCard } from "@/components/workbook/DissolveCard";
 import { CartButton } from "@/components/cart/CartButton";
+
+/** 소멸 애니메이션 길이(ms) — globals.css의 wb-disintegrate와 맞춰야 한다. */
+const DISSOLVE_MS = 700;
 
 /** 내 문제집 — 공개/비공개 무관하게 내가 만든 것만. 공개 문제집 탐색은 /workbook. */
 export default function MyWorkbooksPage() {
@@ -16,10 +20,15 @@ export default function MyWorkbooksPage() {
   // 삭제 모드: 카드를 누르면 미리보기 대신 그 문제집을 삭제 확인으로 연다(하나씩 삭제).
   const [deleteMode, setDeleteMode] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  // 삭제 애니메이션 진행 중인 카드들. 소멸 모션이 끝나면 hiddenIds로 옮겨 화면에서 뺀다.
+  const [dissolvingIds, setDissolvingIds] = useState<Set<string>>(new Set());
+  // 화면에서 즉시 제거한 카드들(낙관적). 서버 삭제 성공 후 refetch와도 일관.
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const { data, isLoading } = useWorkbooks({ search: keyword || undefined, mine: true });
   const { data: me } = useMe();
   const deleteWorkbook = useDeleteWorkbook();
-  const workbooks = data?.items || [];
+  // hiddenIds에 든 것은 화면에서 뺀다(가루가 되어 이미 사라진 카드).
+  const workbooks = (data?.items || []).filter((wb) => !hiddenIds.has(wb.id));
 
   const exitDeleteMode = () => {
     setDeleteMode(false);
@@ -27,9 +36,19 @@ export default function MyWorkbooksPage() {
   };
 
   const handleDelete = (id: string) => {
-    deleteWorkbook.mutate(id, {
-      onSettled: () => setConfirmId(null),
-    });
+    // 1) 확인창 닫고 즉시 소멸 애니메이션 시작(내 화면에서 가루로 흩어짐)
+    setConfirmId(null);
+    setDissolvingIds((prev) => new Set(prev).add(id));
+    // 2) 애니메이션이 끝나면 화면에서 빼고 삭제 쿼리를 보낸다.
+    window.setTimeout(() => {
+      setHiddenIds((prev) => new Set(prev).add(id));
+      setDissolvingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      deleteWorkbook.mutate(id);
+    }, DISSOLVE_MS);
   };
 
   return (
@@ -110,7 +129,7 @@ export default function MyWorkbooksPage() {
           )}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {workbooks.map((wb) => (
-              <div key={wb.id} className="relative">
+              <DissolveCard key={wb.id} active={dissolvingIds.has(wb.id)}>
                 <WorkbookCard
                   wb={wb}
                   deleteMode={deleteMode}
@@ -146,7 +165,7 @@ export default function MyWorkbooksPage() {
                     </div>
                   </div>
                 )}
-              </div>
+              </DissolveCard>
             ))}
           </div>
         </>

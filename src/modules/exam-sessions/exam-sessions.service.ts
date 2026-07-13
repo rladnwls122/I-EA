@@ -514,6 +514,12 @@ export class ExamSessionsService {
       // 상자 드롭: XP 적립과 별개로, 제출 자체에 대한 보상. 미개봉 상태로 지급.
       const box = await this.maybeDropBox(tx, userId, scorePercent, id);
       return { reward, box };
+    }, {
+      // 제출 트랜잭션은 문항 수만큼 순차 DB 왕복(정답률·풀이시간·선지분포·보상)이
+      // 누적된다. 원격 DB(TiDB)에선 Prisma 기본 5초 상호작용 타임아웃을 넘겨
+      // P2028(Transaction already closed) → 500 "제출 실패"가 나므로 여유를 준다.
+      timeout: 20000,
+      maxWait: 10000,
     });
 
     return {

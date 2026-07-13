@@ -59,7 +59,7 @@ export class AiGenerationProcessor extends WorkerHost {
       subjectName: generation.subject?.name,
       examCategory: generation.subject?.examCategory,
       examType: generation.subject?.examType,
-      existingKeywords: await this.fetchExistingKeywords(),
+      existingKeywords: await this.fetchExistingKeywords(generation.subjectId),
     };
 
     try {
@@ -182,12 +182,20 @@ export class AiGenerationProcessor extends WorkerHost {
   }
 
   /**
-   * 기존 #키워드 풀(태그명) — 최근 생성 순 상한 60개. 프롬프트에 실어 LLM이
-   * 같은 개념엔 같은 키워드를 재사용하게 유도한다(개념별 통계가 모이도록).
+   * 기존 #키워드 풀(태그명) — 상한 60개. 프롬프트에 실어 LLM이 같은 개념엔
+   * 같은 키워드를 재사용하게 유도한다(개념별 통계가 모이도록).
+   *
+   * 반드시 "같은 과목(subjectId)의 문항에 실제로 붙은" 키워드만 넘긴다.
+   * 전역 풀을 그대로 넘기면 무관한 이전 생성물의 주제/키워드가 새 요청에
+   * 섞여 나오는 오염(이전 세션 키워드 누출)이 발생한다.
    */
-  private async fetchExistingKeywords(): Promise<string[]> {
+  private async fetchExistingKeywords(subjectId?: string | null): Promise<string[]> {
+    if (!subjectId) return [];
     const tags = await this.prisma.tag.findMany({
-      where: { category: KEYWORD_TAG_CATEGORY },
+      where: {
+        category: KEYWORD_TAG_CATEGORY,
+        questionTags: { some: { question: { subjectId } } },
+      },
       orderBy: { name: 'asc' },
       take: 60,
       select: { name: true },

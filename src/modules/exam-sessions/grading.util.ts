@@ -44,7 +44,9 @@ const norm = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ' ');
  */
 export function grade(snapshot: QuestionSnapshot, answer: AnswerPayload): boolean | null {
   if (snapshot.questionType === '객관식') {
-    const correct = new Set((snapshot.choices ?? []).filter((c) => c.isCorrect).map((c) => c.id));
+    // choices가 배열이 아닌 형태로 저장된 손상 스냅샷이어도 채점이 500으로 죽지 않게 방어.
+    const choices = Array.isArray(snapshot.choices) ? snapshot.choices : [];
+    const correct = new Set(choices.filter((c) => c.isCorrect).map((c) => c.id));
     const selected = new Set(answer.selectedChoiceIds ?? []);
     if (correct.size === 0) return null;
     // 정답 집합과 선택 집합이 완전히 일치해야 정답(부분점수 없음).
