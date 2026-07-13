@@ -1,0 +1,176 @@
+"use client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Loader2, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { useDeleteQuestion, useMe, useQuestion } from "@/lib/hooks";
+import { QuestionArticle } from "./QuestionArticle";
+import { QuestionEditForm } from "./QuestionEditForm";
+import { ExplanationPanel } from "./ExplanationPanel";
+import { StatsPanel } from "./StatsPanel";
+import { RatingPanel } from "./RatingPanel";
+import { CommentSidebar } from "./CommentSidebar";
+
+/**
+ * 문항 상세 셸 — 헤더([채점결과↔문제탐색] 토글) + 좌 본문 / 우 댓글 2열.
+ * "채점 결과" 탭은 solvedByMe(백엔드가 판정)일 때만 활성화 — 안 풀었으면 토글 자체를 막는다.
+ */
+export function QuestionDetail({
+  id,
+  initialReveal,
+}: {
+  id: string;
+  initialReveal: boolean;
+}) {
+  const router = useRouter();
+  const { data: question, isLoading, isError } = useQuestion(id);
+  const { data: me } = useMe();
+  const deleteQuestion = useDeleteQuestion();
+  const [reveal, setReveal] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const solved = !!question?.solvedByMe;
+  const isOwner = !!me && !!question && me.id === question.creatorId;
+
+  const handleDelete = () => {
+    if (!question) return;
+    if (!window.confirm("이 문항을 삭제할까요? 보관 처리되어 목록에서 사라집니다.")) return;
+    deleteQuestion.mutate(question.id, {
+      onSuccess: () => {
+        toast.success("문항을 삭제했어요.");
+        router.push("/questions");
+      },
+      onError: (e) => toast.error(e instanceof Error ? e.message : "삭제에 실패했어요."),
+    });
+  };
+
+  useEffect(() => {
+    if (initialReveal && solved) setReveal(true);
+  }, [initialReveal, solved]);
+
+  if (isLoading) {
+    // 스켈레톤 — 실제 레이아웃(헤더 + 좌 본문/우 댓글)과 같은 골격으로.
+    return (
+      <div className="min-h-screen">
+        <div className="sticky top-0 z-30 flex h-14 items-center border-b border-border bg-background/90 px-4">
+          <div className="h-8 w-8 animate-pulse rounded-lg bg-surface-raised" />
+        </div>
+        <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5 lg:flex-row">
+          <div className="mx-auto w-full max-w-[680px] flex-1 space-y-4">
+            <div className="h-[320px] animate-pulse rounded-xl border border-border bg-surface-raised" />
+            <div className="h-[180px] animate-pulse rounded-xl border border-border bg-surface-raised" />
+          </div>
+          <div className="h-[420px] w-full animate-pulse rounded-xl border border-border bg-surface-raised lg:w-[376px] lg:flex-none" />
+        </div>
+      </div>
+    );
+  }
+
+  if (isError || !question) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-2 p-8 text-center">
+        <p className="text-sm font-medium text-foreground">문항을 찾을 수 없어요.</p>
+        <p className="text-xs text-muted-foreground">삭제되었거나 잘못된 주소입니다.</p>
+        <button
+          type="button"
+          onClick={() => router.push("/questions")}
+          className="mt-3 flex h-10 items-center rounded-lg border border-border px-4 text-sm font-medium text-foreground transition-colors duration-150 ease-swift hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          문제 목록으로 돌아가기
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen">
+      {/* 헤더 — 모바일에서는 [뒤로+제목] 1행, [수정/삭제+토글] 2행으로 줄바꿈. md 이상은 기존 한 줄 유지. */}
+      <header className="sticky top-0 z-30 flex flex-wrap items-center gap-3 border-b border-border bg-background/90 px-4 py-2 backdrop-blur md:h-14 md:flex-nowrap md:py-0">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          aria-label="뒤로"
+          className="flex h-10 w-10 flex-none items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <ArrowLeft size={15} />
+        </button>
+        <div className="flex min-w-0 flex-1 items-center gap-2 md:flex-initial">
+          <span className="truncate font-mono text-xs text-muted-foreground">
+            {question.subject
+              ? `${question.subject.examCategory} · ${question.subject.name}`
+              : "문항 상세"}
+          </span>
+        </div>
+
+        <div className="hidden md:block md:flex-1" />
+
+        <div className="flex w-full items-center justify-end gap-2 md:w-auto">
+          {isOwner && !editing && (
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="flex h-10 items-center gap-1 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors duration-150 ease-swift hover:border-primary/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                <Pencil size={13} /> 수정
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleteQuestion.isPending}
+                className="flex h-10 items-center gap-1 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors duration-150 ease-swift hover:border-destructive/50 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
+              >
+                {deleteQuestion.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} 삭제
+              </button>
+            </div>
+          )}
+
+          <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
+            <button
+              type="button"
+              onClick={() => solved && setReveal(true)}
+              disabled={!solved}
+              aria-pressed={reveal}
+              title={solved ? undefined : "문제를 풀어야 채점 결과를 볼 수 있어요"}
+              className={`rounded-md px-3 py-1.5 text-xs transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                reveal
+                  ? "bg-primary/10 font-semibold text-primary"
+                  : solved
+                    ? "font-medium text-muted-foreground hover:text-foreground"
+                    : "cursor-not-allowed font-medium text-muted-foreground/40"
+              }`}
+            >
+              채점 결과
+            </button>
+            <button
+              type="button"
+              onClick={() => setReveal(false)}
+              aria-pressed={!reveal}
+              className={`rounded-md px-3 py-1.5 text-xs transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                !reveal
+                  ? "bg-primary/10 font-semibold text-primary"
+                  : "font-medium text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              문제 탐색
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* 본문 2열 */}
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 p-5 lg:flex-row">
+        <main className="mx-auto w-full max-w-[680px] flex-1 space-y-4">
+          {editing ? (
+            <QuestionEditForm question={question} onDone={() => setEditing(false)} />
+          ) : (
+            <QuestionArticle question={question} reveal={reveal} />
+          )}
+          {!editing && reveal && <ExplanationPanel explanation={question.explanation} />}
+          {reveal && <StatsPanel questionId={id} />}
+          <RatingPanel questionId={id} />
+        </main>
+        <CommentSidebar questionId={id} />
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,237 @@
+"use client";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { Search, SearchX } from "lucide-react";
+import { QuestionCard } from "@/components/questions/QuestionCard";
+import { QuestionPreview } from "@/components/questions/QuestionPreview";
+import { CartButton } from "@/components/cart/CartButton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useQuestions, useSubjects } from "@/lib/hooks";
+import type { Question, Subject } from "@/lib/types";
+
+const chip = (active: boolean) =>
+  `whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+    active
+      ? "border-transparent bg-primary font-medium text-primary-foreground"
+      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+  }`;
+
+export default function QuestionsPage() {
+  const [keyword, setKeyword] = useState("");
+  const [examType, setExamType] = useState("");
+  const [category, setCategory] = useState("");
+  const [subjectIds, setSubjectIds] = useState<string[]>([]);
+  // "전체" — 다른 소과목 칩과 별개 상태다. 활성화돼도 개별 칩은 안 눌린 채로 남지만,
+  // 쿼리에는 이 대분류 소과목 전체를 고른 것과 같은 효과를 낸다.
+  const [categoryAll, setCategoryAll] = useState(false);
+  const [selected, setSelected] = useState<Question | null>(null);
+
+  const { data: subjectsData } = useSubjects();
+  const allSubjects: Subject[] = subjectsData || [];
+
+  // 3단 분류: 시험(examType) → 대분류(examCategory) → 세부과목(subject, 다중).
+  const examTypes = useMemo(
+    () => Array.from(new Set(allSubjects.map((s) => s.examType))),
+    [allSubjects],
+  );
+  const categories = useMemo(
+    () =>
+      examType
+        ? Array.from(new Set(allSubjects.filter((s) => s.examType === examType).map((s) => s.examCategory)))
+        : [],
+    [allSubjects, examType],
+  );
+  // 대분류를 골라야 그 대분류의 세부과목만 노출한다(선택 전엔 안 보임).
+  const leafSubjects = useMemo(
+    () =>
+      examType && category
+        ? allSubjects.filter((s) => s.examType === examType && s.examCategory === category)
+        : [],
+    [allSubjects, examType, category],
+  );
+
+  // 첫 로드 시 시험을 첫 번째 값으로 자동 선택한다.
+  useEffect(() => {
+    if (!examType && examTypes.length > 0) setExamType(examTypes[0]);
+  }, [examType, examTypes]);
+
+  // 실제 쿼리에 쓸 소과목 ID — "전체"면 이 대분류의 소과목 전체, 아니면 직접 고른 것들.
+  const effectiveSubjectIds = categoryAll ? leafSubjects.map((s) => s.id) : subjectIds;
+
+  const { data, isLoading } = useQuestions({
+    search: keyword || undefined,
+    subjectIds: effectiveSubjectIds.length ? effectiveSubjectIds : undefined,
+  });
+  const filtered = data?.items || [];
+
+  const toggleSubject = (id: string) => {
+    setCategoryAll(false); // 개별 소과목을 직접 고르면 "전체"는 해제.
+    setSubjectIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  };
+
+  const clearSubjects = () => {
+    setSubjectIds([]);
+    setCategoryAll(false);
+  };
+
+  return (
+    <>
+      <main className="mx-auto max-w-7xl p-4 md:p-8">
+        {/* 헤더 — 모바일에서는 세로로 쌓는다 */}
+        <div className="mb-9 flex flex-col items-start gap-4 md:flex-row md:items-end md:justify-between md:gap-6">
+          <div>
+            <span className="mb-2 block font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              Question library
+            </span>
+            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+              필요한 문제를, 가장 빠르게
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              과목과 유형을 골라 나만의 문제집으로 바로 담아보세요.
+            </p>
+          </div>
+          <Button asChild className="w-full md:w-auto">
+            <Link href="/workbook/create">문제집 만들기</Link>
+          </Button>
+        </div>
+
+        {/* 검색 */}
+        <div className="relative mb-4">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="문제 제목, 개념, 키워드로 검색"
+            className="h-11 pl-10"
+          />
+        </div>
+
+        {/* 1단: 시험 선택 (기본값 첫 번째) */}
+        <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+          {examTypes.map((t) => (
+            <button
+              key={t}
+              onClick={() => {
+                setExamType(t);
+                setCategory("");
+                clearSubjects();
+              }}
+              className={chip(examType === t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+
+        {/* 2단: 대분류 선택 — 시험을 골라야 노출 */}
+        {examType && categories.length > 0 && (
+          <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+            {categories.map((c) => (
+              <button
+                key={c}
+                onClick={() => {
+                  setCategory(category === c ? "" : c);
+                  clearSubjects();
+                }}
+                className={chip(category === c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 3단: 세부과목 다중 선택 — 대분류를 골라야 노출.
+            "전체"는 개별 칩을 누르지 않고도 이 대분류 소과목 전체를 고른 효과를 낸다(배타 상태).
+            "취소"는 맨 끝 — 여러 개 골랐을 때 하나씩 해제하지 않고 한 번에 비운다. */}
+        {category && leafSubjects.length > 0 && (
+          <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-1">
+            <button
+              onClick={() => {
+                setSubjectIds([]);
+                setCategoryAll((v) => !v);
+              }}
+              aria-pressed={categoryAll}
+              className={chip(categoryAll)}
+            >
+              전체
+            </button>
+            {leafSubjects.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => toggleSubject(s.id)}
+                aria-pressed={!categoryAll && subjectIds.includes(s.id)}
+                className={chip(!categoryAll && subjectIds.includes(s.id))}
+              >
+                {s.name}
+              </button>
+            ))}
+            {(categoryAll || subjectIds.length > 0) && (
+              <button
+                onClick={clearSubjects}
+                className="whitespace-nowrap rounded-full border border-destructive/40 px-3.5 py-1.5 text-sm text-destructive transition-colors hover:bg-destructive/10"
+              >
+                취소
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* 결과 카운트 — 필터 바와 헤어라인으로 구획 */}
+        <div className="mb-5 flex items-center justify-between border-t border-border pt-5">
+          <span className="text-sm text-muted-foreground">
+            <span className="font-mono font-medium tabular-nums text-foreground">
+              {filtered.length}
+            </span>
+            개의 문제
+          </span>
+        </div>
+
+        {/* 그리드 */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={i}
+                className="h-[184px] animate-pulse rounded-xl border border-border bg-surface-raised"
+              />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card px-4 py-16 text-center">
+            <SearchX size={28} strokeWidth={1.75} className="text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">
+              검색 결과가 없습니다. 다른 키워드나 과목으로 찾아보세요.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setKeyword("");
+                clearSubjects();
+              }}
+            >
+              필터 초기화
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((q) => (
+              <QuestionCard
+                key={q.id}
+                question={q}
+                onClick={() => setSelected(q)}
+              />
+            ))}
+          </div>
+        )}
+      </main>
+      <QuestionPreview question={selected} onClose={() => setSelected(null)} />
+      <CartButton />
+    </>
+  );
+}

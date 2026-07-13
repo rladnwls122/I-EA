@@ -1,0 +1,4070 @@
+{
+  "users": [
+    {
+      "id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "email": "creator_korean@examstudio.com",
+      "nickname": "국어마스터_민우",
+      "creator_bio": "수능/내신 고등 국어 전문 출제 위원",
+      "created_at": "2026-07-06T00:00:00Z",
+      "updated_at": "2026-07-06T00:00:00Z"
+    },
+    {
+      "id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "email": "creator_english@examstudio.com",
+      "nickname": "Grace_English",
+      "creator_bio": "EBS 분석 및 학평 변형 문제 전문 연구원",
+      "created_at": "2026-07-06T01:10:00Z",
+      "updated_at": "2026-07-06T01:10:00Z"
+    },
+    {
+      "id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f",
+      "email": "creator_math@examstudio.com",
+      "nickname": "수학귀신_박쌤",
+      "creator_bio": "수학I/II 및 선택과목 고난도 문항 제작팀장",
+      "created_at": "2026-07-06T02:15:00Z",
+      "updated_at": "2026-07-06T02:15:00Z"
+    },
+    {
+      "id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa",
+      "email": "creator_social@examstudio.com",
+      "nickname": "사탐보안관",
+      "creator_bio": "통합사회 및 생활과윤리/사회문화 수석 집필진",
+      "created_at": "2026-07-06T03:30:00Z",
+      "updated_at": "2026-07-06T03:30:00Z"
+    },
+    {
+      "id": "5f8ab91c-1e24-4f01-b667-ef99824de811",
+      "email": "creator_science@examstudio.com",
+      "nickname": "사이언스랩",
+      "creator_bio": "물리/화학/생명과학 연계 문항 다수 출제",
+      "created_at": "2026-07-06T04:20:00Z",
+      "updated_at": "2026-07-06T04:20:00Z"
+    }
+  ],
+  "user_roles": [
+    { "user_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301", "role": "CREATOR" },
+    { "user_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301", "role": "CONSUMER" },
+    { "user_id": "a9bf1993-47be-4398-a384-cb91104323be", "role": "CREATOR" },
+    { "user_id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f", "role": "CREATOR" },
+    { "user_id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa", "role": "CREATOR" },
+    { "user_id": "5f8ab91c-1e24-4f01-b667-ef99824de811", "role": "CREATOR" }
+  ],
+  "subjects": [
+    { "id": "18260a92-234b-4b19-b57f-d890cc11bc40", "name": "국어", "exam_category": "수능", "sort_order": 1, "is_active": true },
+    { "id": "4bbf19a3-118c-4f1d-be7a-32e98cfa771a", "name": "영어", "exam_category": "수능", "sort_order": 2, "is_active": true },
+    { "id": "3dc1c97a-99ad-4a11-bc84-91fa12cb598a", "name": "수학", "exam_category": "수능", "sort_order": 3, "is_active": true },
+    { "id": "a82b09ee-11ea-4bc7-9f1d-fa66aa1d58bc", "name": "사회", "exam_category": "수능", "sort_order": 4, "is_active": true },
+    { "id": "d981ba1a-3e2b-401f-bf6c-de81dae481cf", "name": "과학", "exam_category": "수능", "sort_order": 5, "is_active": true }
+  ],
+  "units": [
+    {
+      "id": "e30129a8-ef9a-41df-a5f1-331dae2f8bc1",
+      "subject_id": "18260a92-234b-4b19-b57f-d890cc11bc40",
+      "parent_unit_id": null,
+      "name": "음운의 변동 및 맞춤법",
+      "depth": 0,
+      "is_leaf": false,
+      "sort_order": 1
+    },
+    {
+      "id": "e30129a8-ef9a-41df-a5f1-331dae2f8bc2",
+      "subject_id": "18260a92-234b-4b19-b57f-d890cc11bc40",
+      "parent_unit_id": "e30129a8-ef9a-41df-a5f1-331dae2f8bc1",
+      "name": "음운의 변동과 한글맞춤법",
+      "depth": 1,
+      "is_leaf": true,
+      "sort_order": 1
+    },
+    {
+      "id": "a228394e-28db-410a-bdf8-cb0a2daef901",
+      "subject_id": "18260a92-234b-4b19-b57f-d890cc11bc40",
+      "parent_unit_id": null,
+      "name": "고전시가 및 독서",
+      "depth": 0,
+      "is_leaf": false,
+      "sort_order": 2
+    },
+    {
+      "id": "a228394e-28db-410a-bdf8-cb0a2daef902",
+      "subject_id": "18260a92-234b-4b19-b57f-d890cc11bc40",
+      "parent_unit_id": "a228394e-28db-410a-bdf8-cb0a2daef901",
+      "name": "고전 문학 이론 및 비문학 독해",
+      "depth": 1,
+      "is_leaf": true,
+      "sort_order": 1
+    },
+    {
+      "id": "b9ab2f34-3112-4f8a-9eab-a28dce773da1",
+      "subject_id": "4bbf19a3-118c-4f1d-be7a-32e98cfa771a",
+      "parent_unit_id": null,
+      "name": "영어 문법 및 구조",
+      "depth": 0,
+      "is_leaf": false,
+      "sort_order": 1
+    },
+    {
+      "id": "b9ab2f34-3112-4f8a-9eab-a28dce773da2",
+      "subject_id": "4bbf19a3-118c-4f1d-be7a-32e98cfa771a",
+      "parent_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da1",
+      "name": "관계사와 수동태/도치 구문",
+      "depth": 1,
+      "is_leaf": true,
+      "sort_order": 1
+    },
+    {
+      "id": "b9ab2f34-3112-4f8a-9eab-a28dce773da3",
+      "subject_id": "4bbf19a3-118c-4f1d-be7a-32e98cfa771a",
+      "parent_unit_id": null,
+      "name": "독해 유형 분석",
+      "depth": 0,
+      "is_leaf": false,
+      "sort_order": 2
+    },
+    {
+      "id": "b9ab2f34-3112-4f8a-9eab-a28dce773da4",
+      "subject_id": "4bbf19a3-118c-4f1d-be7a-32e98cfa771a",
+      "parent_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da3",
+      "name": "주제 추론 및 빈칸/논리배열",
+      "depth": 1,
+      "is_leaf": true,
+      "sort_order": 1
+    },
+    {
+      "id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab1",
+      "subject_id": "3dc1c97a-99ad-4a11-bc84-91fa12cb598a",
+      "parent_unit_id": null,
+      "name": "고교 수학 기초 대수 및 해석",
+      "depth": 0,
+      "is_leaf": false,
+      "sort_order": 1
+    },
+    {
+      "id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab2",
+      "subject_id": "3dc1c97a-99ad-4a11-bc84-91fa12cb598a",
+      "parent_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab1",
+      "name": "다항식 및 판별식과 조합론",
+      "depth": 1,
+      "is_leaf": true,
+      "sort_order": 1
+    },
+    {
+      "id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab3",
+      "subject_id": "3dc1c97a-99ad-4a11-bc84-91fa12cb598a",
+      "parent_unit_id": null,
+      "name": "로그, 극한 및 다항함수 미적분",
+      "depth": 0,
+      "is_leaf": false,
+      "sort_order": 2
+    },
+    {
+      "id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab4",
+      "subject_id": "3dc1c97a-99ad-4a11-bc84-91fa12cb598a",
+      "parent_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab3",
+      "name": "미적분학 기초 및 수열의 귀납적 정의",
+      "depth": 1,
+      "is_leaf": true,
+      "sort_order": 1
+    },
+    {
+      "id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1a",
+      "subject_id": "a82b09ee-11ea-4bc7-9f1d-fa66aa1d58bc",
+      "parent_unit_id": null,
+      "name": "사회제도 및 인권과 사상",
+      "depth": 0,
+      "is_leaf": false,
+      "sort_order": 1
+    },
+    {
+      "id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1b",
+      "subject_id": "a82b09ee-11ea-4bc7-9f1d-fa66aa1d58bc",
+      "parent_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1a",
+      "name": "기본권, 자본주의 구조 및 동양 윤리",
+      "depth": 1,
+      "is_leaf": true,
+      "sort_order": 1
+    },
+    {
+      "id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1c",
+      "subject_id": "a82b09ee-11ea-4bc7-9f1d-fa66aa1d58bc",
+      "parent_unit_id": null,
+      "name": "사회 연구 방법론 및 정법",
+      "depth": 0,
+      "is_leaf": false,
+      "sort_order": 2
+    },
+    {
+      "id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1d",
+      "subject_id": "a82b09ee-11ea-4bc7-9f1d-fa66aa1d58bc",
+      "parent_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1c",
+      "name": "양적 연구, 롤스 정의론 및 의원내각제",
+      "depth": 1,
+      "is_leaf": true,
+      "sort_order": 1
+    },
+    {
+      "id": "da12b3bc-ca99-4c12-a1de-da8c8bc911af",
+      "subject_id": "d981ba1a-3e2b-401f-bf6c-de81dae481cf",
+      "parent_unit_id": null,
+      "name": "통합과학 및 물리 기본론",
+      "depth": 0,
+      "is_leaf": false,
+      "sort_order": 1
+    },
+    {
+      "id": "da12b3bc-ca99-4c12-a1de-da8c8bc911b0",
+      "subject_id": "d981ba1a-3e2b-401f-bf6c-de81dae481cf",
+      "parent_unit_id": "da12b3bc-ca99-4c12-a1de-da8c8bc911af",
+      "name": "알칼리금속, 수평 투사 및 맨틀대류",
+      "depth": 1,
+      "is_leaf": true,
+      "sort_order": 1
+    },
+    {
+      "id": "da12b3bc-ca99-4c12-a1de-da8c8bc911b1",
+      "subject_id": "d981ba1a-3e2b-401f-bf6c-de81dae481cf",
+      "parent_unit_id": null,
+      "name": "화학결합 및 유전생태학",
+      "depth": 0,
+      "is_leaf": false,
+      "sort_order": 2
+    },
+    {
+      "id": "da12b3bc-ca99-4c12-a1de-da8c8bc911b2",
+      "subject_id": "d981ba1a-3e2b-401f-bf6c-de81dae481cf",
+      "parent_unit_id": "da12b3bc-ca99-4c12-a1de-da8c8bc911b1",
+      "name": "산화환원, 가계도 유전학 및 에너지 보존",
+      "depth": 1,
+      "is_leaf": true,
+      "sort_order": 1
+    }
+  ],
+  "tags": [
+    { "id": "f5f02ab1-1bc3-4811-9bc0-d392019aebc1", "name": "음운 변동", "category": "weakness" },
+    { "id": "f5f02ab1-1bc3-4811-9bc0-d392019aebc2", "name": "수능기출", "category": "concept" },
+    { "id": "f5f02ab1-1bc3-4811-9bc0-d392019aebc3", "name": "오답노트", "category": "skill" },
+    { "id": "8bb319fa-cb1a-41df-a720-dcb1980ca11f", "name": "기하학", "category": "concept" },
+    { "id": "7ac19ad3-bf2c-4f81-ba2e-da8c8bc90011", "name": "인권과 정의", "category": "weakness" }
+  ],
+  "passages": [
+    {
+      "id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf90",
+      "creator_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "generation_id": null,
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "[공통 지문] 다음 글을 읽고 물음에 답하시오.\n\n" },
+              { "type": "text", "text": "사회계약론자들은 인간의 본성과 자연상태를 저마다 다른 관점으로 정의했다. ", "marks": [{ "type": "bold" }] },
+              { "type": "text", "text": "홉스는 만인의 만인에 대한 투쟁 상태를 안정시키기 위해 강력한 군주적 국가(리바이어던)의 필요성을 칭송했으며, 로크는 재산권의 확실한 공적 집행을 위한 '시민 신탁 계약'을 주창하였다." }
+            ]
+          }
+        ]
+      },
+      "status": "PUBLISHED",
+      "created_at": "2026-07-06T05:00:00Z",
+      "updated_at": "2026-07-06T05:00:00Z"
+    },
+    {
+      "id": "ab90cc11-3eef-410a-b5e1-da81ca8c9110",
+      "creator_id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "generation_id": null,
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "[English Reading Passage]\n\n" },
+              { "type": "text", "text": "The paradox of choice refers to the phenomenon where an abundance of choices paralyzes active human decision-making processes rather than liberating them. Deciding under massive cognitive loads causes immediate exhaustion." }
+            ]
+          }
+        ]
+      },
+      "status": "PUBLISHED",
+      "created_at": "2026-07-06T05:30:00Z",
+      "updated_at": "2026-07-06T05:30:00Z"
+    }
+  ],
+  "questions": [
+    // ==========================================
+    // 1. 국어 (10문항)
+    // ==========================================
+    {
+      "id": "f5f02ab1-1bc3-4811-9bc0-d392019aeb01",
+      "creator_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "generation_id": null,
+      "primary_unit_id": "e30129a8-ef9a-41df-a5f1-331dae2f8bc2",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "다음 중 음운의 변동 현상 중 '교체'에 해당하지 " },
+              { "type": "text", "text": "않는", "marks": [{ "type": "underline" }] },
+              { "type": "text", "text": " 것은?" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "국물 -> [궁물]" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'ㄱ'이 'ㅇ'으로 교체되는 비음화 현상입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "굳이 -> [구지]" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'ㄷ'이 조사 '이' 앞에서 구개음 'ㅈ'으로 교체됩니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "놓고 -> [노코]" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'ㅎ'과 'ㄱ'이 만나 'ㅋ'이라는 하나의 음운으로 축약되므로 '교체'가 아닌 '축약'입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "옷 안 -> [오단]" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'ㅅ'이 'ㄷ'으로 교체(대표음)된 뒤 연음됩니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "백로 -> [뱅노]" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "두 자음이 동화되어 각각 교체가 일어나는 현상입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "'놓고'가 [노코]로 발음되는 것은 자음 축약에 속하므로 오답입니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "국어" },
+      "search_text": "다음 중 음운의 변동 현상 중 교체에 해당하지 않는 것은 놓고 노코",
+      "created_at": "2026-07-06T06:00:00Z",
+      "updated_at": "2026-07-06T06:00:00Z"
+    },
+    {
+      "id": "f5f02ab1-1bc3-4811-9bc0-d392019aeb02",
+      "creator_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "generation_id": null,
+      "primary_unit_id": "e30129a8-ef9a-41df-a5f1-331dae2f8bc2",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "고전 시가 '가시리'에 대한 설명으로 가장 적절하지 않은 것은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "3음보의 전통적 율격을 지니고 있다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "가시리는 전형적인 3음보 격조입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "떠나는 임에 대한 원망과 애련의 미학이 서려 있다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "여성 화자의 애련의 감정이 돋보입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'위 증즐가 대평성대'라는 고려가요 특유의 후렴구가 삽입되어 있다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "궁중 음악으로 편입되면서 덧붙은 구절입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "임이 영영 영원히 돌아오지 않을 것이라는 절망과 한으로 시상이 마무리된다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "마지막 구절은 '가시는 듯 도셔 오쇼셔'로, 재회를 소망하는 극복 의지입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "이별의 정한을 소박한 우리말로 형상화하였다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "소박하고 정제된 우리말로 정서를 이끌어 냅니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "가시리는 재회의 기대와 임을 보내고 싶지 않은 소망의 정조로 시상을 마칩니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.1,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "국어" },
+      "search_text": "고전 시가 가시리에 대한 설명으로 가장 적절하지 않은 것은 절망",
+      "created_at": "2026-07-06T06:05:00Z",
+      "updated_at": "2026-07-06T06:05:00Z"
+    },
+    {
+      "id": "f5f02ab1-1bc3-4811-9bc0-d392019aeb03",
+      "creator_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "generation_id": null,
+      "primary_unit_id": "e30129a8-ef9a-41df-a5f1-331dae2f8bc2",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "다음 중 표준어 및 맞춤법 규정에 완벽히 어긋나지 않은 바른 조합은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "설레임 - 희안하다" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "틀렸습니다. 설렘 - 희한하다가 올바른 표기법입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "설렘 - 희한하다" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "설레다의 명사형 '설렘'과 한자어 '희한(稀罕)'이 바르게 연결되었습니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "설레임 - 희한하다" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "설레임은 비표준어 표기입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "설렘 - 희안하다" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "희안하다는 희한하다의 방언식/구어식 오류입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "설레임 - 희안하다" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "둘 다 오탈자 규정 위배 표기입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "'설렘'과 '희한하다'가 표준어 규정 제1항 및 맞춤법 한글 맞춤법 제15항에 명확히 명시된 올바른 형태입니다." }]
+          }
+        ]
+      },
+      "difficulty": 1,
+      "points": 2.5,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "국어" },
+      "search_text": "설렘 희한하다 맞춤법 규정",
+      "created_at": "2026-07-06T06:10:00Z",
+      "updated_at": "2026-07-06T06:10:00Z"
+    },
+    {
+      "id": "f5f02ab1-1bc3-4811-9bc0-d392019aeb04",
+      "creator_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "generation_id": null,
+      "primary_unit_id": "a228394e-28db-410a-bdf8-cb0a2daef902",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "윤동주의 시 '자화상'에서 '우물'이 지니는 성격 및 기능으로 가장 알맞은 것은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "타인의 결점만을 비추는 외적 투사체" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "타인이 아닌 오롯이 화자 본인의 자아를 관조합니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "자아 성찰과 자신에 대한 미움, 연민을 촉발하는 성찰적 매개체" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "스스로를 미워하다 가엾게 여기는 순환 성찰의 도구입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "시대적 아픔을 완벽히 도피하고 고립되는 폐쇄적 방공호" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "고립이 아닌 성찰을 통한 자아 통합으로 연결됩니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "전설적 판타지 세계관으로 이어지는 포털의 입구" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "사실적 자아 내면의 성찰 기제입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "과거 유년 시절의 완벽하고 때 묻지 않은 평화적 자아에 머무는 사슬" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "머물지 않고 결국은 성장을 이루는 동적 매개체입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "'우물'은 화자의 내면을 투영하여 미움과 연민, 부끄러움을 마주하게 하는 거울상 역할을 합니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "국어" },
+      "search_text": "윤동주 자화상 우물 성찰 매개체",
+      "created_at": "2026-07-06T06:15:00Z",
+      "updated_at": "2026-07-06T06:15:00Z"
+    },
+    {
+      "id": "f5f02ab1-1bc3-4811-9bc0-d392019aeb05",
+      "creator_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "generation_id": null,
+      "primary_unit_id": "a228394e-28db-410a-bdf8-cb0a2daef902",
+      "passage_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf90",
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "공통 지문에 근거할 때, 홉스의 국가관 및 자연상태에 관한 내용으로 가장 옳은 것은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "국가는 단순 시민의 위임을 받은 가벼운 집행자에 지나지 않는다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "이는 홉스가 아닌 로크식 최소국가 혹은 수임자에 가깝습니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "시민의 고유 기본권 및 저항권을 전폭 수용하고 보장한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "홉스는 저항권을 절대 거부하며, 절대군주 지배를 강조했습니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'만인의 만인에 대한 투쟁'을 종식하기 위해 군주에게 권리를 전면 양도해야 한다고 본다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "안전과 수명 연장을 위한 전면적 주권 양도가 홉스 사회계약설의 정수입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "국가라는 거대한 절대악은 시간이 지날수록 축소되어 자멸해야 한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "홉스는 국가 권력인 리바이어던을 무한 예찬했습니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "자연상태는 평화로우나 재화 획득의 난해함만 지니고 있다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "홉스의 자연상태는 지옥 같은 공포와 죽음의 상재 상태입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "홉스는 각 개인의 생존을 보호하기 위해, 자연상태에서 지녔던 모든 권리를 리바이어던 군주에게 조건 없이 이양하는 강력한 통치 구조의 자본주의 초기 국가상을 세웠습니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.2,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "국어" },
+      "search_text": "사회계약론 홉스 리바이어던 권리 전면 이양",
+      "created_at": "2026-07-06T06:20:00Z",
+      "updated_at": "2026-07-06T06:20:00Z"
+    },
+    {
+      "id": "f5f02ab1-1bc3-4811-9bc0-d392019aeb06",
+      "creator_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "generation_id": null,
+      "primary_unit_id": "a228394e-28db-410a-bdf8-cb0a2daef902",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "기술 지문 중 '데이터 전송 오류 제어 방식'에서 CRC(순환 중복 검사)의 기술적 특성으로 올바른 것은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "패리티 비트를 1개 부착하여 짝수/홀수만 판독하는 초간단 방식이다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "이는 단순 1차원 패리티 비트 검사 방식입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "데이터 블록을 다항식 코드로 인식하여, 지정된 생성 다항식으로 나눈 나머지를 체크섬으로 환산해 검출한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "수학적 나눗셈 연산의 나머지를 이용하는 CRC 검사 방식입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "오류 검출 즉시 역방향 요구 없이 자체 수복하는 해밍 코드를 활용한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "CRC는 검출 기능만 있을 뿐 스스로 오류를 고치지 못합니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "데이터를 무한 축적하는 대역폭 독점 제어 기술이다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "전송 프레임 끝에 붙어 에러 검사만 하는 가벼운 필드입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "전체 데이터 비트값을 모두 단순합하여 비교하는 단순 체크섬 방식이다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "단순 가산 체크섬과는 엄격히 구분되는 다항식 기반 연산법입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "CRC는 연산 오버헤드가 적으면서 검출 신뢰성이 매우 뛰어나 고속 LAN 전송 제어에 주되게 채택됩니다." }]
+          }
+        ]
+      },
+      "difficulty": 4,
+      "points": 3.4,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "국어" },
+      "search_text": "오류 전송 CRC 순환중복검사 생성다항식",
+      "created_at": "2026-07-06T06:25:00Z",
+      "updated_at": "2026-07-06T06:25:00Z"
+    },
+    {
+      "id": "f5f02ab1-1bc3-4811-9bc0-d392019aeb07",
+      "creator_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "generation_id": null,
+      "primary_unit_id": "a228394e-28db-410a-bdf8-cb0a2daef902",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "이문구의 자전적 연작 소설 '관촌수필'의 서사 기법 및 주된 어조의 정체성은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "하드보일드식 정교한 군담 영웅 소설" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "향수와 정취를 자극하는 서정적 문체입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "충청도 특유의 토속어와 수려한 만연체 어법으로 향토적 고향의 정경과 해체를 묘사한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "전통 한문투 수사학 및 토속적 방언 배치가 이문구 문체의 백미입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "모더니즘 계열의 초단문 서술과 서구적 감수성 투영" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "극만연체를 사용하여 서구 모더니즘과는 궤를 완전히 달리합니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "인물 간의 노사 대립과 산업 자본 경제의 투쟁 과정 묘사" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "전통 가치 파괴에 따른 쓸쓸함을 내면 성찰적으로 읊조립니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "기계적이고 냉혹한 관찰을 중시하는 다큐멘터리 수법" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "주인공의 애틋하고 정겨운 정조가 흘러넘칩니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "사라져 가는 고향에 대한 지순한 향수를 드러내며, 특유의 전형적 농촌 풍광과 방언으로 문체적 진득함을 살린 걸작입니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "국어" },
+      "search_text": "이문구 관촌수필 충청도 토향 만연체",
+      "created_at": "2026-07-06T06:30:00Z",
+      "updated_at": "2026-07-06T06:30:00Z"
+    },
+    {
+      "id": "f5f02ab1-1bc3-4811-9bc0-d392019aeb08",
+      "creator_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "generation_id": null,
+      "primary_unit_id": "a228394e-28db-410a-bdf8-cb0a2daef902",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "경제 독서 비문학 지문 중, '기준금리 인하' 조치가 대내외 환율 및 거시경제에 미치는 이상적 경로로 가장 옳은 것은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "투자 비용 급증으로 가계 연체율이 치솟고 화폐 유동성이 응고된다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "금리 인하는 이자 비용 부담을 완화해 유동성을 뿜어냅니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "해외 사모 펀드 머니 유입이 폭등하여 원화 자산 가치가 급격히 치솟는다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "금리가 내리면 이율 매력도가 하락해 외국인 자본이 이탈하기 쉽습니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "자국 통화 매력 감소로 통화 가치가 하락(환율 상승)하여 가격 경쟁력이 개선되어 수출이 활성화된다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "단기적인 원화 평가 절하는 한국 등 수출 주도형 국가 기업들의 판로에 도움을 줄 수 있습니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "모든 가계가 저축을 가파르게 폭증시켜 대출 회수율이 최고치에 달한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "이자 수익성이 낮아지므로 저축율은 감소 추세를 보입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "물가 지수가 0으로 제로 수렴하여 극단적 디플레이션에 고착된다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "통화량이 늘어나면 대개 인플레이션 압력이 촉발됩니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "금리 하락은 자금의 유통량을 밀어 올리고, 외화 자본 유출 우려를 동반해 환율을 올려 수출 경쟁력을 자극하는 거시 계통의 대표 경로입니다." }]
+          }
+        ]
+      },
+      "difficulty": 4,
+      "points": 3.5,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "국어" },
+      "search_text": "기준금리 인하 환율 가치 자금 유입",
+      "created_at": "2026-07-06T06:35:00Z",
+      "updated_at": "2026-07-06T06:35:00Z"
+    },
+    {
+      "id": "f5f02ab1-1bc3-4811-9bc0-d392019aeb09",
+      "creator_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "generation_id": null,
+      "primary_unit_id": "a228394e-28db-410a-bdf8-cb0a2daef902",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "수사학 중 '반어법'과 '역설법'에 대한 언어구조적 이론 판정으로 맞는 것은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "반어법은 사실 그대로 솔직하게 읊조려 오해를 전면 축소한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "반어법은 실제 의도와 상반되게 왜곡하여 정서를 키우는 표현 방식입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "역설법은 외적인 모순(Paradox)을 유발하지만 궁극적으로 심오한 문학적 진실을 내포한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'찬란한 슬픔' 등 양립 불가능해 보이는 언어 조합으로 사유를 자극합니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "진달래꽃의 '말없이 고이 보내드리오다'는 절대적 역설법 표상이다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "눈물이 앞을 가려도 보내주겠다는 '반어법'적 체념 정서입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "한용운의 '아아, 님은 갔지마는 나는 보내지 않았다'는 반어법의 표상이다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "외계 현실 부정과 영원 불멸의 님을 합친 극적 '역설법'입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "두 표현법은 혼선을 초래해 한국 문학사적 가치가 배척받아 왔다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "문학적 밀도와 묘사 깊이를 최고조로 끌어올린 걸작 표현들입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "역설은 언어의 외부 표피 구조의 논리적 붕괴를 깨고, 참된 고차원의 정적/철학적 이해를 전달하는 방법입니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.2,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "국어" },
+      "search_text": "반어 역설 수사학 김소월 한용운",
+      "created_at": "2026-07-06T06:40:00Z",
+      "updated_at": "2026-07-06T06:40:00Z"
+    },
+    {
+      "id": "f5f02ab1-1bc3-4811-9bc0-d392019aeb10",
+      "creator_id": "e2297120-cb9e-4e8c-8f43-4b953d5ad301",
+      "generation_id": null,
+      "primary_unit_id": "e30129a8-ef9a-41df-a5f1-331dae2f8bc2",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "다음 보기 문장들 중, 주어-서술어 문장 성분 간 호응에 명확한 결함이 있는 비문(非文)은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "내가 오늘 학급 회의에서 가장 강조하고 싶었던 점은 우리가 끝까지 규칙을 준수해야 한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'점은'이라는 성격의 주어에 대해 서술어에 명사형 종결이나 의존명사 구문('준수해야 한다는 것이다')이 없어 비문입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "영희는 성격이 결코 타인에게 비굴하게 굴 사람이 아니다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'결코'와 부정어 '아니다'가 바른 짝으로 맞물렸습니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "우리는 대자연을 보존하기도 하고 경우에 따라서 적극 순응하기도 한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "조사 '보존하기도(목적격)'와 '순응하기도(부사어 대동)'가 각각의 격과 호응을 충족합니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "교장 선생님께서 학생들에게 훈화 말씀을 차분하게 이어 나가셨다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'께서'와 높임 주체 선어말어미 '-(으)시-'의 호응이 흠잡을 데 없습니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "비록 천둥번개가 요란하게 칠지라도 야외 전공 실습은 정상 집행하리라." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "부사 '비록'이 양보 연결어미 '-ㄹ지라도'와 자연스레 만났습니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "'강조하고 싶었던 점은'에 연계되는 서술구는 '~것이다' 또는 '~점이다'와 같이 명사 구문 형태로 보충되어 호응을 완료 지어야 완전한 한글 문장입니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "국어" },
+      "search_text": "문장 호응 성분 규칙 준수 강조하고 싶었던 비문",
+      "created_at": "2026-07-06T06:45:00Z",
+      "updated_at": "2026-07-06T06:45:00Z"
+    },
+
+    // ==========================================
+    // 2. 영어 (10문항)
+    // ==========================================
+    {
+      "id": "a9bf1993-47be-4398-a384-cb9110432301",
+      "creator_id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "generation_id": null,
+      "primary_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da2",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "Choose the most appropriate relative pronoun for the blank.\n\n\"This is the beautiful beach _______ we visited last summer.\"" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "where" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "where requires a structurally complete sentence, but the transitive verb 'visited' lacks an object." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "which" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The objective relative pronoun 'which' perfectly serves as the object of 'visited' referring back to 'the beautiful beach'." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "what" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "what already contains its own antecedent noun, so it cannot follow another noun." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "in which" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "equivalent to 'where', demanding a completely structured clause." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "whose" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "A possessive relative pronoun requires a companion noun with ownership." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "Since 'visited' is a transitive verb that requires a direct object, the objective relative pronoun 'which' (or 'that') is the correct fit." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "영어" },
+      "search_text": "relative beach we visited last summer which object pronoun",
+      "created_at": "2026-07-06T07:00:00Z",
+      "updated_at": "2026-07-06T07:00:00Z"
+    },
+    {
+      "id": "a9bf1993-47be-4398-a384-cb9110432302",
+      "creator_id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "generation_id": null,
+      "primary_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "Read the following and select the most appropriate topic.\n\n" },
+              { "type": "text", "text": "\"Regular exercise has been proven to improve mental health by reducing anxiety and depression. It releases endorphins, which act as natural painkillers and mood elevators.\"", "marks": [{ "type": "italic" }] }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The historical background of outdoor modern sports" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "There are no references to sports history." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The psychological benefits of regular exercise" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The passage describes anxiety reduction and endorphin mood boosts as psychological assets." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "How to choose appropriate daily workout equipment" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Equipment choice is not a topic discussed." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The physiological danger of over-exercising" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The text only refers to positive, healthy rewards." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The chemical process of brain synthesis" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Brain mapping chemicals is a distant detail." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "The paragraph highlights mental health assets (psychological benefits) stemming from exercise, making option 2 the ideal topic." }]
+          }
+        ]
+      },
+      "difficulty": 1,
+      "points": 2.8,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "영어" },
+      "search_text": "Regular exercise improve mental health anxiety topic psychological",
+      "created_at": "2026-07-06T07:05:00Z",
+      "updated_at": "2026-07-06T07:05:00Z"
+    },
+    {
+      "id": "a9bf1993-47be-4398-a384-cb9110432303",
+      "creator_id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "generation_id": null,
+      "primary_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "Select the contextually 어색한(inappropriate) word from the numbered choices.\n\n\"Due to the heavy rain, the football match was " },
+              { "type": "text", "text": "① cancelled", "marks": [{ "type": "bold" }] },
+              { "type": "text", "text": ". The fans were " },
+              { "type": "text", "text": "② disappointed", "marks": [{ "type": "bold" }] },
+              { "type": "text", "text": ", but the referee insisted that playing under such muddy conditions was " },
+              { "type": "text", "text": "③ safe", "marks": [{ "type": "bold" }, { "type": "underline" }] },
+              { "type": "text", "text": " for the players.\"" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "① cancelled" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "A standard action when encountering extreme weather events." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "② disappointed" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Disappointment is a natural emotional reaction to cancellation." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "③ safe" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Playing on extremely muddy pitches in heavy rain is highly dangerous (unsafe), not safe." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "No error (All words are appropriate)" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "A clear contradiction exists with the word 'safe'." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "None of the options apply" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Option 3 is mathematically and textually flawed." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "Given the poor muddy pitch conditions resulting in match cancellation, continuing the match would be risky or hazardous. Therefore, 'safe' is contextually contradictory." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.1,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "영어" },
+      "search_text": "cancelled disappointed safe muddy inappropriate context",
+      "created_at": "2026-07-06T07:10:00Z",
+      "updated_at": "2026-07-06T07:10:00Z"
+    },
+    {
+      "id": "a9bf1993-47be-4398-a384-cb9110432304",
+      "creator_id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "generation_id": null,
+      "primary_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da2",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "Which of the following sentences contains a grammatical error?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Surrounding by beautiful mountains, the hotel offers a peaceful stay." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The hotel is passively 'surrounded' by mountains. It must start with the past participle 'Surrounded'." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Having finished his homework, Jake went out to play soccer." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Correct use of a perfect participle to denote an antecedent action." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The broken window was repaired by my father yesterday." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "A standard, correct passive voice structure." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "She sat at the desk with her eyes closed." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'with + object + p.p.' is a correct absolute construction." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "So fast did the runner sprint that he broke the world record." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "An adverb fronting inversion which is grammatically sound." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "The relationship between 'the hotel' and 'surround' is passive. Therefore, the present participle 'Surrounding' should be replaced with the past participle 'Surrounded'." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.3,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "영어" },
+      "search_text": "Surrounding by mountains error participle clause hotel",
+      "created_at": "2026-07-06T07:15:00Z",
+      "updated_at": "2026-07-06T07:15:00Z"
+    },
+    {
+      "id": "a9bf1993-47be-4398-a384-cb9110432305",
+      "creator_id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "generation_id": null,
+      "primary_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "Fill in the blank with the most appropriate word.\n\n\"Technological advancements have made communication instant. However, this superficial connectivity often leads to deep ___________, as physical face-to-face interactions drastically decrease.\"" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "isolation" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The reduction in physical presence often translates to emotional or social isolation." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "cooperation" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Cooperation is positive and opposes the negative tone of 'superficial'." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "intelligence" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Not related to the reduction in social interaction." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "satisfaction" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Superficial connections do not lead to genuine satisfaction." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "prosperity" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Prosperity is economic and irrelevant to the social disconnect discussed." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "The text warns of a negative consequence of instant communication. Thus, 'isolation' fits the context of decreased face-to-face interaction." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "영어" },
+      "search_text": "superficial connectivity isolation face-to-face communication decrease",
+      "created_at": "2026-07-06T07:20:00Z",
+      "updated_at": "2026-07-06T07:20:00Z"
+    },
+    {
+      "id": "a9bf1993-47be-4398-a384-cb9110432306",
+      "creator_id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "generation_id": null,
+      "primary_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "Arrange the sentences in the most logical sequence after the given baseline.\n\n" },
+              { "type": "text", "text": "[Given] Greenhouse gases trap heat in the Earth's atmosphere.\n" },
+              { "type": "text", "text": "(A) As a result, global temperatures rise rapidly and glaciers begin to melt.\n" },
+              { "type": "text", "text": "(B) This natural process is essentially crucial for keeping our planet warm enough to sustain life.\n" },
+              { "type": "text", "text": "(C) However, modern human activities have artificially accelerated this effect to an alarming level." }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "(A) - (C) - (B)" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Prematurely states the final global warming consequence." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "(B) - (A) - (C)" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Placing (A) before the explanation of human impact in (C) breaks the logical flow." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "(B) - (C) - (A)" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "First, (B) explains the natural purpose. Then, (C) introduces human interference, leading to the consequences in (A)." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "(C) - (B) - (A)" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The contrast in (C) works best after establishing the natural baseline in (B)." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "(C) - (A) - (B)" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "This ordering misplaces the baseline statement (B) at the end, disrupting paragraph unity." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "The paragraph should move from the basic concept (Given) to its natural function (B), followed by human impact (C), and finally the consequences (A)." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.2,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "영어" },
+      "search_text": "Greenhouse gases trap heat atmosphere order logic sequence",
+      "created_at": "2026-07-06T07:25:00Z",
+      "updated_at": "2026-07-06T07:25:00Z"
+    },
+    {
+      "id": "a9bf1993-47be-4398-a384-cb9110432307",
+      "creator_id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "generation_id": null,
+      "primary_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da2",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "Choose the best place for the following sentence.\n\n" },
+              { "type": "text", "text": "[Sentence] In contrast, passive transport requires absolutely no energy expenditure from the cell.\n\n", "marks": [{ "type": "bold" }] },
+              { "type": "text", "text": "\"Active transport moves molecules against their concentration gradient. ( ① ) This process heavily consumes ATP to force substances across the plasma membrane. ( ② ) Nutrients are absorbed effectively this way even when scarce. ( ③ ) Molecules simply move naturally from an area of higher concentration to a lower one. ( ④ ) This allows equilibrium to be achieved without utilizing cellular resources. ( ⑤ )\"" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "①" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "This would disrupt the explanation of how active transport functions." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "②" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The surrounding sentences are still focused on active transport." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "③" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Position ③ is the transition point where the text shifts from active transport to passive transport." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "④" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Placing it here introduces the concept after its mechanisms have already been described." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "⑤" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Placing it at the end would make the transition ineffective." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "The sentence marks the shift from active transport (which uses energy) to passive transport (which does not). This transition occurs naturally at ③." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.4,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "영어" },
+      "search_text": "Active transport passive concentration gradient insert position",
+      "created_at": "2026-07-06T07:30:00Z",
+      "updated_at": "2026-07-06T07:30:00Z"
+    },
+    {
+      "id": "a9bf1993-47be-4398-a384-cb9110432308",
+      "creator_id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "generation_id": null,
+      "primary_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da4",
+      "passage_id": "ab90cc11-3eef-410a-b5e1-da81ca8c9110",
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "According to the English Reading Passage, what is the logical consequence when a customer faces an abundance of alternatives?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "purchasing multiple items with increased satisfaction" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Cognitive overload makes satisfying choices less likely." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "making no choice at all due to decision paralysis" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "As noted, an abundance of choices paralyzes decision-making, often leading to inaction." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "resolving to buy only local products" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Buying local is outside the scope of the passage." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "recommending the brand to close friends" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Frustrated, overwhelmed customers are unlikely to recommend a brand." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "saving more money for future investments" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The passage focuses on decision paralysis, not financial planning." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "The passage states that an abundance of options paralyzes decision-making, which often results in no choice being made." }]
+          }
+        ]
+      },
+      "difficulty": 4,
+      "points": 3.5,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "영어" },
+      "search_text": "paradox of choice paralyzes decision making no choice",
+      "created_at": "2026-07-06T07:35:00Z",
+      "updated_at": "2026-07-06T07:35:00Z"
+    },
+    {
+      "id": "a9bf1993-47be-4398-a384-cb9110432309",
+      "creator_id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "generation_id": null,
+      "primary_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "What does the idiom " },
+              { "type": "text", "text": "'put the cart before the horse'", "marks": [{ "type": "bold" }] },
+              { "type": "text", "text": " mean in the following context?\n\n\"Many young startups focus heavily on aggressive marketing campaigns before finalizing their core product. This common mistake is a classic case of putting the cart before the horse.\"" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "relying on outdated transportation methods" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "This interprets the idiom literally, which is incorrect." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "reversing the proper or logical order of tasks" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Since a horse pulls a cart, putting the cart first represents an illogical sequence of tasks." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "investing all assets in corporate bonds" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Unrelated to the order of operations in business development." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "collaborating with larger competitors" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Refers to partnership strategies, which is not the meaning of the idiom." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "underestimating customer purchasing power" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Unrelated to the sequence of product development and marketing." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "The idiom means reversing the logical order of tasks (such as marketing a product before it is built)." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.2,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "영어" },
+      "search_text": "startups marketing core product cart before horse reverse order",
+      "created_at": "2026-07-06T07:40:00Z",
+      "updated_at": "2026-07-06T07:40:00Z"
+    },
+    {
+      "id": "a9bf1993-47be-4398-a384-cb9110432310",
+      "creator_id": "a9bf1993-47be-4398-a384-cb91104323be",
+      "generation_id": null,
+      "primary_unit_id": "b9ab2f34-3112-4f8a-9eab-a28dce773da2",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "Choose the grammatically correct sentence among the options below." }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Not only she lost her keys, but she also forgot her wallet." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The negative adverb 'Not only' at the front requires inversion: 'Not only did she lose...'" }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Rarely I have seen such a breathtaking performance in public." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "'Rarely' at the start of a sentence requires inversion: 'Rarely have I seen...'" }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Little did he know that the surprise party was originally planned for him." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "The negative adverb 'Little' is placed at the front, and the inversion 'did he know' is correct." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Under no circumstances employees are allowed to share passwords." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Requires inversion: 'Under no circumstances are employees allowed...'" }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Scarcely the show had begun when the electricity went out." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Requires inversion: 'Scarcely had the show begun...'" }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "When negative adverbs are placed at the beginning of a clause, the subject and auxiliary verb must be inverted. Option 3 is correctly inverted." }]
+          }
+        ]
+      },
+      "difficulty": 4,
+      "points": 3.4,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "영어" },
+      "search_text": "negative inversion correct grammar sentence Little did he know",
+      "created_at": "2026-07-06T07:45:00Z",
+      "updated_at": "2026-07-06T07:45:00Z"
+    },
+
+    // ==========================================
+    // 3. 수학 (10문항)
+    // ==========================================
+    {
+      "id": "7dc1a9e3-2fde-4411-9a7b-8ff812903701",
+      "creator_id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f",
+      "generation_id": null,
+      "primary_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab2",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "다항식 " },
+              { "type": "text", "text": "$P(x) = x^3 - 2x^2 + ax + 3$" },
+              { "type": "text", "text": "이 " },
+              { "type": "text", "text": "$x-1$" },
+              { "type": "text", "text": "로 나누어떨어질 때, 상수 " },
+              { "type": "text", "text": "$a$" },
+              { "type": "text", "text": "의 값은?" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "-2" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$P(1) = 1 - 2 + a + 3 = a + 2 = 0 \\Rightarrow a = -2$ 입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "-1" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "단순 이항 계산 오류입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "1" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "부호를 잘못 대입한 경우입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "2" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "상수 연산 실수입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "3" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "식 대입 부주의로 인한 오답입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "나머지정리에 의거하여 $P(1) = 0$이 성립해야 합니다. 대입하면 $1 - 2 + a + 3 = 0 \\Rightarrow a + 2 = 0 \\Rightarrow a = -2$ 입니다." }]
+          }
+        ]
+      },
+      "difficulty": 1,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "수학" },
+      "search_text": "다항식 나머지정리 인수분해 나누어떨어질",
+      "created_at": "2026-07-06T08:00:00Z",
+      "updated_at": "2026-07-06T08:00:00Z"
+    },
+    {
+      "id": "7dc1a9e3-2fde-4411-9a7b-8ff812903702",
+      "creator_id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f",
+      "generation_id": null,
+      "primary_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab2",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "이차함수 " },
+              { "type": "text", "text": "$y = x^2 - 4x + k$" },
+              { "type": "text", "text": "의 그래프가 $x$축과 서로 다른 두 점에서 만나도록 하는 정수 " },
+              { "type": "text", "text": "$k$" },
+              { "type": "text", "text": "의 최댓값은?" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "1" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$k < 4$ 범위에 속하지만 최댓값은 아닙니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "2" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$k < 4$ 범위의 정수 중 최댓값이 아닙니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "3" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$k < 4$ 조건 하에서 최대 정수는 3입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "4" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$k = 4$ 이면 중근(한 점 접함)을 가집니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "5" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$k = 5$ 이면 실근이 존재하지 않아 만나지 않습니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "이차방정식 $x^2 - 4x + k = 0$의 판별식을 사용합니다. $\\frac{D}{4} = (-2)^2 - k = 4 - k > 0 \\Rightarrow k < 4$ 이므로 최대 정수는 3입니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.2,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "수학" },
+      "search_text": "이차함수 판별식 그래프 x축 만남 정수 최댓값",
+      "created_at": "2026-07-06T08:05:00Z",
+      "updated_at": "2026-07-06T08:05:00Z"
+    },
+    {
+      "id": "7dc1a9e3-2fde-4411-9a7b-8ff812903703",
+      "creator_id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f",
+      "generation_id": null,
+      "primary_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab2",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "남학생 4명과 여학생 3명 중에서 대표 3명을 선발할 때, 여학생이 적어도 1명 포함되는 경우의 수는?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "24" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "순열을 잘못 대입한 오류입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "27" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "단순 조합 수 연산 미스입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "31" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "전체 수(35) - 남학생만 선발할 경우의 수($_4C_3 = 4$) = 31입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "34" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "여사건 경우의 수를 1로 착각하여 35 - 1 = 34로 계산한 오류입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "35" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "제한 없이 7명 중 3명을 뽑는 전체 경우의 수($_7C_3$)입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "적어도 한 명의 여학생이 뽑히는 사건은 전체 경우에서 여학생이 전혀 뽑히지 않는 경우(남학생만 3명)를 빼는 여사건 방식으로 간단히 풀 수 있습니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.4,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "수학" },
+      "search_text": "조합 여학생 남학생 대표 경우의수 여사건",
+      "created_at": "2026-07-06T08:10:00Z",
+      "updated_at": "2026-07-06T08:10:00Z"
+    },
+    {
+      "id": "7dc1a9e3-2fde-4411-9a7b-8ff812903704",
+      "creator_id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f",
+      "generation_id": null,
+      "primary_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "로그방정식 " },
+              { "type": "text", "text": "$\\log_2(x) + \\log_2(x-2) = 3$" },
+              { "type": "text", "text": "의 정확한 실근을 구하시오." }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "x = 4" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "진수 조건($x > 2$)을 충족하는 유일한 실근입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "x = -2" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "진수 조건($x>0, x-2>0$)을 만족하지 못해 해가 될 수 없습니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "x = 4 또는 x = -2" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "진수 조건 확인 과정을 빼먹은 전형적인 오답입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "x = 3" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "수치 대입 시 등식이 성립하지 않습니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "실근이 존재하지 않는다" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$x=4$라는 명확한 해가 있으므로 거짓입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "진수 조건에 의해 $x > 0$ 이고 $x - 2 > 0$ 이어야 하므로 $x > 2$ 여야 합니다. 로그 성질로 풀면 $x(x-2) = 2^3 = 8 \\Rightarrow x^2 - 2x - 8 = 0 \\Rightarrow (x-4)(x+2) = 0$ 이고 진수 조건에 의해 $x=4$ 가 유일한 실근입니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.1,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "수학" },
+      "search_text": "로그방정식 대수 방정식 진수조건",
+      "created_at": "2026-07-06T08:15:00Z",
+      "updated_at": "2026-07-06T08:15:00Z"
+    },
+    {
+      "id": "7dc1a9e3-2fde-4411-9a7b-8ff812903705",
+      "creator_id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f",
+      "generation_id": null,
+      "primary_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "삼각형 " },
+              { "type": "text", "text": "$ABC$" },
+              { "type": "text", "text": "에서 변 " },
+              { "type": "text", "text": "$b=3, c=5$" },
+              { "type": "text", "text": "이고 그 사이의 끼인각 " },
+              { "type": "text", "text": "$A=60^\\circ$" },
+              { "type": "text", "text": "일 때, 마주 보는 변 " },
+              { "type": "text", "text": "$a$" },
+              { "type": "text", "text": "의 길이는?" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$\\sqrt{19}$" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "코사인 법칙으로 얻은 수치식 $a^2 = 19$의 제곱근입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "4" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "단순 삼각비 오대입 수치입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$\\sqrt{34}$" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$-2bc \\cos A$ 항을 생략한 계산 실수입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "19" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$a^2$과 $a$의 단위를 혼동하여 제곱근을 씌우지 않았습니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "7" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "부호 오류 및 단순 사칙연산 실수입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "코사인법칙 $a^2 = b^2 + c^2 - 2bc \\cos A$ 에 대입합니다. $a^2 = 3^2 + 5^2 - 2(3)(5)\\cos 60^\\circ = 9 + 25 - 30 \\times \\frac{1}{2} = 19$. 따라서 $a = \\sqrt{19}$ 입니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.3,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "수학" },
+      "search_text": "코사인법칙 삼각함수 도형 삼각형 삼각비",
+      "created_at": "2026-07-06T08:20:00Z",
+      "updated_at": "2026-07-06T08:20:00Z"
+    },
+    {
+      "id": "7dc1a9e3-2fde-4411-9a7b-8ff812903706",
+      "creator_id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f",
+      "generation_id": null,
+      "primary_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "함수 " },
+              { "type": "text", "text": "$f(x) = \\frac{x^2 - a}{x - 2}$" },
+              { "type": "text", "text": "가 " },
+              { "type": "text", "text": "$x=2$" },
+              { "type": "text", "text": "에서 극한값 4를 가질 때, 미정계수 " },
+              { "type": "text", "text": "$a$" },
+              { "type": "text", "text": "의 값은?" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "2" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$2^2 - a = 0$ 수식의 단순 연산 미스입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "4" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$x \\to 2$일 때 분자가 0으로 수렴해야 하므로 $a=4$입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "8" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "단순 오답입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "16" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "극값 4의 제곱을 연상한 오개념입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "0" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "상수 분자가 통째 소거된다고 오해한 경우입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "$x \\to 2$일 때 분모가 0으로 수렴하므로 극값을 갖기 위해 분자도 0으로 수렴해야 합니다. $2^2 - a = 0 \\Rightarrow a = 4$ 입니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "수학" },
+      "search_text": "함수 수렴 미정계수 극한값 부정형",
+      "created_at": "2026-07-06T08:25:00Z",
+      "updated_at": "2026-07-06T08:25:00Z"
+    },
+    {
+      "id": "7dc1a9e3-2fde-4411-9a7b-8ff812903707",
+      "creator_id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f",
+      "generation_id": null,
+      "primary_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "곡선 " },
+              { "type": "text", "text": "$y = x^3 - 3x + 2$" },
+              { "type": "text", "text": " 위의 점 " },
+              { "type": "text", "text": "$(2, 4)$" },
+              { "type": "text", "text": "에서의 접선의 기울기는?" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "3" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "도함수 $3x^2-3$에 $x=1$을 잘못 대입한 결과입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "6" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "단순 계산 미스입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "9" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "도함수 $f'(x) = 3x^2 - 3$에 $x=2$를 대입하여 얻은 기울기입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "12" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "도함수의 상수항 $-3$을 무시한 경우입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "15" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "대수 연산 에러 수치입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "$f'(x) = 3x^2 - 3$이므로 $x=2$에서의 접선의 기울기는 미분계수 $f'(2) = 3(2)^2 - 3 = 9$ 입니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.2,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "수학" },
+      "search_text": "미분계수 다항함수 도함수 접선 기울기",
+      "created_at": "2026-07-06T08:30:00Z",
+      "updated_at": "2026-07-06T08:30:00Z"
+    },
+    {
+      "id": "7dc1a9e3-2fde-4411-9a7b-8ff812903708",
+      "creator_id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f",
+      "generation_id": null,
+      "primary_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "수열 " },
+              { "type": "text", "text": "$\\{a_n\\}$" },
+              { "type": "text", "text": "에 대하여 첫째항 " },
+              { "type": "text", "text": "$a_1 = 2$" },
+              { "type": "text", "text": "이고 귀납적 점화식 " },
+              { "type": "text", "text": "$a_{n+1} = 2a_n - 1$" },
+              { "type": "text", "text": "이 성립할 때, 이 수열의 일반항 " },
+              { "type": "text", "text": "$a_n$" },
+              { "type": "text", "text": "은?" }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "a_n = 2^n" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "$n=2$ 대입 시 $a_2=4$가 되어 어긋납니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "a_n = 2^{n-1} + 1" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "알파 치환식을 통해 구한 정확한 일반항입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "a_n = 2^n - 1" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "단순 오판한 결과식입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "a_n = n + 1" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "등차수열로 잘못 단정한 오류입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "a_n = 2^{n+1} - 2" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "형태 치환을 잘못 설계한 식입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "점화식을 $a_{n+1} - 1 = 2(a_n - 1)$로 변형할 수 있습니다. 수열 $b_n = a_n - 1$은 첫째항이 $a_1 - 1 = 1$, 공비가 2인 등비수열입니다. 따라서 $a_n - 1 = 1 \\times 2^{n-1} \\Rightarrow a_n = 2^{n-1} + 1$ 입니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.4,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "수학" },
+      "search_text": "수열 점화식 귀납적 일반항 대수",
+      "created_at": "2026-07-06T08:35:00Z",
+      "updated_at": "2026-07-06T08:35:00Z"
+    },
+    {
+      "id": "7dc1a9e3-2fde-4411-9a7b-8ff812903709",
+      "creator_id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f",
+      "generation_id": null,
+      "primary_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "삼차함수 " },
+              { "type": "text", "text": "$f(x) = x^3 - 3x^2 - 9x + 5$" },
+              { "type": "text", "text": "의 극댓값과 극솟값의 합을 구하시오." }
+            ]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "-10" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "대수 부호 연산 실수 유도용 수치입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "-12" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "극댓값 $10$과 극솟값 $-22$의 올바른 합산 결과입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "-14" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "대칭성 유추 실패로 파생된 오답입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "-20" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "값 대입 실수입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "0" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "점대칭 중심의 함숫값과 혼동한 수치입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "$f'(x) = 3x^2 - 6x - 9 = 3(x-3)(x+1) = 0$ 이므로 $x=-1$에서 극대, $x=3$에서 극소를 가집니다. $f(-1) = 10, f(3) = -22$ 이므로 두 값의 합은 $-12$ 입니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.3,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "수학" },
+      "search_text": "극대 극소 합 임계점 도함수",
+      "created_at": "2026-07-06T08:40:00Z",
+      "updated_at": "2026-07-06T08:40:00Z"
+    },
+    {
+      "id": "7dc1a9e3-2fde-4411-9a7b-8ff812903710",
+      "creator_id": "7dc1a9e3-2fde-4411-9a7b-8ff81290378f",
+      "generation_id": null,
+      "primary_unit_id": "d1c1a93e-fde1-4122-a9b1-da229ee01ab4",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "주머니 속에 흰 공 3개, 검은 공 2개가 들어있다. 임의로 공을 하나씩 두 번 꺼낼 때(꺼낸 공은 다시 넣지 않음), 두 번째에 꺼낸 공이 '흰 공'일 확률은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "1/2" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "공의 종류만 고려한 단순 확률입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "2/5" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "검은 공을 선택할 확률입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "3/5" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "이전 시행 결과가 주어지지 않는 한, $n$번째 시행에서의 확률은 첫 시행과 같습니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "3/10" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "두 번 모두 흰 공을 꺼낼 확률입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "4/5" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "계산 오류입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "첫 번째와 두 번째 모두 흰 공일 확률은 $\\frac{3}{5} \\times \\frac{2}{4} = \\frac{6}{20}$, 첫 번째 검은 공이고 두 번째가 흰 공일 확률은 $\\frac{2}{5} \\times \\frac{3}{4} = \\frac{6}{20}$입니다. 두 확률을 더하면 $\\frac{12}{20} = \\frac{3}{5}$이 됩니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.3,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "수학" },
+      "search_text": "조건부확률 비복원 추출 주머니 흰공",
+      "created_at": "2026-07-06T08:45:00Z",
+      "updated_at": "2026-07-06T08:45:00Z"
+    },
+
+    // ==========================================
+    // 4. 사회 (10문항)
+    // ==========================================
+    {
+      "id": "c19b0aa9-5582-4467-bc13-88ee88e1e701",
+      "creator_id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa",
+      "generation_id": null,
+      "primary_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1b",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "대한민국 헌법에서 보장하는 기본권 중, 국가에 적극적인 청구를 행하는 '적극적·수단적 기본권'에 매칭되는 것은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "자유권" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "가장 전통적이고 역사적인 '소극적·방어적' 권리입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "평등권" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "기타 기본권 향유의 실질적 근원 토대 조건입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "청구권" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "국민이 국가에 법률상 일정한 행위를 강제 요청하는 수단적 기본권입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "참정권" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "정치적 의결에 참여하는 주권자의 정치권리입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "사회권" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "복지국가 이념에 기인한 인간다운 생존권적 적극 권리입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "청구권(청원권, 재판청구권 등)은 타 기본권 보장을 완결 짓기 위한 법적 프로세스적 수단 성향이 특징인 강한 권리입니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 2.9,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "사회" },
+      "search_text": "기본권 헌법 재판청구권 수단적 적극적",
+      "created_at": "2026-07-06T09:00:00Z",
+      "updated_at": "2026-07-06T09:00:00Z"
+    },
+    {
+      "id": "c19b0aa9-5582-4467-bc13-88ee88e1e702",
+      "creator_id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa",
+      "generation_id": null,
+      "primary_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1b",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "대공황 극복을 실마리로 탄생했으며, 복지 확충 및 공공 투자를 강화하고 국가의 시장 조율을 강조한 이념 사조는?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "상업 자본주의" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "대항해시대 유통 이익에 주안점을 두던 초기 무역 자본 시기입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "자유방임주의" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "보이지 않는 손을 맹신하고 야경국가 체제를 신봉했습니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "수정 자본주의 (케인스주의)" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "뉴딜 정책으로 표상되는 시장의 국가 조율과 유효수요 유도 이념입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "신자유주의" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "70년대 정부실패 비판으로 다시 규제완화와 세금 감면을 역설한 이론입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "중상주의" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "금·은 등 화폐 금속 축적에 눈독을 들이던 옛 체제입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "대공황을 이겨내고자 등판한 수정 자본주의(Modified Capitalism)는 케인스의 이론을 기초로 하여 현대 복지국가의 정책적 뼈대를 제공했습니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "사회" },
+      "search_text": "대공황 수정자본주의 복지 공공투자 케인스",
+      "created_at": "2026-07-06T09:05:00Z",
+      "updated_at": "2026-07-06T09:05:00Z"
+    },
+    {
+      "id": "c19b0aa9-5582-4467-bc13-88ee88e1e703",
+      "creator_id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa",
+      "generation_id": null,
+      "primary_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1b",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "인류와 생태계 상생을 목표로 하는 '지속 가능한 발전(ESSD)'의 3대 핵심 기둥은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "경제적 성장, 사회적 형평성, 환경적 보전" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "세 축의 완벽한 조율이 지속 가능한 인류 생존 시스템의 기본 전제입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "인구 증가, 우주 개척, 국방력 증대" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "자원 무단 소비 중심적 개발 지향 이념입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "자원 고갈, 기술 독점, 금융 활성화" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "생태 파괴적 폐해를 가속하는 오답 선지입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "개인주의 극대화, 시장 완전 자유, 국경 철폐" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "신자유주의적 세계화에 가깝습니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "도시 팽창, 대기업 육성, 국토 개발" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "단순 개발지상주의에 치우친 대답입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "지속 가능한 발전(ESSD)은 세 영역의 균형 속에서만 인류 문명의 안정적 유지가 가능하다는 것을 강조합니다." }]
+          }
+        ]
+      },
+      "difficulty": 1,
+      "points": 2.5,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "사회" },
+      "search_text": "지속가능한 발전 ESSD 사회적 형평성 환경보전",
+      "created_at": "2026-07-06T09:10:00Z",
+      "updated_at": "2026-07-06T09:10:00Z"
+    },
+    {
+      "id": "c19b0aa9-5582-4467-bc13-88ee88e1e704",
+      "creator_id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa",
+      "generation_id": null,
+      "primary_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1b",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "사회학의 신분/지위 분류체계 중 후천적 노력으로 선점 가능한 '성취 지위'의 바른 매칭은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "맏아들, 청소년" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "자연적, 연령적으로 자동 귀속되는 '귀속 지위'입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "국회의원, 의사" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "의지와 노력의 선행 조건으로 성취해내는 명확한 성취 지위입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "재벌가 자제, 한국인" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "태어난 배경 조건에 종속적인 귀속 성향입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "노인, 기혼자" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "노인은 생물학적 연령 변화에 따른 귀속 형태입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "왕족, 황태자" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "전통 귀족 사회의 핏줄 중심적 귀속 지위입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "노력이나 선택으로 후천 쟁취하는 성직자, 전문직, 행정가 등은 성취지위에 속합니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "사회" },
+      "search_text": "성취지위 귀속지위 사회화 신분제",
+      "created_at": "2026-07-06T09:15:00Z",
+      "updated_at": "2026-07-06T09:15:00Z"
+    },
+    {
+      "id": "c19b0aa9-5582-4467-bc13-88ee88e1e705",
+      "creator_id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa",
+      "generation_id": null,
+      "primary_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1b",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "사단(四端)을 지닌 본성을 선하다고 보았으며(성선설), 왕도 정치를 주장한 유교의 사상가는?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "맹자" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "성선설 및 인의 도덕 통치인 '왕도 정치'를 제시한 선비입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "순자" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "인성악설과 예의 질서 규범을 강조했습니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "장자" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "인위를 배격하고 자연 그대로의 순수를 옹호한 도가 계열입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "한비자" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "가혹한 형벌 법치의 실현을 중요시한 법가 계열입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "주자" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "성리학 체계를 정립한 송대 학자입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "맹자는 사람의 선한 천성을 긍정하고 측은지심 등의 마음 싹을 잘 가꿀 것을 역설했습니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.1,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "사회" },
+      "search_text": "성선설 맹자 사단 왕도정치 유교",
+      "created_at": "2026-07-06T09:20:00Z",
+      "updated_at": "2026-07-06T09:20:00Z"
+    },
+    {
+      "id": "c19b0aa9-5582-4467-bc13-88ee88e1e706",
+      "creator_id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa",
+      "generation_id": null,
+      "primary_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1b",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "대한민국의 영토와 영해 기선 수립 및 범위에 관한 내용으로 가장 사실에 부합하는 것은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "대한민국의 영토는 한반도와 그 부속도서로 명시한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "대한민국 헌법 제3조에 근거한 완전한 팩트 법안입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "서해와 남해 영해 기준은 해안선 굴곡과 상관없이 전부 통상기선을 취한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "서남해안은 외곽의 기점 섬들을 연결하는 '직선기선'을 택합니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "대한해협의 영해 범위는 이웃 나라와의 거리를 무시하고 무조건 12해리로 가른다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "대한해협은 선박의 자유 통항로 확보를 위해 예외적으로 직선기선 3해리를 채택합니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "배타적 경제수역(EEZ) 내에서는 자국 영유권이 공해 조건 없이 100% 인정된다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "EEZ는 경제적 수리 권리만 가질 뿐, 해외 타국 선박/항공의 통항 자유를 보장해야 합니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "독도는 직선기선을 사용하여 남해안 일대 영해를 전폭 확장하는 초석이다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "독도는 해안선에서 바로 기산하는 개별 통상기선(12해리)에 속합니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "한반도 전역과 딸린 모든 섬들이 대한민국 헌법상 법적 국토로 명시되어 있습니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.3,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "사회" },
+      "search_text": "헌법 제3조 영해 직선기선 대한해협 통상기선",
+      "created_at": "2026-07-06T09:25:00Z",
+      "updated_at": "2026-07-06T09:25:00Z"
+    },
+    {
+      "id": "c19b0aa9-5582-4467-bc13-88ee88e1e707",
+      "creator_id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa",
+      "generation_id": null,
+      "primary_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1b",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "18세기 후반, 영국에서 산업 혁명이 최초로 태동하게 된 요인 중 역사적 팩트에 어긋나는 오류는?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "명예혁명 성공 후 확보된 고도의 정치 안정" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "영국이 자본가 계급의 법적 보호를 정립한 배경입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "인클로저 운동 전개에 따라 도시 임금 노동자로 전락한 빈민 인구 확보" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "값싸고 풍부한 기계 가동용 노동력을 제공했습니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "영국 국토에 고루 매장된 질 좋은 석탄과 무궁무진한 식민 무역로" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "천혜의 원료 자원과 글로벌 마켓 요충지를 거머쥐었습니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "로마 교황청의 대대적 재정 후원과 가톨릭 종교 개혁 전면 유도" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "영국은 성공회를 국교화하여 교황청과 척을 졌으므로 대대적 후원은 불가능했습니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "사유 재산의 강력 보장과 근대 사금융 제도의 활성화" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "영국 은행 창설 등 초기 주식형 대규모 투자가 유리했습니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "영국은 일찍이 종교개혁으로 로마 교황청 세력으로부터 독립한 국가입니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 2학년", "subject": "사회" },
+      "search_text": "영국 산업혁명 인클로저 성공회 교황청",
+      "created_at": "2026-07-06T09:30:00Z",
+      "updated_at": "2026-07-06T09:30:00Z"
+    },
+    {
+      "id": "c19b0aa9-5582-4467-bc13-88ee88e1e708",
+      "creator_id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa",
+      "generation_id": null,
+      "primary_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1d",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "사회 조사 기법 중 '양적 연구 방법'이 갖는 전형적 패러다임은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "개개인의 깊은 사상과 정조를 이해하는 직관 통찰" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "이는 질적 연구 방법론이 표방하는 가치입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "방법론적 일원론(실증주의)을 필두로, 통계 데이터 분석을 가미한 일반 인과 법칙 규명" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "수치화, 실증화 및 가설 검증이 양적 연구의 근간 기둥입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "비구조화된 인터뷰 및 오랜 관찰기록의 수성" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "질적 연구의 원초적 자료 수집 패턴입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "연구원 본인의 주관적 해석과 심경 고백 중심 설계" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "객관성 및 주관 차단을 최우선 덕목으로 섬깁니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "소수 한정 집단에 대한 밀착 미시사 기술" }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "광범위 표본 조사를 선호하므로 소수 밀착과는 거리가 있습니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "실증주의 철학은 자연과 사회가 동일 원리(일원론)로 귀결된다는 사상 하에 통계 수학을 연계합니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.2,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "사회" },
+      "search_text": "실증주의 양적연구 질문지법 법칙발견",
+      "created_at": "2026-07-06T09:35:00Z",
+      "updated_at": "2026-07-06T09:35:00Z"
+    },
+    {
+      "id": "c19b0aa9-5582-4467-bc13-88ee88e1e709",
+      "creator_id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa",
+      "generation_id": null,
+      "primary_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1d",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "존 롤스(John Rawls)가 공표한 정의의 제 원칙에 근거한 바른 논술은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "개인의 천부적 자유는 사회 공리 가치를 위해 언제든 반환·유보되어야 한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "롤스의 평등한 자유 원칙은 최고 존엄 가치라 공리주의를 완강히 타도합니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "소유권은 정직한 쟁취 과정 아래 절대 국가가 간섭 불능한 기본 자산이다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "소유권 절대 신봉론은 노직(Nozick)의 논제 사조입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "사회의 고유 직위와 직책은 공평무사한 기회 균등 조건 아래 개방되어야 한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "롤스의 제2원칙의 하나인 '공정한 기회 균등의 원칙' 내용과 완벽히 부합합니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "우연한 차등은 부유한 대기업 부자에 먼저 최대 수혜를 주어 해결한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "사회의 가장 미약한 계층인 최소 수혜자에게 최대 혜택을 주는 시스템을 도모해야 합니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "사회의 모든 재화는 철저히 정량적으로 균등 보급되는 기계 배분법을 고수한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "기계적 하향 평준 분배가 아닌 무지의 장막 하 절차적 타협을 모색했습니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "롤스의 제1원칙은 평등한 자유의 보장이며 제2원칙은 차등원칙과 공정 기회균등으로 세분됩니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.4,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "사회" },
+      "search_text": "정의론 롤스 최소수혜자 무지의베일 기회균등",
+      "created_at": "2026-07-06T09:40:00Z",
+      "updated_at": "2026-07-06T09:40:00Z"
+    },
+    {
+      "id": "c19b0aa9-5582-4467-bc13-88ee88e1e710",
+      "creator_id": "c19b0aa9-5582-4467-bc13-88ee88e1e7fa",
+      "generation_id": null,
+      "primary_unit_id": "cb1c0aa8-33ef-4ad8-bcde-18bcf829cf1d",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "민주 정치 제도 중 '의원내각제'가 대통령제와 견주어 지니는 극명한 시스템적 특징은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "행정 수반이 법률안 거부권을 활용하여 입법부를 적극 지배한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "법률안 거부권은 철저한 분립 우선인 대통령제 하의 무기입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "분립 장벽 수호를 위해 의회 의원의 각료(장관) 발탁을 원천 불허한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "의회 의원이 상시 행정 장관을 꿰찰 수 있는 권력 융합이 특징입니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "의회는 행정부 불신임권을 전유하고 내각은 의회 해산권을 지녀 상호 동태적 견제를 이룬다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "불신임 및 의회 해산이 내각제에서만 도출되는 정밀한 수장 연계 견제 수단입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "임기가 법적으로 촘촘히 락(Lock)되어 어떠한 위기에도 여대야소 전란 안정성이 뛰어나다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "정치적 신임을 잃으면 언제든 해산되어 조기 총선을 치르기에 임기 유연성이 높습니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "국민들이 독립된 절차로 입법 의원과 총리를 이중선거로 다이렉트 투표 선출한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "국민은 의회 총선만 치르고, 과반 정당 대표가 총리를 수임하므로 이중 선거가 아닙니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "융합형 권력 설계 구도인 내각제는 입법 다수 세력과 행정 세력이 상시 운명을 함께하는 구조입니다." }]
+          }
+        ]
+      },
+      "difficulty": 3,
+      "points": 3.3,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 3학년", "subject": "사회" },
+      "search_text": "의원내각제 불신임권 의회해산권 권력융합",
+      "created_at": "2026-07-06T09:45:00Z",
+      "updated_at": "2026-07-06T09:45:00Z"
+    },
+
+    // ==========================================
+    // 5. 과학 (10문항)
+    // ==========================================
+    {
+      "id": "5f8ab91c-1e24-4f01-b667-ef99824de801",
+      "creator_id": "5f8ab91c-1e24-4f01-b667-ef99824de811",
+      "generation_id": null,
+      "primary_unit_id": "da12b3bc-ca99-4c12-a1de-da8c8bc911b0",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "통합과학 교과 중 주기율표 1족 원소인 '알칼리 금속'의 보편적 성질에 대한 설명으로 옳은 것은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "기체 형태로 상온에서 화학 안정 상태를 유지한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "상온에서 은백색 고체 금속이며, 반응성이 극히 불안정해 기름에 넣어 보관합니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "물에 투하 시 폭발 반작용과 함께 고농도 산소 가스를 발한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "물과 격렬히 반응하며 발화력이 강한 '수소 기체'를 대량 생성합니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "원자가 전자가 1개이며 반응성이 몹시 커서 산소 및 물과 상온에서 극도로 격렬히 반응한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "바깥 궤도 전자를 수월히 방출하고 일가 양이온($+1$)이 되려는 성향이 큽니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "비금속 할로젠과 화학결합 시 다량의 전자 수혈을 받아 음이온이 되기 쉽다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "전자를 주는 양이온 주체이며, 음이온이 되는 것은 상대인 할로젠($17$족)입니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "대리석 수준으로 대단히 단단하며 밀도가 커 가라앉는다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "물에 뜰 정도로 밀도가 작고, 커터칼로 쉽게 썰리는 연한 무른 금속입니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "알칼리 금속류(Li, Na, K 등)는 상온에서 반응성이 극대화되어 공기 및 수분과의 접촉을 원천 차단하기 위해 석유, 파라핀 등에 넣습니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.0,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "과학" },
+      "search_text": "알칼리금속 1족원소 원자가전자 수소기체 무른금속",
+      "created_at": "2026-07-06T10:00:00Z",
+      "updated_at": "2026-07-06T10:00:00Z"
+    },
+    {
+      "id": "5f8ab91c-1e24-4f01-b667-ef99824de802",
+      "creator_id": "5f8ab91c-1e24-4f01-b667-ef99824de811",
+      "generation_id": null,
+      "primary_unit_id": "da12b3bc-ca99-4c12-a1de-da8c8bc911b0",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "동일 고도에서 물체 A를 자유 낙하하고 물체 B를 수평 투사했다. 공기 저항이 없을 때 두 물체의 낙하 행태 기술로 올바른 것은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "최단 거리 직선 궤적을 밟는 A가 무조건 먼저 바닥을 밟는다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "낙하시간은 수평 속도와 상관없는 연직 중력 가속도로 고정됩니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "초기 속도를 받아 속도가 붙은 B가 곡선 가속하여 먼저 내린다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "수평 방향 속도성분은 연직 방향 가속도에 영향을 미치지 못합니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "두 물체 다 아래 방향으로는 완전히 동일한 중력 가속도($g$)를 받으므로 동시에 지면에 안착한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "운동 방향 분리에 의거하여 연직 방향 지배 등식($h = \\frac{1}{2}gt^2$)이 같으므로 동시 도달합니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "B의 수평 투사속도가 증대될수록 지면에 당도하는 총 소요시간이 비례 감소한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "수평 도달 비행 거리만 늘어날 뿐, 떨어지는 시간은 동일합니다." }] }
+          ]
+        },
+        {
+          "id": "c5",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "질량이 무거운 물질이 연직 중력을 2배 더 받으므로 먼저 안착한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "질량에 비례하여 관성도 비례해 커지므로 낙하 가속도는 질량에 구애받지 않고 고정됩니다." }] }
+          ]
+        }
+      ],
+      "explanation": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "지구 상의 모든 물체는 진공 상태에서 동일 가속도로 떨어지는 갈릴레이 물리 원리가 실현됩니다." }]
+          }
+        ]
+      },
+      "difficulty": 2,
+      "points": 3.2,
+      "status": "PUBLISHED",
+      "metadata": { "grade": "고등학교 1학년", "subject": "과학" },
+      "search_text": "자유낙하 수평투사 중력가속도 동시도달 갈릴레이",
+      "created_at": "2026-07-06T10:05:00Z",
+      "updated_at": "2026-07-06T10:05:00Z"
+    },
+    {
+      "id": "5f8ab91c-1e24-4f01-b667-ef99824de803",
+      "creator_id": "5f8ab91c-1e24-4f01-b667-ef99824de811",
+      "generation_id": null,
+      "primary_unit_id": "da12b3bc-ca99-4c12-a1de-da8c8bc911b0",
+      "passage_id": null,
+      "variant_group_id": null,
+      "question_type": "SINGLE_CHOICE",
+      "stem": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "자연 생태망 내부의 고유 '에너지 유입 및 전개 경로'에 대한 설명으로 옳은 것은?" }]
+          }
+        ]
+      },
+      "choices": [
+        {
+          "id": "c1",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "에너지는 탄소 가스처럼 완전 순환 구조를 띠어 외부 공급이 전혀 요원하지 않다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "에너지는 한 방향으로 흐르고 빠져나가므로, 외부 태양에너지의 지속적 주입이 필수적입니다." }] }
+          ]
+        },
+        {
+          "id": "c2",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "상위 포식 단계를 점유할수록 수급받는 전체 에너지의 총량이 우상향 증가한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "생물 대사열 등으로 상실되므로 상위 영양 단계일수록 에너지 절대량은 가파르게 소실됩니다." }] }
+          ]
+        },
+        {
+          "id": "c3",
+          "isCorrect": true,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "시원 태양의 광에너지는 엽록소 광합성 프로세스를 타고 화합물 내 화학 에너지로 치환되어 생물계로 편입된다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "식물 생산자들이 태양 에너지를 유기물 화학 결합 에너지 형태로 첫 포획하는 단계입니다." }] }
+          ]
+        },
+        {
+          "id": "c4",
+          "isCorrect": false,
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "육식 동물의 근육 열 손실 에너지는 분해 세균들이 되살려 식물에 공급한다." }] }
+          ],
+          "explanation": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "방출된 불규칙한 분자 열진동 에너지는 생물이 다시 이용 불가합니다." }] }
+          ]
+        },
+        {
