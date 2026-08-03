@@ -13,10 +13,11 @@ function connectionError(code: 'P1017' | 'P1001') {
   return err;
 }
 
-const CLAIMS = { sub: 'user-1', email: 'a@b.com' };
+const CLAIMS = { sub: 'user-1', email: 'a@b.com', tv: 0 };
 const USER_ROW = {
   id: 'user-1',
   email: 'a@b.com',
+  tokenVersion: 0,
   roles: [{ role: 'CREATOR' }],
 };
 
@@ -46,6 +47,50 @@ describe('JwtStrategy.validate', () => {
     await expect(strategy.validate(CLAIMS)).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
+  });
+
+  it('tokenVersion이 어긋난 토큰(로그아웃 이후 발급분)은 401', async () => {
+    const strategy = makeStrategy({
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ ...USER_ROW, tokenVersion: 3 }),
+      } as any,
+    });
+
+    await expect(strategy.validate({ ...CLAIMS, tv: 2 })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('tokenVersion이 일치하면 통과한다', async () => {
+    const strategy = makeStrategy({
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ ...USER_ROW, tokenVersion: 3 }),
+      } as any,
+    });
+
+    await expect(strategy.validate({ ...CLAIMS, tv: 3 })).resolves.toMatchObject({ id: 'user-1' });
+  });
+
+  it('tv 클레임이 없는 구버전 토큰은 tokenVersion 0으로 취급한다', async () => {
+    const strategy = makeStrategy({
+      user: { findUnique: jest.fn().mockResolvedValue(USER_ROW) } as any,
+    });
+
+    await expect(
+      strategy.validate({ sub: 'user-1', email: 'a@b.com' }),
+    ).resolves.toMatchObject({ id: 'user-1' });
+  });
+
+  it('구버전 토큰도 한 번 로그아웃한 계정에서는 거부된다', async () => {
+    const strategy = makeStrategy({
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ ...USER_ROW, tokenVersion: 1 }),
+      } as any,
+    });
+
+    await expect(
+      strategy.validate({ sub: 'user-1', email: 'a@b.com' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('커넥션 끊김(P1017)은 재연결 후 재시도해 성공하면 정상 반환', async () => {

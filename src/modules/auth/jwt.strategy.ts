@@ -10,17 +10,24 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { CurrentUserPayload } from './current-user.interface';
+import { requireJwtSecret } from './jwt-secret';
 
 /** JWT에 담기는 클레임(발급 시 sub=users.id). */
 interface JwtClaims {
   sub: string;
   email: string;
+  /**
+   * 발급 시점의 users.token_version.
+   * 이 클레임이 없는 토큰 = 이 기능 도입 이전에 발급된 것 → 0으로 본다.
+   */
+  tv?: number;
 }
 
 /** validate에서 조회하는 사용자 최소 형태(재시도 헬퍼와 공유). */
 const USER_SELECT = {
   id: true,
   email: true,
+  tokenVersion: true,
   roles: { select: { role: true } },
 } as const;
 
@@ -35,7 +42,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('JWT_SECRET') ?? 'change-me-in-production',
+      // fallback 없음 — 발급(auth.module)과 검증(여기)이 같은 헬퍼를 써야
+      // 한쪽만 fallback으로 새는 일이 없다. 상세는 requireJwtSecret 주석 참고.
+      secretOrKey: requireJwtSecret(config),
     });
   }
 
@@ -53,6 +62,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(claims: JwtClaims): Promise<CurrentUserPayload> {
     const user = await this.findUser(claims.sub);
     if (!user) throw new UnauthorizedException('유효하지 않은 토큰입니다.');
+
+    // 서버측 무효화. 로그아웃(전체 기기)·비밀번호 변경이 users.token_version을 올리면
+    // 그 전에 발급된 토큰은 만료 전이라도 여기서 거부된다.
+    // JWT는 원래 취소가 안 되므로, 유출 토큰을 즉시 끊을 유일한 수단이다.
+    if ((claims.tv ?? 0) !== user.tokenVersion) {
+      throw new UnauthorizedException('만료된 세션입니다. 다시 로그인해주세요.');
+    }
 
     return {
       id: user.id,

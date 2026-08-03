@@ -193,8 +193,12 @@ export interface ChoiceDistributionItem {
   index: number;
   /** 선택 횟수 */
   count: number;
-  /** 정답 여부 */
-  isCorrect: boolean;
+  /**
+   * 정답 여부. 서버가 노출 자격을 판정해 채운다 — 비로그인이거나, 이 문항을 품은
+   * 진행 중 세션이 있으면 `null`이다(응시 중 정답 조회 우회 차단).
+   * `null`을 `false`로 접어 읽지 마라 — "오답"으로 표시하면 소거법으로 정답이 역산된다.
+   */
+  isCorrect: boolean | null;
 }
 
 export interface QuestionStats {

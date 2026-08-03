@@ -8,11 +8,13 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
 import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
+import { OptionalJwtAuthGuard } from '@/modules/auth/optional-jwt-auth.guard';
 import { QuestionsService } from './questions.service';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
@@ -40,9 +42,18 @@ export class QuestionsController {
 
   @Get(':id/stats')
   @Public()
-  @ApiOperation({ summary: '문항 통계 — 선지별 분포 / 정답률 / 평균 풀이시간 (인증 불필요)' })
-  stats(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getStats(id);
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: '문항 통계 — 선지별 분포 / 정답률 / 평균 풀이시간 (인증 불필요)',
+    description:
+      '분포·정답률은 누구나 볼 수 있다. 선지의 isCorrect는 로그인했고 해당 문항을 품은 ' +
+      '진행 중 세션이 없을 때만 채워지며, 그 밖에는 null이다(응시 중 정답 조회 우회 차단).',
+  })
+  stats(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload | null,
+  ) {
+    return this.service.getStats(id, user?.id ?? null);
   }
 
   @Post(':id/choices/regenerate')

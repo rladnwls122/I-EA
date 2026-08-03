@@ -123,6 +123,19 @@ export function fetchMe() {
   return apiFetch<MeProfile>('/auth/me');
 }
 
+/**
+ * 서버측 로그아웃 — 발급된 토큰을 전부 무효화한다.
+ *
+ * localStorage에서 토큰을 지우는 것만으로는 그 토큰이 여전히 유효하다(JWT는
+ * 만료 전까지 서버가 받아준다). 공용 PC나 유출 상황에서 실제로 끊으려면
+ * 서버가 token_version을 올려줘야 한다.
+ */
+export function logoutAll() {
+  return apiFetch<{ revoked: boolean; tokenVersion: number }>('/auth/logout-all', {
+    method: 'POST',
+  });
+}
+
 // ─── 과목 ───────────────────────────────────────────────────────────
 
 /** 전체 과목 목록 조회 */

@@ -1,0 +1,106 @@
+name: CI
+
+# 보안 회귀를 사람이 눈으로 잡지 않도록 자동화한다.
+# 예전에는 .github 자체가 없어서 lint·test·의존성 감사가 전부 수동이었다.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # 새로 공개된 취약점은 코드를 안 건드려도 생긴다 — 주 1회 재감사.
+  schedule:
+    - cron: '0 3 * * 1'
+
+# 같은 브랜치에 연달아 푸시하면 앞선 실행을 취소한다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: API — lint · typecheck · test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      # prisma generate는 postinstall에 걸려 있지만, 타입 검사가 생성 클라이언트에
+      # 의존하므로 실패 시 원인을 분명히 하려고 명시적으로 한 번 더 돌린다.
+      - run: npx prisma generate
+      # 에러만 막는다. `no-explicit-any`는 .eslintrc가 의도적으로 warn으로 둔 규칙이라
+      # (Json 컬럼 쓰기용 국소 캐스팅 패턴) --max-warnings 0으로 조이면 상시 레드가 된다.
+      - name: Lint
+        run: npx eslint "src/**/*.ts"
+      - name: Typecheck
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Test
+        run: npx jest --ci
+        env:
+          # db-verify / llm-verify 스펙은 DATABASE_URL이 없으면 스스로 skip 한다.
+          NODE_ENV: test
+
+  web:
+    name: Web — typecheck · build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build
+        run: npm run build
+
+  audit:
+    name: 의존성 취약점 감사
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 런타임에 실제 배포되는 의존성만 본다(--omit=dev).
+      #
+      # 차단선을 critical에 둔 이유: 현재 남은 high는 API 4건(@nestjs/core·body-parser·
+      # lodash·multer — 전부 NestJS 10→11 메이저 업그레이드로만 해결), Web 2건(next 내부
+      # postcss — Next 16 메이저 업그레이드 필요)이다. 이 상태에서 high로 막으면
+      # 첫 PR부터 상시 레드가 되고, 상시 레드인 게이트는 아무도 안 보게 되어
+      # 게이트가 없는 것보다 나쁘다. 메이저 업그레이드는 별도로 추적한다.
+      # 그 업그레이드가 끝나면 아래 --audit-level을 high로 조인다.
+      - name: API (critical 차단)
+        run: npm audit --omit=dev --audit-level=critical
+      - name: Web (critical 차단)
+        working-directory: web
+        run: npm audit --omit=dev --audit-level=critical
+
+      # high는 막지 않되 로그에는 남긴다 — 늘어나는 걸 눈으로 볼 수 있어야 한다.
+      - name: high 이하 리포트 (비차단)
+        if: always()
+        run: |
+          echo "── API ──"; npm audit --omit=dev || true
+          echo "── Web ──"; npm audit --omit=dev --prefix web || true
+
+  secrets:
+    name: 시크릿 스캔
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks가 커밋 범위를 비교하려면 히스토리가 필요하다.
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

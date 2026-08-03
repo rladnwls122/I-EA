@@ -248,7 +248,7 @@ d('실 DB 통합 검증', () => {
   }, 60_000);
 
   it('getStats: 분포 + 표본 미달 시 비율 숨김', async () => {
-    const stats = await questions.getStats(qIds[2]);
+    const stats = await questions.getStats(qIds[2], userId);
     expect(stats.totalSolved).toBe(1);
     expect(stats.correctRate).toBeNull(); // 표본 1 < 10
     expect(stats.avgTimeSpentSec).toBeNull();
