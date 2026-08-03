@@ -201,8 +201,12 @@ AI 문제은행 · 모의고사 · 오답노트 플랫폼
 - `IN_PROGRESS` 상태 조회 시:
   - 선지 `isCorrect` 숨김
   - 주관식 `correctAnswerText` 숨김
-  - 해설 숨김
+  - 해설·힌트 숨김
 - 제출(`SUBMITTED`) 후에만 정답·해설 공개
+- **경계는 세션 하나가 아니다** — 세션 응답이 `questionId`를 함께 주므로
+  `GET /questions/:id`와 `/stats`도 같은 판정으로 가린다. 안 그러면 요청 한 번에 뚫린다.
+  `/stats`는 비로그인에도 열려 있어 `isCorrect`를 `null`로 준다(`false`로 주면 소거법으로 역산됨).
+- 정답이 XP·코인 → 상점 실물 상품으로 이어지므로 표시상의 문제가 아니라 **재화 경계**다.
 
 ### 3. ProseMirror 일원화
 
@@ -327,18 +331,22 @@ POST /ai-generations
 ### Backend (Railway)
 ```bash
 npm run start:railway
-# → prisma db push && node dist/main.js
+# → prisma db push --skip-generate && node dist/main.js
 ```
 - 프로덕션 DB: `db push` (마이그레이션 아님)
-- CORS: `ALLOWED_ORIGINS` + `*.vercel.app`
+- `--accept-data-loss` 없음 → 스키마 드리프트 시 조용히 지우는 대신 **배포 실패**
+- CORS: `ALLOWED_ORIGINS` 화이트리스트 + `VERCEL_PREVIEW_PREFIX` 접두 일치 프리뷰만
 
 ### Frontend (Vercel)
 - URL: `https://i-ea.vercel.app`
 - `web/` 디렉터리 별도 배포
 
 ### 환경 변수
-- `DATABASE_URL`, `REDIS_*`, `JWT_SECRET`
-- `GEMINI_API_KEY`, AWS S3 키
+- **부팅 필수**: `DATABASE_URL`, `JWT_SECRET` (운영은 `ALLOWED_ORIGINS`도) — 없으면 기동 중단
+- 선택(없으면 기능만 degrade): `GEMINI_API_KEY`, AWS S3 키, `REDIS_*`
+
+### CI
+- PR마다 lint·typecheck·test·build + 의존성 감사 + 시크릿 스캔(gitleaks)
 
 ### 안정화 (2026-07-12)
 - TiDB 유휴 연결 401 → 503 + 재연결
@@ -480,7 +488,8 @@ npm run start:railway
 | 프론트 가이드 | `web/WEB_GUIDE.md` |
 | 로컬 테스트 | `LOCAL_TEST_GUIDE.md` |
 | DB 스키마 | `prisma/schema.prisma` |
-| API 인벤토리 | `docs/superpowers/plans/2026-07-08-qidea-api-inventory.md` |
+| API 표면 | Swagger `/api/docs` (개발 환경) · `src/modules/*/`.controller.ts |
+| 아키텍처 · 보안 | `ARCHITECTURE.md` |
 | 변경 로그 | `docs/superpowers/CHANGELOG-2026-07-12.md` |
 | UI 토큰 | `docs/superpowers/specs/2026-07-12-ui-redesign-tokens.md` |
 

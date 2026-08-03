@@ -10,7 +10,9 @@ AI 문항 출제 및 모의고사 플랫폼 **IΔEA / Q-Idea** 프로젝트입�
 - **문제집 (Workbook)**: 문항을 큐레이션하고 공유할 수 있는 문제집 기능
 - **게이미피케이션**: XP, 레벨, 스트릭, 마일스톤, 루팅 박스 등 학습 동기 부여 요소
 - **미디어 관리**: AWS S3를 활용한 이미지 업로드 및 관리
-- **사용자 인증 및 권한 관리**: JWT 기반 인증 및 역할(CREATOR, CONSUMER, ADMIN) 기반 권한 시스템
+- **사용자 인증 및 권한 관리**: JWT 기반 인증 및 역할(CREATOR, CONSUMER, ADMIN) 기반 권한 시스템. 토큰 무효화(`POST /auth/logout-all`)와 로그인 레이트리밋 포함
+- **AI 튜터 / 출제 도우미**: 정답을 노출하지 않는 풀이 튜터 채팅과 멀티턴 출제 채팅(둘 다 SSE 스트리밍)
+- **출제 형식 템플릿**: 시험별(수능·내신·공무원·토익 등) 출제 관행을 반영한 형식 템플릿
 
 ## 🏗️ 아키텍처 개요
 
@@ -26,7 +28,9 @@ AI 문항 출제 및 모의고사 플랫폼 **IΔEA / Q-Idea** 프로젝트입�
 - **LLM 연동**: Google Gemini API
 - **배포**: [Railway](https://railway.app/)
 
-NestJS는 모듈 기반 아키텍처를 채택하여 각 기능(예: `auth`, `questions`, `exam-sessions`, `ai-generation`)이 독립적인 모듈로 구성되어 있습니다. `JwtAuthGuard`를 통한 전역 인증 가드가 기본으로 적용되며, `@Public()` 데코레이터를 통해 특정 라우트만 인증을 우회할 수 있습니다.
+NestJS는 모듈 기반 아키텍처를 채택하여 각 기능(예: `auth`, `questions`, `exam-sessions`, `ai-generation`)이 독립적인 모듈로 구성되어 있습니다. `JwtAuthGuard`를 통한 전역 인증 가드가 기본으로 적용되며, `@Public()` 데코레이터를 통해 특정 라우트만 인증을 우회할 수 있습니다. 인증 가드 **앞에** 전역 레이트리밋 가드(`ThrottlerGuard`)가 놓여 있습니다 — 인증이 매 요청 DB를 조회하므로, 무차별 대입이 DB에 닿기 전에 끊기 위해서입니다.
+
+보안 설계(부팅 시 환경변수 검증, 토큰 무효화, 정답 노출 경계, 리치텍스트 화이트리스트, 보안 헤더 등)의 상세는 [`ARCHITECTURE.md` §5](ARCHITECTURE.md#5-보안-및-인증-security)를 참고하세요.
 
 ### 프론트엔드 (Frontend)
 
@@ -47,7 +51,7 @@ NestJS는 모듈 기반 아키텍처를 채택하여 각 기능(예: `auth`, `qu
 
 | 엔티티 명 | 설명 | 주요 필드 | 관계 |
 |---|---|---|---|
-| `User` | 사용자 정보 | `email`, `passwordHash`, `nickname`, `xp`, `level`, `currentStreak`, `coins` | `UserRole`, `AiGeneration`, `Passage`, `Question`, `MediaAsset`, `ExamSession`, `QuestionReview`, `QuestionComment`, `UserQuestionAnnotation`, `Workbook`, `XpHistory`, `MilestoneAchievement`, `LootBox`, `UserInventory`, `Purchase`, `CoinHistory` |
+| `User` | 사용자 정보 | `email`, `passwordHash`, `tokenVersion`(토큰 무효화 세대), `nickname`, `xp`, `level`, `currentStreak`, `coins` | `UserRole`, `AiGeneration`, `Passage`, `Question`, `MediaAsset`, `ExamSession`, `QuestionReview`, `QuestionComment`, `UserQuestionAnnotation`, `Workbook`, `XpHistory`, `MilestoneAchievement`, `LootBox`, `UserInventory`, `Purchase`, `CoinHistory` |
 | `Subject` | 과목 분류 (수능, 국어, 문학 등 3단계) | `examType`, `examCategory`, `name` | `AiGeneration`, `ExamSession`, `Question` |
 | `Question` | 문항 정보 | `creatorId`, `subjectId`, `questionType` (`객관식` / `주관식`), `stem` (ProseMirror JSON), `choices` (ProseMirror JSON), `explanation` (ProseMirror JSON), `correctAnswerText`, `difficulty`, `totalSolvedCount`, `correctSolvedCount` | `MediaAsset`, `QuestionTag`, `ExamSessionQuestion`, `QuestionReview`, `QuestionComment`, `UserQuestionAnnotation`, `WorkbookQuestion`, `QuestionChoiceStat` |
 | `Passage` | 지문 정보 | `creatorId`, `generationId`, `content` (ProseMirror JSON) | `Question`, `MediaAsset` |
@@ -213,20 +217,29 @@ graph TD
     cd ..
     ```
 
-3.  **.env 파일 설정**: 프로젝트 루트에 `.env` 파일을 생성하고 다음 환경 변수를 설정합니다. `AGENTS.md`에 언급된 주요 변수들을 포함합니다.
+3.  **.env 파일 설정**: 양식을 복사해 값을 채웁니다. 각 변수의 기본값과 필수 여부는 `.env.example`에 주석으로 정리돼 있으니 그쪽을 단일 출처로 보세요.
+    ```bash
+    cp .env.example .env
+    ```
+
+    최소 구성:
     ```env
     DATABASE_URL="mysql://user:password@localhost:3306/qidea"
-    REDIS_HOST="localhost"
+    # openssl rand -base64 48 로 생성. 없거나 예시 값이면 서버가 부팅되지 않는다.
+    JWT_SECRET="<생성한 시크릿>"
+    REDIS_HOST="127.0.0.1"
     REDIS_PORT=6379
-    REDIS_PASSWORD=
-    REDIS_TLS=false
-    JWT_SECRET="your_jwt_secret_key"
-    GEMINI_API_KEY="your_gemini_api_key"
-    GEMINI_MODEL="gemini-pro"
-    GEMINI_MAX_TOKENS=2000
-    ALLOWED_ORIGINS="http://localhost:3000,http://localhost:3001"
+    # 관리형 Redis(Aiven 등)만 "true". 로컬/Railway는 비워둔다.
+    REDIS_TLS=
+    GEMINI_API_KEY="<Google AI Studio 키>"
     PORT=3000
     ```
+
+    > **부팅 시 검증이 있습니다.** `JWT_SECRET`·`DATABASE_URL`이 비어 있거나 `JWT_SECRET`이
+    > `change-me` 같은 공개된 예시 값이면 프로세스가 뜨지 않습니다. 예전에는 값이 없으면
+    > 코드가 조용히 기본 시크릿으로 기동해 토큰 위조가 가능했기 때문에 의도적으로 막아 둔
+    > 동작입니다. `NODE_ENV=production`이면 `ALLOWED_ORIGINS`도 필수이고 `JWT_SECRET`은
+    > 32자 이상이어야 합니다.
 
 4.  **데이터베이스 및 Redis 실행 (Docker)**:
     `LOCAL_TEST_GUIDE.md`에 상세한 Docker Compose 설정이 있지만, 간략하게는 MySQL과 Redis 컨테이너를 실행해야 합니다.
@@ -241,19 +254,25 @@ graph TD
     ```bash
     npm run start:dev
     ```
-    API는 `http://localhost:3000/api`에서 제공됩니다. Swagger UI는 `http://localhost:3000/api/docs`에서 확인할 수 있습니다.
+    API는 `http://localhost:3000/api`에서 제공됩니다. Swagger UI는 `http://localhost:3000/api/docs`에서 확인할 수 있습니다(개발 환경 기본 활성 — 운영에서는 꺼져 있고 `ENABLE_SWAGGER=true`로만 켭니다).
 
 7.  **프론트엔드 개발 서버 실행**: 
     ```bash
     cd web
     npm run dev
     ```
-    프론트엔드는 `http://localhost:3001` (또는 `.env`의 `ALLOWED_ORIGINS`에 설정된 포트)에서 실행됩니다.
+    Next.js 개발 서버도 기본 포트가 **3000**이라 API와 충돌합니다. 한쪽을 바꿔서 띄우세요(`npm run dev -- -p 3001`). 프론트가 쓰는 포트는 API의 `ALLOWED_ORIGINS`에도 들어가 있어야 CORS가 통과합니다.
 
 ## 🚀 배포
 
-- **백엔드**: [Railway](https://railway.app/)를 통해 배포됩니다. `railway.json` 파일에 정의된 빌드 및 배포 스크립트(`npm run start:railway`)를 사용합니다. 프로덕션 환경에서는 `prisma db push`를 사용하여 스키마를 동기화합니다.
-- **프론트엔드**: [Vercel](https://vercel.com/)을 통해 배포됩니다. `https://i-ea.vercel.app`에서 서비스됩니다.
+- **백엔드**: [Railway](https://railway.app/)를 통해 배포됩니다. `railway.json`에 정의된 시작 스크립트(`npm run start:railway`)가 `prisma db push --skip-generate` 후 서버를 띄웁니다. **프로덕션은 마이그레이션이 아니라 `db push`로 스키마를 동기화**하므로 `schema.prisma`가 항상 권위 있는 출처입니다.
+  - `--accept-data-loss`는 의도적으로 빼 두었습니다. 스키마 드리프트로 컬럼이 날아갈 상황이면 조용히 지우는 대신 **배포가 실패**합니다.
+  - 배포 전 `ALLOWED_ORIGINS`와 32자 이상의 `JWT_SECRET`이 설정돼 있어야 합니다. 없으면 부팅되지 않습니다.
+- **프론트엔드**: [Vercel](https://vercel.com/)을 통해 배포됩니다. `https://i-ea.vercel.app`에서 서비스됩니다. 프리뷰 배포를 API가 받아주려면 `VERCEL_PREVIEW_PREFIX`에 프로젝트 접두를 넣어야 합니다(와일드카드 `*.vercel.app` 허용은 제거됨).
+
+## ✅ CI
+
+`.github/workflows/ci.yml`이 PR마다 백엔드 lint·typecheck·test, 프런트 typecheck·build, 의존성 취약점 감사(critical 차단), gitleaks 시크릿 스캔을 돌립니다. Dependabot이 주 1회 의존성 갱신 PR을 엽니다.
 
 ## 🤝 기여 가이드라인
 
@@ -265,7 +284,3 @@ graph TD
 ## 📄 라이선스
 
 UNLICENSED
-
----
-
-**Manus AI**에 의해 작성되었습니다. (2026년 7월 13일)
