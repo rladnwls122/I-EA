@@ -19,6 +19,23 @@ interface PromptCtx {
 }
 
 /**
+ * 현재 문항 하나를 교체/수정 참조용 요약으로. 선지·정답·해설까지 실어
+ * "3번 선지만 바꿔줘" 같은 요청에 AI가 기존 내용을 실제로 볼 수 있게 한다.
+ * 토큰 비대 방지 — 필드별로 문항당 길이를 자른다(발문 120, 선지 각 60, 정답 80, 해설 160).
+ */
+function formatCurrentQuestion(q: CurrentQuestionRef): string {
+  const lines = [
+    `- ${q.index}번(${q.questionType}): ${q.stem.slice(0, 120)} (교체하려면 target: "replace:${q.index}")`,
+  ];
+  if (q.choices && q.choices.length > 0) {
+    lines.push(`  선지: ${q.choices.map((c, i) => `${i + 1}) ${c.slice(0, 60)}`).join(' / ')}`);
+  }
+  if (q.answer) lines.push(`  정답: ${q.answer.slice(0, 80)}`);
+  if (q.explanation) lines.push(`  해설: ${q.explanation.slice(0, 160)}`);
+  return lines.join('\n');
+}
+
+/**
  * 출제 도우미 채팅 시스템 프롬프트.
  * - 평소엔 자연스러운 한국어 대화(되묻기·설계 제안).
  * - 문항을 낼 준비가 되면 산문 뒤에 qidea-questions 펜스 블록으로 평문 문항 배열을 방출.
@@ -28,12 +45,7 @@ export function buildAuthoringSystemPrompt(ctx: PromptCtx): string {
   const subject = [ctx.examCategory, ctx.subjectName].filter(Boolean).join(' · ') || '지정된 과목';
   const current =
     ctx.currentQuestions && ctx.currentQuestions.length > 0
-      ? ctx.currentQuestions
-          .map(
-            (q) =>
-              `- ${q.index}번(${q.questionType}): ${q.stem.slice(0, 120)} (교체하려면 target: "replace:${q.index}")`,
-          )
-          .join('\n')
+      ? ctx.currentQuestions.map(formatCurrentQuestion).join('\n')
       : '(아직 없음)';
 
   // 설정 패널 힌트 — 지정된 것만 지시문으로 넣는다.

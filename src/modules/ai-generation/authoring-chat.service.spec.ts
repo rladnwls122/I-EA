@@ -111,3 +111,35 @@ describe('AuthoringChatService 레이트 리밋', () => {
     );
   });
 });
+
+describe('AuthoringChatService 히스토리 키', () => {
+  // 레이트 리밋 키와 같은 스킴(userId 포함) — workbookId만으로 남의 대화 문맥에
+  // 이어 쓸 수 없어야 한다.
+  type HistoryAccess = {
+    loadHistory(userId: string, workbookId: string): Promise<TutorTurn[]>;
+    appendTurns(
+      userId: string,
+      workbookId: string,
+      prior: TutorTurn[],
+      userText: string,
+      modelText: string,
+    ): Promise<void>;
+  };
+
+  it('userId를 포함한 키로 읽는다', async () => {
+    const { service, redis } = makeService({});
+    await (service as unknown as HistoryAccess).loadHistory('me', 'w1');
+    expect(redis.get).toHaveBeenCalledWith('authoring:me:w1');
+  });
+
+  it('userId를 포함한 키로 쓰고 TTL 6시간을 건다', async () => {
+    const { service, redis } = makeService({});
+    await (service as unknown as HistoryAccess).appendTurns('me', 'w1', [], '질문', '답변');
+    expect(redis.set).toHaveBeenCalledWith(
+      'authoring:me:w1',
+      expect.any(String),
+      'EX',
+      21_600,
+    );
+  });
+});

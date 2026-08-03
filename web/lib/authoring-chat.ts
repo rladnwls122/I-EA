@@ -2,9 +2,10 @@
 // 백엔드 POST /ai-generations/chat 는 SSE로 산문을 스트리밍하고, 끝에
 // ```qidea-questions 펜스 블록으로 평문 문항 배열을 방출한다.
 
-// 닫는 ```가 잘려도(스트림 중단·토큰 상한) 마지막 블록을 살리도록 (?:```|$) 허용.
+// 닫는 ```가 잘려도(스트림 중단·토큰 상한) 마지막 블록을 살리도록 (```|$) 허용.
+// 3번 그룹으로 "닫혔는지"를 알 수 있다 — strip이 스트리밍 중 부분 블록을 판별하는 데 쓴다.
 // 언어 태그는 qidea-questions가 정본이지만 모델이 json/무태그로 흘리는 변형도 스캔한다.
-const BLOCK_RE = /```(qidea-questions|json)?\s*\n?([\s\S]*?)(?:```|$)/g;
+const BLOCK_RE = /```(qidea-questions|json)?\s*\n?([\s\S]*?)(```|$)/g;
 
 export interface ParsedQuestion {
   target: string; // "new" | "replace:N"
@@ -104,10 +105,59 @@ export function parseQuestionBlocks(text: string): ParsedQuestion[] {
   return out;
 }
 
-/** 펜스 블록을 제거하고 산문만 반환. */
+/**
+ * 산문에서 지울 "문항 블록"인지 판정 — parseQuestionBlocks가 실제로 소비하는
+ * 블록과 일관되게 맞춘다(정본 태그는 무조건, 무태그/json은 문항 배열일 때만).
+ * 일반 코드 예시 펜스는 산문에 남긴다.
+ */
+function isQuestionBlock(lang: string | undefined, rawBody: string, closed: boolean): boolean {
+  if (lang === 'qidea-questions') return true;
+  const body = rawBody.trim();
+  const parsed = body ? parseJsonLenient(body) : null;
+  if (Array.isArray(parsed)) {
+    // 파서(parseQuestionBlocks)가 문항으로 소비하는 무태그/json 블록과 동일 기준 —
+    // 원소가 하나라도 문항으로 정규화되면 문항 블록이다. 문자열 배열 등 코드 예시는 남는다.
+    return parsed.some((q) => normalizeQuestion(q) !== null);
+  }
+  if (!closed) {
+    // 스트리밍 중 잘린(아직 닫는 ```가 없는) 블록 — 문항 데이터가 산문에 새어 보이지
+    // 않게 미리 숨긴다(기존 숨김 동작 유지). 닫힌 뒤 문항 블록이 아니면 그때 노출된다.
+    if (!body) return true; // 막 열린 ``` — 정체 확정 전
+    if (lang === 'json') return true; // json 태그 블록은 닫힌 뒤 문항 배열 여부로만 판정
+    const firstLine = body.split('\n')[0].trim();
+    if ('qidea-questions'.startsWith(firstLine)) return true; // 언어 태그 자체가 잘린 중
+    // '['만 도착한 시점에도 숨긴다 — /^\[\s*\{/처럼 '{'까지 기다리면 그 사이 원문이
+    // 플리커로 노출된다.
+    return body.startsWith('[');
+  }
+  return false;
+}
+
+/** 문항 펜스 블록만 제거하고 산문을 반환 — 일반 코드 예시 펜스는 남긴다. */
 export function stripQuestionBlocks(text: string): string {
   BLOCK_RE.lastIndex = 0;
-  return text.replace(BLOCK_RE, '').trim();
+  return text
+    .replace(BLOCK_RE, (match, lang: string | undefined, body: string, closer: string) =>
+      isQuestionBlock(lang, body ?? '', closer === '```') ? '' : match,
+    )
+    .trim();
+}
+
+/**
+ * AI가 낸 문항이 캔버스 카드(toCard)로 만들 수 없는 이유 — 통과면 null.
+ * 캔버스의 toCard 검증과 단일 출처를 이뤄, 실패 시 사유를 채팅 스레드/토스트에
+ * 그대로 노출한다(조용히 버려지는 것 방지).
+ */
+export function questionRejectReason(q: ParsedQuestion): string | null {
+  if (q.questionType !== '객관식') return null; // 주관식은 거부 조건 없음
+  const choices = q.choices ?? [];
+  if (choices.length < 2) return `선지가 ${choices.length}개뿐이에요(최소 2개)`;
+  const c = q.correctIndex;
+  if (typeof c !== 'number') return '정답 번호(correctIndex)가 없어요';
+  if (c < 0 || c >= choices.length) {
+    return `정답 번호(${c + 1}번)가 선지 범위(1~${choices.length}번) 밖이에요`;
+  }
+  return null;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';

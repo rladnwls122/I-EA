@@ -20,7 +20,7 @@ import {
 } from "@/lib/api";
 import { useWorkbook } from "@/lib/hooks";
 import type { Tag, Question } from "@/lib/types";
-import type { ParsedQuestion } from "@/lib/authoring-chat";
+import { questionRejectReason, type ParsedQuestion } from "@/lib/authoring-chat";
 import { AuthoringChatPanel } from "./AuthoringChatPanel";
 import { AuthoringCanvasCard } from "./AuthoringCanvasCard";
 
@@ -62,17 +62,16 @@ export interface AiSettings {
  * ParsedQuestion(평문) → CanvasCard(ProseMirror 조립).
  * 객관식인데 선지가 2개 미만이거나 correctIndex가 범위를 벗어나면
  * 임의로 0번을 정답 확정하지 않고 카드 생성을 거부한다(F4).
+ * 거부 조건의 단일 출처는 questionRejectReason(사유 문자열까지 제공) — 여기와 어긋나면 안 된다.
  */
 function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
   const isObjective = q.questionType === "객관식";
   const toChoices = (list: string[]): CanvasChoice[] =>
     list.map((text) => ({ text, explanation: "", showExplanation: false }));
   if (isObjective) {
+    if (questionRejectReason(q) !== null) return null;
     const choices = q.choices ?? [];
-    const correct = q.correctIndex;
-    if (choices.length < 2 || typeof correct !== "number" || correct < 0 || correct >= choices.length) {
-      return null;
-    }
+    const correct = q.correctIndex as number; // questionRejectReason 통과 = number & 범위 내
     return {
       id,
       type: q.questionType,
@@ -340,11 +339,15 @@ export function AuthoringCanvas({
 
   // 채팅 제안 → 좌측 반영. target이 replace:N이면 그 자리 교체, 아니면 append.
   // 검증(toCard)과 부수효과(toast)는 상태 업데이터 밖에서 — StrictMode 이중 실행 중복 방지.
-  const applyQuestion = useCallback((q: ParsedQuestion) => {
-    const probe = toCard(q, "probe");
+  // 실패 시 구체적 사유를 반환한다 — 채팅 패널이 스레드에 그대로 표시해, 문항이
+  // "조용히 버려지는" 일을 막는다.
+  const applyQuestion = useCallback((q: ParsedQuestion): string | null => {
+    const reason = questionRejectReason(q);
+    const probe = reason === null ? toCard(q, "probe") : null;
     if (!probe) {
-      toast.error("선지가 부족하거나 정답 위치가 이상한 문항은 건너뛰었어요.");
-      return;
+      const detail = reason ?? "문항 형식이 올바르지 않아요";
+      toast.error(`문항을 적용하지 못했어요 — ${detail}.`);
+      return detail;
     }
     setCards((prev) => {
       const m = /^replace:(\d+)$/.exec(q.target ?? "new");
@@ -358,6 +361,7 @@ export function AuthoringCanvas({
       }
       return [...prev, { ...probe, id: `local-${Date.now()}-${prev.length}` }];
     });
+    return null;
   }, []);
 
   /* ── 카드 편집 핸들러 ── */

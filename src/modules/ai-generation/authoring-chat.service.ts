@@ -81,7 +81,7 @@ export class AuthoringChatService {
       currentQuestions: dto.currentQuestions,
       existingKeywords: await this.fetchExistingKeywords(dto.subjectId),
     });
-    const history = await this.loadHistory(dto.workbookId);
+    const history = await this.loadHistory(userId, dto.workbookId);
 
     // 4) 첫 델타를 헤더 전송 전에 당겨온다.
     const iterator = this.gemini
@@ -119,7 +119,7 @@ export class AuthoringChatService {
         return;
       }
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-      await this.appendTurns(dto.workbookId, history, dto.message, full);
+      await this.appendTurns(userId, dto.workbookId, history, dto.message, full);
     } catch (err) {
       this.logger.warn(`출제 채팅 스트림 오류: ${(err as Error).message}`);
       res.write(
@@ -183,12 +183,17 @@ export class AuthoringChatService {
     });
   }
 
-  private historyKey(workbookId: string): string {
-    return `authoring:${workbookId}`;
+  /**
+   * 히스토리 키에 userId를 포함한다 — 레이트 리밋 키와 같은 스킴. workbookId만으로는
+   * 문제집 id를 아는 타인이 남의 대화 문맥에 이어 쓸 수 있었다.
+   * (userId 없던 구 키 `authoring:${workbookId}`는 TTL 6시간이라 마이그레이션 없이 자연 소멸.)
+   */
+  private historyKey(userId: string, workbookId: string): string {
+    return `authoring:${userId}:${workbookId}`;
   }
 
-  private async loadHistory(workbookId: string): Promise<TutorTurn[]> {
-    const raw = await this.redis.get(this.historyKey(workbookId));
+  private async loadHistory(userId: string, workbookId: string): Promise<TutorTurn[]> {
+    const raw = await this.redis.get(this.historyKey(userId, workbookId));
     if (!raw) return [];
     try {
       const parsed = JSON.parse(raw) as unknown;
@@ -205,6 +210,7 @@ export class AuthoringChatService {
   }
 
   private async appendTurns(
+    userId: string,
     workbookId: string,
     prior: TutorTurn[],
     userText: string,
@@ -216,7 +222,7 @@ export class AuthoringChatService {
       { role: 'model', text: modelText },
     ]);
     await this.redis.set(
-      this.historyKey(workbookId),
+      this.historyKey(userId, workbookId),
       JSON.stringify(next),
       'EX',
       HISTORY_TTL_SEC,

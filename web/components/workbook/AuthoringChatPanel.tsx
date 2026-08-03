@@ -6,6 +6,7 @@ import {
   streamAuthoringChat,
   parseQuestionBlocks,
   stripQuestionBlocks,
+  questionRejectReason,
   type ParsedQuestion,
 } from "@/lib/authoring-chat";
 import type { CanvasCard, AiSettings } from "./AuthoringCanvas";
@@ -47,7 +48,8 @@ export function AuthoringChatPanel({
    * 있으면 이걸 그대로 쓰고, 과목 목록을 다시 불러와 임의로 고르지 않는다.
    */
   resolvedSubjectId?: string;
-  onApplyQuestion: (q: ParsedQuestion) => void;
+  /** 캔버스 반영. 실패하면 한국어 사유를 반환한다(성공 시 null) — 스레드에 표시. */
+  onApplyQuestion: (q: ParsedQuestion) => string | null;
   /** 카드 ✨AI 버튼이 넣어주는 입력창 프리필(예: "문제 2 수정: "). */
   prefill?: string | null;
   onPrefillConsumed?: () => void;
@@ -66,6 +68,10 @@ export function AuthoringChatPanel({
   ]);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // 스트리밍 중 갱신할 AI 플레이스홀더 메시지의 인덱스 — "마지막 메시지"를 덮어쓰면
+  // 스트리밍 중 다른 메시지(예: 이전 제안 적용 실패 경고)가 append됐을 때 그걸
+  // 삼켜버리므로, 전송 시점에 인덱스를 고정해 그 자리만 갱신한다.
+  const streamIdxRef = useRef(-1);
 
   // 카드 ✨AI 클릭 → 입력창에 프리필 + 포커스(커서를 끝으로).
   useEffect(() => {
@@ -95,6 +101,17 @@ export function AuthoringChatPanel({
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  /** 스트리밍 플레이스홀더(고정 인덱스) 자리만 교체 — append된 다른 메시지를 덮어쓰지 않는다. */
+  const patchStreamMsg = (msg: Msg) => {
+    setMessages((p) => {
+      const idx = streamIdxRef.current;
+      if (idx < 0 || idx >= p.length || p[idx].role !== "ai") return p;
+      const copy = [...p];
+      copy[idx] = msg;
+      return copy;
+    });
+  };
+
   const send = async () => {
     const msg = input.trim();
     if (!msg || streaming) return;
@@ -104,14 +121,34 @@ export function AuthoringChatPanel({
       return;
     }
     setInput("");
-    setMessages((p) => [...p, { role: "user", text: msg }, { role: "ai", text: "" }]);
+    setMessages((p) => {
+      // 플레이스홀더 인덱스 고정 — updater 안에서 계산해야 직전 append와 어긋나지 않는다.
+      // (StrictMode 이중 실행에도 같은 p로 같은 값이 들어가므로 안전.)
+      streamIdxRef.current = p.length + 1;
+      return [...p, { role: "user", text: msg }, { role: "ai", text: "" }];
+    });
     setStreaming(true);
 
-    const currentQuestions = cards.map((c, i) => ({
-      index: i + 1,
-      questionType: c.type,
-      stem: extractPlainText(c.stem),
-    }));
+    // 백엔드 DTO(CurrentQuestionRef) 형태대로 선지·정답·해설까지 채워 보낸다 —
+    // stem만 보내면 교체 요청 시 AI가 기존 선지/정답/해설을 못 보고 만든다.
+    // slice 상한은 DTO의 MaxLength(stem 4000, answer 2000, explanation 4000)와 맞춘다.
+    const currentQuestions = cards.map((c, i) => {
+      const explanation = extractPlainText(c.explanation).trim();
+      const answer =
+        c.type === "객관식"
+          ? c.choices[c.correct]?.text.trim() || undefined
+          : c.answerText.trim() || undefined;
+      return {
+        index: i + 1,
+        questionType: c.type,
+        stem: extractPlainText(c.stem).slice(0, 4000),
+        ...(c.type === "객관식" && c.choices.length
+          ? { choices: c.choices.map((ch) => ch.text) }
+          : {}),
+        ...(answer ? { answer: answer.slice(0, 2000) } : {}),
+        ...(explanation ? { explanation: explanation.slice(0, 4000) } : {}),
+      };
+    });
 
     // 설정 패널 → 힌트 매핑. OX는 저장 유형이 아니라 객관식 + ox 플래그.
     const questionType =
@@ -131,11 +168,7 @@ export function AuthoringChatPanel({
       },
       {
         onDelta: (_d, full) => {
-          setMessages((p) => {
-            const copy = [...p];
-            copy[copy.length - 1] = { role: "ai", text: stripQuestionBlocks(full) };
-            return copy;
-          });
+          patchStreamMsg({ role: "ai", text: stripQuestionBlocks(full) });
         },
         onDone: (full) => {
           const questions = parseQuestionBlocks(full);
@@ -143,29 +176,30 @@ export function AuthoringChatPanel({
           // 파싱된 문항이 없으면 "만들었다"는 식의 문구를 지어내지 않는다 —
           // 산문이 있으면 그대로(모델이 대화만 한 정상 케이스), 산문마저 없으면
           // 블록 파싱 실패이므로 정직하게 재시도를 안내한다.
-          const text =
+          let text =
             prose ||
             (questions.length
               ? "문항을 만들었어요. 아래에서 확인하고 적용해주세요."
               : "⚠ 문항 데이터를 읽지 못했어요. \"다시 만들어줘\"라고 요청해보세요.");
-          setMessages((p) => {
-            const copy = [...p];
-            copy[copy.length - 1] = {
-              role: "ai",
-              text,
-              questions: questions.length ? questions : undefined,
-              appliedKeys: new Set(),
-            };
-            return copy;
+          // 형식 검증에 걸릴 문항은 조용히 두지 않고 건수+사유를 미리 알린다 —
+          // 적용 버튼을 눌러야 실패를 아는 것보다 여기서 먼저 보이는 게 낫다.
+          const rejects = questions
+            .map((q, i) => ({ n: i + 1, reason: questionRejectReason(q) }))
+            .filter((r): r is { n: number; reason: string } => r.reason !== null);
+          if (rejects.length > 0) {
+            const detail = rejects.map((r) => `${r.n}번째: ${r.reason}`).join(", ");
+            text += `\n\n⚠ ${questions.length}개 중 ${rejects.length}개는 형식 문제로 적용할 수 없어요 (${detail}). "다시 만들어줘"라고 요청해보세요.`;
+          }
+          patchStreamMsg({
+            role: "ai",
+            text,
+            questions: questions.length ? questions : undefined,
+            appliedKeys: new Set(),
           });
           setStreaming(false);
         },
         onError: (m) => {
-          setMessages((p) => {
-            const copy = [...p];
-            copy[copy.length - 1] = { role: "ai", text: `⚠ ${m}` };
-            return copy;
-          });
+          patchStreamMsg({ role: "ai", text: `⚠ ${m}` });
           setStreaming(false);
         },
       },
@@ -173,7 +207,15 @@ export function AuthoringChatPanel({
   };
 
   const apply = (mi: number, qi: number, q: ParsedQuestion) => {
-    onApplyQuestion(q);
+    const reason = onApplyQuestion(q);
+    if (reason) {
+      // 조용히 버리지 않는다 — 실패 사유를 스레드에 남겨 사용자가 재요청할 수 있게.
+      setMessages((p) => [
+        ...p,
+        { role: "ai", text: `⚠ 문항을 적용하지 못했어요 — ${reason}. "다시 만들어줘"라고 요청해보세요.` },
+      ]);
+      return;
+    }
     setMessages((p) => {
       const copy = [...p];
       const applied = new Set(copy[mi].appliedKeys);
