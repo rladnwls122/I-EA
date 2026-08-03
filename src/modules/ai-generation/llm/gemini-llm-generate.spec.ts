@@ -103,6 +103,108 @@ describe('GeminiLlmService.generate', () => {
     });
   });
 
+  describe('다중지문 세트 (gap 3)', () => {
+    const multiCtx = { ...baseCtx, includePassage: true, passageCount: 2 };
+
+    /** 지문 n개 + 문항별 passageIndex 배정 응답. */
+    function multiResponse(passages: string[], passageIndexes: number[]): string {
+      return JSON.stringify({
+        passages,
+        questions: passageIndexes.map((passageIndex) => ({
+          questionType: '객관식',
+          stemText: '(가)와 (나)에 대한 이해로 가장 적절한 것은?',
+          choices: [
+            { content: '선지1', isCorrect: true },
+            { content: '선지2', isCorrect: false },
+          ],
+          passageIndex,
+          difficulty: 3,
+        })),
+      });
+    }
+
+    it('지문 개수·인덱스가 맞는 응답은 통과한다', async () => {
+      spyCall(multiResponse(['지문 가', '지문 나'], [0, 1, 1]));
+      const res = await service.generate(multiCtx);
+      expect(res.passages).toHaveLength(2);
+      expect(res.questions.map((q) => q.passageIndex)).toEqual([0, 1, 1]);
+    });
+
+    it('지문 개수가 요청과 어긋나면 예외', async () => {
+      spyCall(multiResponse(['지문 하나뿐'], [0, 0]));
+      await expect(service.generate(multiCtx)).rejects.toThrow(/지문 2개를 반환하지 않았습니다/);
+    });
+
+    it('빈 지문이 섞이면 예외', async () => {
+      spyCall(multiResponse(['지문 가', '   '], [0, 1]));
+      await expect(service.generate(multiCtx)).rejects.toThrow(/빈 지문/);
+    });
+
+    it('passageIndex가 범위를 벗어나면 예외', async () => {
+      spyCall(multiResponse(['지문 가', '지문 나'], [0, 2]));
+      await expect(service.generate(multiCtx)).rejects.toThrow(/passageIndex/);
+    });
+
+    it('passageIndex가 누락된 문항이 있으면 예외', async () => {
+      const raw = JSON.parse(multiResponse(['지문 가', '지문 나'], [0, 1]));
+      delete raw.questions[1].passageIndex;
+      spyCall(JSON.stringify(raw));
+      await expect(service.generate(multiCtx)).rejects.toThrow(/passageIndex/);
+    });
+
+    it('문항이 배정되지 않은 지문이 있으면 예외(빈 지문 방지)', async () => {
+      spyCall(multiResponse(['지문 가', '지문 나'], [0, 0]));
+      await expect(service.generate(multiCtx)).rejects.toThrow(/최소 1문항/);
+    });
+
+    it('다중지문 스키마(passages + passageIndex)가 시스템 프롬프트에 실린다', async () => {
+      const spy = spyCall(multiResponse(['지문 가', '지문 나'], [0, 1]));
+      await service.generate(multiCtx);
+      const systemPrompt = spy.mock.calls[0][0] as string;
+      expect(systemPrompt).toContain('"passages"');
+      expect(systemPrompt).toContain('passageIndex');
+      expect(systemPrompt).not.toContain('"passage":');
+      const userPrompt = spy.mock.calls[0][1] as string;
+      expect(userPrompt).toContain('지문 2개 세트');
+    });
+
+    it('단일 지문 전제의 시험별 관행보다 다중지문 지시가 우선함을 프롬프트에 명시한다', async () => {
+      const spy = spyCall(multiResponse(['지문 가', '지문 나'], [0, 1]));
+      // 수능 관행 힌트에는 "지문 세트형(지문 1개에 문항 여러 개)"가 들어 있다 — 모순 공존을 우선순위로 해소.
+      await service.generate(multiCtx);
+      const userPrompt = spy.mock.calls[0][1] as string;
+      expect(userPrompt).toContain('지문 1개에');
+      expect(userPrompt).toContain('다중지문 지시가 우선한다');
+      // 우선순위 선언이 관행 지시보다 먼저 나와야 "아래 형식 지시"라는 지칭이 성립한다.
+      expect(userPrompt.indexOf('다중지문 지시가 우선한다')).toBeLessThan(
+        userPrompt.indexOf('지문 1개에'),
+      );
+    });
+
+    it('단일/무지문 모드에서 passages 배열이 섞여 오면 거부한다 — 지문 없는 배치가 COMPLETED 되지 않게', async () => {
+      const raw = JSON.parse(response(5)) as Record<string, unknown>;
+      raw.passages = ['요청하지 않은 지문'];
+
+      // 단일 지문 모드(passageCount 1)
+      spyCall(JSON.stringify(raw));
+      await expect(
+        service.generate({ ...baseCtx, includePassage: true, passageCount: 1 }),
+      ).rejects.toThrow(/요청하지 않은 다중지문/);
+
+      // 무지문 모드(passageCount 0, 기본)
+      spyCall(JSON.stringify(raw));
+      await expect(service.generate(baseCtx)).rejects.toThrow(/요청하지 않은 다중지문/);
+    });
+
+    it('단일 지문 경로(passageCount 1)는 종전 계약 그대로다 — passages 스키마가 실리지 않는다', async () => {
+      const spy = spyCall(response(5));
+      await service.generate({ ...baseCtx, includePassage: true, passageCount: 1 });
+      const systemPrompt = spy.mock.calls[0][0] as string;
+      expect(systemPrompt).toContain('"passage":');
+      expect(systemPrompt).not.toContain('"passages"');
+    });
+  });
+
   describe('프롬프트 조립', () => {
     it('시험별 관행 선지 개수를 권고로 싣는다', async () => {
       const spy = spyCall(response(5));

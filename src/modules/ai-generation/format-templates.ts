@@ -6,8 +6,8 @@
 // 운영자 런타임 편집 요구가 생기면 그때 DB로 승격한다.
 //
 // 값의 근거는 docs/superpowers/research/2026-08-04-exam-type-expansion.md §2.
-// ⚠ 지문 2개가 필요한 형식(수능 (가)(나) 주제통합, 토익 Part 7 이중·삼중지문)은
-//   다중지문(gap 3) 미지원이라 이번 목록에서 제외 — 후속 트랙에서 추가한다.
+// 다중지문 세트(gap 3)는 passageCount 2~3으로 표현한다 — 스키마는 원래 1:N
+// (AiGeneration→Passage[], Question.passageId)이라 LLM 계약·프로세서만 확장했다.
 // =====================================================================
 
 import { QuestionKind } from '@/common/constants/question';
@@ -37,9 +37,9 @@ export interface FormatTemplate {
   examTypes: string[];
   description: string;
   structure: {
-    /** 배치당 지문 수. 다중지문(2개 이상)은 미지원이라 0/1만 허용. */
-    passageCount: 0 | 1;
-    /** 지문 하나에 묶는 문항 수 권장 범위(프롬프트 힌트로만 쓴다 — questionCount는 요청값 우선). */
+    /** 배치당 지문 수(0~3). 2 이상이면 다중지문 세트 — LLM 계약이 passages[] + passageIndex로 바뀐다. */
+    passageCount: number;
+    /** 지문 세트에 묶는 문항 수 권장 범위(프롬프트 힌트로만 쓴다 — questionCount는 요청값 우선). */
     questionsPerPassage?: [number, number];
     /** 객관식 선지 개수 기본값. 요청이 choiceCount를 명시하면 그쪽이 우선. */
     choiceCount?: number;
@@ -88,6 +88,34 @@ const FORMAT_TEMPLATES: readonly FormatTemplate[] = [
         text: '모든 선지는 지문 근거로만 참/거짓이 판별되게 쓴다 — 배경지식만으로 풀리면 안 된다.',
         requiresPassage: true,
         questionType: '객관식',
+      },
+    ],
+  },
+  {
+    id: 'csat-integrated-passages',
+    label: '수능 국어 (가)(나) 주제통합형',
+    examTypes: ['수능'],
+    description:
+      '같은 화제를 다른 관점에서 다루는 (가)(나) 두 지문을 묶어 읽는 수능 독서 주제통합형. 5지선다.',
+    structure: {
+      passageCount: 2,
+      questionsPerPassage: [4, 6],
+      choiceCount: 5,
+      answerMode: 'single',
+      questionType: '객관식',
+    },
+    promptHints: [
+      {
+        text: '(가)와 (나)는 같은 화제를 서로 다른 관점·이론·시대로 다루는 두 글로 쓴다 — 한쪽이 다른 쪽을 보완하거나 반박하는 관계가 좋다.',
+        requiresPassage: true,
+      },
+      {
+        text: '발문 패턴: "(가)와 (나)에 대한 이해로 가장 적절한 것은?", "(가)의 관점에서 (나)를 평가한 내용으로 적절한 것은?", "(가), (나)를 바탕으로 <보기>를 이해한 내용으로 적절하지 않은 것은?"',
+        requiresPassage: true,
+      },
+      {
+        text: '세트 중 1~2문항은 두 지문을 통합·비교해야만 풀리는 문항으로 만들고, 나머지는 개별 지문의 사실적 이해·추론을 묻는다.',
+        requiresPassage: true,
       },
     ],
   },
@@ -293,6 +321,62 @@ const FORMAT_TEMPLATES: readonly FormatTemplate[] = [
       { text: '세트 안에서 주제·목적 / 세부사항 / 추론 / 동의어 유형을 섞는다.', requiresPassage: true },
     ],
   },
+  {
+    id: 'toeic-part7-double',
+    label: '토익 Part 7 이중지문',
+    examTypes: ['토익'],
+    description: '서로 연계된 실무 문서 2개를 읽고 5문항을 푸는 독해 세트. 4지선다, 전부 영어.',
+    structure: {
+      passageCount: 2,
+      questionsPerPassage: [5, 5],
+      choiceCount: 4,
+      answerMode: 'single',
+      language: 'en',
+      questionType: '객관식',
+    },
+    promptHints: [
+      {
+        text: '두 문서는 같은 상황으로 연계된 실무 문서 쌍으로 쓴다(예: 행사 공지 + 문의 이메일, 광고 + 주문서, 이메일 + 답장).',
+        requiresPassage: true,
+      },
+      {
+        text: '세트 문항 중 1~2개는 두 문서의 정보를 통합해야만 풀리는 연계 추론 문항으로 만들고, 나머지는 개별 문서의 세부사항·목적을 묻는다.',
+        requiresPassage: true,
+      },
+      {
+        text: '발문 패턴: "What is indicated about ~?", "What is suggested about the order?", "Why did Ms. ~ send the e-mail?"',
+        requiresPassage: true,
+      },
+    ],
+  },
+  {
+    id: 'toeic-part7-triple',
+    label: '토익 Part 7 삼중지문',
+    examTypes: ['토익'],
+    description: '서로 연계된 실무 문서 3개를 읽고 5문항을 푸는 독해 세트. 4지선다, 전부 영어.',
+    structure: {
+      passageCount: 3,
+      questionsPerPassage: [5, 5],
+      choiceCount: 4,
+      answerMode: 'single',
+      language: 'en',
+      questionType: '객관식',
+    },
+    promptHints: [
+      {
+        text: '세 문서는 하나의 상황으로 연계된 실무 문서 묶음으로 쓴다(예: 웹페이지 안내 + 예약 확인 이메일 + 후기, 공고 + 지원서 + 답신).',
+        requiresPassage: true,
+      },
+      {
+        text: '세트 문항 중 1~2개는 두 개 이상의 문서를 통합해야만 풀리는 연계 추론 문항으로 만들고, 나머지는 개별 문서의 세부사항·목적을 묻는다.',
+        requiresPassage: true,
+      },
+      {
+        text: '발문 패턴: "What is most likely true about ~?", "According to the review, what ~?", "What is the purpose of the notice?"',
+        requiresPassage: true,
+      },
+    ],
+  },
 ];
 
 /** DTO @IsIn 검증용 안정 키 목록. */
@@ -322,6 +406,11 @@ export interface ResolvedGenerationFormat {
   choiceCount?: number;
   language?: OutputLanguage;
   includePassage: boolean;
+  /**
+   * 최종 지문 수(0~3). includePassage=false면 0, 템플릿 없이 includePassage=true면 1(종전 동작),
+   * 다중지문 템플릿이면 2~3 — LLM 계약이 passages[] + passageIndex로 바뀐다(gap 3).
+   */
+  passageCount: number;
   questionType?: QuestionKind;
   answerMode: AnswerMode;
   promptHints: string[];
@@ -338,6 +427,9 @@ export function resolveTemplateFormat(
 ): ResolvedGenerationFormat {
   const s = template?.structure;
   const includePassage = explicit.includePassage ?? (s ? s.passageCount >= 1 : false);
+  // 지문을 켰다면 지문 수는 템플릿을 따른다(템플릿 없이 켜면 1 — 종전 동작).
+  // 지문 0짜리 템플릿에 includePassage=true를 명시하면 단일 지문으로 해석한다.
+  const passageCount = includePassage ? Math.max(1, s?.passageCount ?? 1) : 0;
   const questionType = explicit.questionType ?? s?.questionType;
   const promptHints = (template?.promptHints ?? [])
     .filter((h) => !(h.requiresPassage && !includePassage))
@@ -345,8 +437,12 @@ export function resolveTemplateFormat(
     .map((h) => h.text);
   // 지문 세트 권장 문항 수는 질문 수를 강제하지 않고 힌트로만 흘린다(questionCount는 요청값).
   if (s?.questionsPerPassage && includePassage) {
+    const [lo, hi] = s.questionsPerPassage;
+    const range = lo === hi ? `${lo}개` : `${lo}~${hi}개`;
     promptHints.push(
-      `지문 하나에 문항 ${s.questionsPerPassage[0]}~${s.questionsPerPassage[1]}개를 묶는 세트 구성이 관행이다.`,
+      passageCount >= 2
+        ? `지문 ${passageCount}개 세트 전체에 문항 ${range}를 묶는 구성이 관행이다.`
+        : `지문 하나에 문항 ${range}를 묶는 세트 구성이 관행이다.`,
     );
   }
   return {
@@ -354,6 +450,7 @@ export function resolveTemplateFormat(
     // 언어 우선순위: 사용자 명시 > 템플릿(언어가 본질인 것만 지정) > 시험/대분류 추정(호출부).
     language: explicit.language ?? s?.language,
     includePassage,
+    passageCount,
     questionType,
     answerMode: s?.answerMode ?? 'single',
     promptHints,

@@ -110,14 +110,22 @@ export class GeminiLlmService {
    * 출력이 계약을 어기면 예외를 던져 프로세서가 FAILED 처리하도록 한다.
    */
   async generate(ctx: LlmGenerationContext): Promise<LlmGenerationResult> {
+    // 지문 수 — passageCount 명시가 없으면 includePassage로 0/1을 따른다(종전 동작).
+    // 2 이상이면 다중지문 세트 모드(gap 3): 스키마·프롬프트·검증이 passages[] 계약으로 바뀐다.
+    const passageCount = ctx.passageCount ?? (ctx.includePassage ? 1 : 0);
     const raw = await this.callGemini(
-      this.buildSystemPrompt(ctx.language ?? 'ko'),
+      this.buildSystemPrompt(ctx.language ?? 'ko', passageCount),
       this.buildUserPrompt(ctx),
     );
     // choiceCount를 명시한 요청만 개수를 검증한다 — 시험별 관행 권고와 ox 힌트는
     // 종전대로 프롬프트 유도까지이고 검증 대상이 아니다(멀쩡한 배치를 FAILED로 떨구지 않도록).
     // answerMode='multiple'(복수정답 템플릿, #43 gap 4)이면 "정답 정확히 1개" 강제를 "1개 이상"으로 완화한다.
-    return this.parseResult(raw, ctx.ox ? undefined : ctx.choiceCount, ctx.answerMode ?? 'single');
+    return this.parseResult(
+      raw,
+      ctx.ox ? undefined : ctx.choiceCount,
+      ctx.answerMode ?? 'single',
+      passageCount,
+    );
   }
 
   /**
@@ -510,6 +518,7 @@ export class GeminiLlmService {
     raw: string,
     expectedChoiceCount?: number,
     answerMode: AnswerMode = 'single',
+    passageCount = 0,
   ): LlmGenerationResult {
     // 코드펜스/서두 텍스트가 섞여 와도 첫 JSON 오브젝트만 안전하게 추출한다.
     const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -562,20 +571,63 @@ export class GeminiLlmService {
         }
       }
     }
+    // 단일/무지문 모드에서 다중지문 계약(passages 배열)이 섞여 오면 거부한다 —
+    // 프로세서가 passages를 무시하므로, 그대로 두면 지문 없는 문항 배치가 조용히 COMPLETED 된다.
+    if (passageCount <= 1 && Array.isArray(parsed.passages)) {
+      throw new ServiceUnavailableException(
+        '모델이 요청하지 않은 다중지문(passages)을 반환했습니다.',
+      );
+    }
+    // 다중지문 세트 모드(gap 3) — 지문 개수·문항별 인덱스·빈 지문을 검증한다.
+    // 여기서 막지 않으면 지문 없는 문항/문항 없는 지문이 조용히 저장된다.
+    if (passageCount >= 2) {
+      const passages = parsed.passages;
+      if (!Array.isArray(passages) || passages.length !== passageCount) {
+        throw new ServiceUnavailableException(
+          `모델이 지문 ${passageCount}개를 반환하지 않았습니다(받은 값: ${Array.isArray(passages) ? passages.length : 0}개).`,
+        );
+      }
+      if (passages.some((p) => typeof p !== 'string' || !p.trim())) {
+        throw new ServiceUnavailableException('모델이 빈 지문을 반환했습니다.');
+      }
+      const assigned = new Set<number>();
+      for (const q of parsed.questions) {
+        const idx = q.passageIndex;
+        if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0 || idx >= passageCount) {
+          throw new ServiceUnavailableException(
+            `모델이 지문 인덱스(passageIndex)가 잘못된 문항을 반환했습니다(받은 값: ${String(idx)}).`,
+          );
+        }
+        assigned.add(idx);
+      }
+      if (assigned.size < passageCount) {
+        throw new ServiceUnavailableException(
+          '모델이 문항이 배정되지 않은 지문을 반환했습니다 — 모든 지문에 최소 1문항이 필요합니다.',
+        );
+      }
+    }
     return parsed;
   }
 
-  private buildSystemPrompt(language: OutputLanguage = 'ko'): string {
+  private buildSystemPrompt(language: OutputLanguage = 'ko', passageCount = 0): string {
+    // 다중지문 세트(gap 3)는 passages 배열 + 문항별 passageIndex 계약으로 바뀐다.
+    // 단일 지문/무지문(passageCount <= 1)은 종전 계약(passage 단일 객체) 그대로.
+    const multiPassage = passageCount >= 2;
     return [
       '너는 한국 시험 문항 출제 전문가다. 요청에 맞는 문항을 생성하고,',
       '아래 JSON 스키마를 "그대로" 따르는 JSON 하나만 출력한다. 서두/설명/코드펜스 금지.',
       '',
       '{',
-      '  "passage": { "title": string(선택), "bodyText": string } | null,',
+      multiPassage
+        ? `  "passages": [ string, ... ] (지문 평문 정확히 ${passageCount}개 — 배열 순서가 지문 번호다),`
+        : '  "passage": { "title": string(선택), "bodyText": string } | null,',
       '  "questions": [',
       '    {',
       '      "questionType": "객관식"|"주관식",',
       '      "stemText": string,',
+      ...(multiPassage
+        ? [`      "passageIndex": 0~${passageCount - 1} (이 문항의 근거 지문 인덱스),`]
+        : []),
       '      "choices": [ { "content": string, "isCorrect": boolean, "explanation": string(선택) } ](객관식 전용),',
       '      "answerText": string(주관식 단답 정답, 선택),',
       '      "explanationText": string(선택),',
@@ -586,6 +638,11 @@ export class GeminiLlmService {
       '}',
       '',
       '규칙:',
+      ...(multiPassage
+        ? [
+            '- 모든 문항에 passageIndex를 지정하고, 모든 지문(passages의 각 인덱스)에 최소 1문항을 배정한다.',
+          ]
+        : []),
       '- 객관식은 choices를 제공하고 isCorrect:true가 1개 이상(단일정답이면 정확히 1개).',
       '- 주관식 단답형은 answerText에 정답을 넣는다(자동채점 대상).',
       '- 주관식 서술형은 answerText 없이 explanationText에 모범답안을 서술한다.',
@@ -678,14 +735,25 @@ export class GeminiLlmService {
   }
 
   private buildUserPrompt(ctx: LlmGenerationContext): string {
+    const passageCount = ctx.passageCount ?? (ctx.includePassage ? 1 : 0);
     const lines = [
       `시험: ${ctx.examType ?? '(미지정)'}`,
       `대분류: ${ctx.examCategory ?? '(미지정)'}`,
       `소분류: ${ctx.subjectName ?? '(미지정)'}`,
       `난이도: ${ctx.difficulty} (1 쉬움 ~ 5 어려움)`,
       `문항 수: ${ctx.questionCount}`,
-      `지문 포함: ${ctx.includePassage ? '예' : '아니오'}`,
+      passageCount >= 2
+        ? `지문 포함: 예 — 서로 연계된 지문 ${passageCount}개 세트`
+        : `지문 포함: ${passageCount === 1 ? '예' : '아니오'}`,
     ];
+    if (passageCount >= 2) {
+      lines.push(
+        `다중지문 세트: passages에 지문을 정확히 ${passageCount}개 쓰고, 각 문항의 passageIndex(0부터)에 근거 지문을 지정한다. 모든 지문에 최소 1문항을 배정한다.`,
+        // 시험별 관행(examFormatHints)에는 "지문 1개에 문항 여러 개" 같은 단일 지문 전제가
+        // 섞여 있다 — 문자열 필터링은 취약하므로, 우선순위를 명시해 모순을 해소한다.
+        '아래 형식 지시 중 "지문 1개" 전제의 관행과 어긋나는 부분은 이 다중지문 지시가 우선한다.',
+      );
+    }
     if (ctx.questionType) lines.push(`선호 유형: ${ctx.questionType}`);
     // 선지 개수 — 명시값이 있으면 강제, 없으면 시험별 관행(5지/4지)을 권고로만 흘린다(#36 gap 1).
     // ox는 2지선다를 따로 지시하므로 여기서 겹쳐 말하지 않는다.

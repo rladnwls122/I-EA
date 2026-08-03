@@ -73,6 +73,8 @@ export class AiGenerationProcessor extends WorkerHost {
       difficulty: Number(params.difficulty ?? 3),
       questionCount: Number(params.questionCount ?? 1),
       includePassage: format.includePassage,
+      // 지문 수(0~3). 2 이상이면 다중지문 세트 모드(gap 3) — LLM 계약이 passages[]로 바뀐다.
+      passageCount: format.passageCount,
       questionType: format.questionType,
       ox: Boolean(params.ox ?? false),
       // 템플릿·요청 어느 쪽에도 없으면 undefined — 시험별 관행은 프롬프트 지시로만 유도하고
@@ -95,9 +97,25 @@ export class AiGenerationProcessor extends WorkerHost {
       const result = await this.llm.generate(ctx);
 
       await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        let passageId: string | null = null;
+        // 다중지문 세트(gap 3): passages[]를 각각 Passage 행으로 만들고(스키마는 원래 1:N)
+        // 문항이 passageIndex로 자기 지문을 문다. 단일 지문은 종전 경로 그대로.
+        const multiPassageIds: string[] = [];
+        let singlePassageId: string | null = null;
 
-        if (ctx.includePassage && result.passage?.bodyText) {
+        if ((ctx.passageCount ?? 0) >= 2 && result.passages?.length) {
+          for (const bodyText of result.passages) {
+            const passage = await tx.passage.create({
+              data: {
+                creatorId: generation.creatorId,
+                generationId: generation.id,
+                content: buildRichDoc(bodyText) as JsonWritable,
+                status: 'DRAFT',
+              },
+              select: { id: true },
+            });
+            multiPassageIds.push(passage.id);
+          }
+        } else if (ctx.includePassage && result.passage?.bodyText) {
           const passage = await tx.passage.create({
             data: {
               creatorId: generation.creatorId,
@@ -107,13 +125,20 @@ export class AiGenerationProcessor extends WorkerHost {
             },
             select: { id: true },
           });
-          passageId = passage.id;
+          singlePassageId = passage.id;
         }
 
         // 이 생성 배치 안에서 같은 키워드가 여러 문항에 걸치면 한 번만 만들어 재사용한다.
         const tagIdByName = new Map<string, string>();
 
         for (const q of result.questions) {
+          // 다중지문이면 문항별 근거 지문(passageIndex — 파서가 범위를 검증했다), 아니면 단일 지문.
+          const passageId = multiPassageIds.length
+            ? (multiPassageIds[q.passageIndex ?? 0] ?? null)
+            : singlePassageId;
+          const passageBody = multiPassageIds.length
+            ? result.passages?.[q.passageIndex ?? 0]
+            : result.passage?.bodyText;
           const kind = this.normalizeType(q.questionType);
           const choices = this.buildChoices(q, kind);
           const tagIds = await this.resolveKeywordTagIds(tx, tagIdByName, q.keywords ?? []);
@@ -142,7 +167,7 @@ export class AiGenerationProcessor extends WorkerHost {
               ...(tagIds.length ? { questionTags: { create: tagIds.map((tagId) => ({ tagId })) } } : {}),
               difficulty: this.clampDifficulty(q.difficulty ?? ctx.difficulty),
               status: 'DRAFT',
-              searchText: this.buildSearchText(q, result.passage?.bodyText),
+              searchText: this.buildSearchText(q, passageBody),
             },
           });
         }

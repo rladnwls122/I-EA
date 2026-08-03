@@ -27,14 +27,25 @@ export interface LlmQuestion {
   explanationText?: string;
   /** 핵심 개념 #키워드(선택) — 오답노트 개념별 통계용. find-or-create로 태그화된다. */
   keywords?: string[];
+  /**
+   * 다중지문 모드(passageCount >= 2) 전용 — 이 문항의 근거 지문 인덱스(0부터, passages 순서).
+   * 단일 지문/무지문 모드에서는 쓰지 않는다.
+   */
+  passageIndex?: number;
   difficulty: number;
 }
 
 export interface LlmGenerationResult {
+  /** 단일 지문 모드(passageCount <= 1) 전용 — 종전 계약 그대로. */
   passage?: {
     title?: string;
     bodyText: string;
   };
+  /**
+   * 다중지문 모드(passageCount >= 2) 전용 — 지문 평문 배열(gap 3).
+   * 배열 순서가 지문 번호다((가)(나)·문서 1/2/3). 개수는 요청한 passageCount와 일치해야 한다.
+   */
+  passages?: string[];
   questions: LlmQuestion[];
 }
 
@@ -75,6 +86,12 @@ export interface LlmGenerationContext {
   difficulty: number;
   questionCount: number;
   includePassage: boolean;
+  /**
+   * 지문 수(0~3). 2 이상이면 다중지문 세트 모드(gap 3) — 응답 계약이 passages[] +
+   * 문항별 passageIndex로 바뀌고 파서가 개수·인덱스·빈 지문을 검증한다.
+   * 생략 시 includePassage로 0/1을 따른다(종전 동작).
+   */
+  passageCount?: number;
   questionType?: QuestionKind;
   /** OX(참/거짓) 2지선다 스타일 힌트. questionType 저장값은 그대로 객관식 — 별도 타입을 만들지 않는다. */
   ox?: boolean;

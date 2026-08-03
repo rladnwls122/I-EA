@@ -12,10 +12,17 @@ describe('format-templates', () => {
       expect(new Set(FORMAT_TEMPLATE_IDS).size).toBe(FORMAT_TEMPLATE_IDS.length);
     });
 
-    it('다중지문 미지원 — 모든 템플릿의 passageCount는 0 또는 1이다', () => {
+    it('passageCount는 0~3 범위다 — 2 이상은 다중지문 세트(gap 3)', () => {
       for (const t of listTemplates()) {
-        expect([0, 1]).toContain(t.structure.passageCount);
+        expect(t.structure.passageCount).toBeGreaterThanOrEqual(0);
+        expect(t.structure.passageCount).toBeLessThanOrEqual(3);
       }
+    });
+
+    it('다중지문 템플릿 3종이 등록돼 있다 — (가)(나) 주제통합·토익 이중/삼중지문', () => {
+      expect(getTemplate('csat-integrated-passages')?.structure.passageCount).toBe(2);
+      expect(getTemplate('toeic-part7-double')?.structure.passageCount).toBe(2);
+      expect(getTemplate('toeic-part7-triple')?.structure.passageCount).toBe(3);
     });
 
     it('getTemplate: 아는 id는 템플릿을, 모르는 id는 undefined를 준다', () => {
@@ -58,10 +65,15 @@ describe('format-templates', () => {
         choiceCount: undefined,
         language: undefined,
         includePassage: false,
+        passageCount: 0,
         questionType: undefined,
         answerMode: 'single',
         promptHints: [],
       });
+    });
+
+    it('템플릿 없이 includePassage=true면 지문 1개(종전 동작)', () => {
+      expect(resolveTemplateFormat(undefined, { includePassage: true }).passageCount).toBe(1);
     });
 
     it('템플릿이 기본값을 깐다 — 선지 수·언어·지문·유형·복수정답', () => {
@@ -130,6 +142,25 @@ describe('format-templates', () => {
       expect(
         resolveTemplateFormat(getTemplate('toeic-part5'), { language: 'ko' }).language,
       ).toBe('ko');
+    });
+
+    it('다중지문 템플릿은 passageCount를 그대로 해석한다(2·3)', () => {
+      expect(resolveTemplateFormat(getTemplate('csat-integrated-passages'), {}).passageCount).toBe(2);
+      expect(resolveTemplateFormat(getTemplate('toeic-part7-triple'), {}).passageCount).toBe(3);
+    });
+
+    it('다중지문 템플릿도 includePassage=false 오버라이드면 지문 0 + 지문 의존 힌트 제거', () => {
+      const r = resolveTemplateFormat(getTemplate('csat-integrated-passages'), {
+        includePassage: false,
+      });
+      expect(r.passageCount).toBe(0);
+      expect(r.includePassage).toBe(false);
+      expect(r.promptHints).toEqual([]);
+    });
+
+    it('다중지문 세트의 권장 문항 수 힌트는 세트 전체 기준으로 문구가 바뀐다', () => {
+      const r = resolveTemplateFormat(getTemplate('toeic-part7-double'), {});
+      expect(r.promptHints.join(' ')).toContain('지문 2개 세트 전체에 문항 5개');
     });
   });
 });

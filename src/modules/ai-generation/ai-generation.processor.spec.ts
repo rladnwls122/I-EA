@@ -101,22 +101,29 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
       generationId: string;
     }>;
 
-  async function setupProcess(inputParams: Record<string, unknown>) {
-    const generate = jest.fn().mockResolvedValue({
-      questions: [
-        {
-          questionType: '객관식',
-          stemText: '다음 중 옳은 것은?',
-          choices: [
-            { content: '선지1', isCorrect: true },
-            { content: '선지2', isCorrect: false },
-          ],
-          difficulty: 3,
-        },
-      ],
-    });
+  const DEFAULT_RESULT = {
+    questions: [
+      {
+        questionType: '객관식',
+        stemText: '다음 중 옳은 것은?',
+        choices: [
+          { content: '선지1', isCorrect: true },
+          { content: '선지2', isCorrect: false },
+        ],
+        difficulty: 3,
+      },
+    ],
+  };
+
+  async function setupProcess(
+    inputParams: Record<string, unknown>,
+    generateResult: unknown = DEFAULT_RESULT,
+  ) {
+    const generate = jest.fn().mockResolvedValue(generateResult);
+    let passageSeq = 0;
     const tx = {
-      passage: { create: jest.fn().mockResolvedValue({ id: 'p1' }) },
+      // 지문마다 다른 id를 돌려줘 문항-지문 연결을 검증할 수 있게 한다.
+      passage: { create: jest.fn().mockImplementation(() => ({ id: `p${++passageSeq}` })) },
       question: { create: jest.fn().mockResolvedValue({ id: 'q1' }) },
       aiGeneration: { update: jest.fn() },
       tag: { upsert: jest.fn().mockResolvedValue({ id: 't1' }) },
@@ -145,7 +152,7 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
         { provide: GeminiLlmService, useValue: { generate } },
       ],
     }).compile();
-    return { processor: module.get(AiGenerationProcessor), generate };
+    return { processor: module.get(AiGenerationProcessor), generate, tx };
   }
 
   it('템플릿 기본값이 LLM 컨텍스트에 깔린다(toeic-part5 → 4지·영어·지문 없음·단일정답)', async () => {
@@ -180,6 +187,98 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
     expect(generate).toHaveBeenCalledWith(
       expect.objectContaining({ choiceCount: 5, language: 'ko' }),
     );
+  });
+
+  it('다중지문 템플릿이면 passageCount가 LLM 컨텍스트에 실린다(toeic-part7-double → 2)', async () => {
+    const { processor, generate } = await setupProcess(
+      { prompt: '이중지문 세트', difficulty: 3, questionCount: 5, templateId: 'toeic-part7-double' },
+      {
+        passages: ['문서 1', '문서 2'],
+        questions: [
+          {
+            questionType: '객관식',
+            stemText: 'Q1',
+            choices: [
+              { content: 'a', isCorrect: true },
+              { content: 'b', isCorrect: false },
+            ],
+            passageIndex: 0,
+            difficulty: 3,
+          },
+          {
+            questionType: '객관식',
+            stemText: 'Q2',
+            choices: [
+              { content: 'a', isCorrect: true },
+              { content: 'b', isCorrect: false },
+            ],
+            passageIndex: 1,
+            difficulty: 3,
+          },
+        ],
+      },
+    );
+    await processor.process(makeJob());
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ includePassage: true, passageCount: 2 }),
+    );
+  });
+
+  it('다중지문 결과는 지문마다 Passage 행을 만들고 문항을 passageIndex대로 연결한다(gap 3)', async () => {
+    const { processor, tx } = await setupProcess(
+      { prompt: '이중지문 세트', difficulty: 3, questionCount: 3, templateId: 'toeic-part7-double' },
+      {
+        passages: ['첫 번째 문서 본문', '두 번째 문서 본문'],
+        questions: [
+          {
+            questionType: '객관식',
+            stemText: 'Q1(문서1 근거)',
+            choices: [
+              { content: 'a', isCorrect: true },
+              { content: 'b', isCorrect: false },
+            ],
+            passageIndex: 0,
+            difficulty: 3,
+          },
+          {
+            questionType: '객관식',
+            stemText: 'Q2(문서2 근거)',
+            choices: [
+              { content: 'a', isCorrect: true },
+              { content: 'b', isCorrect: false },
+            ],
+            passageIndex: 1,
+            difficulty: 3,
+          },
+          {
+            questionType: '객관식',
+            stemText: 'Q3(문서2 근거)',
+            choices: [
+              { content: 'a', isCorrect: true },
+              { content: 'b', isCorrect: false },
+            ],
+            passageIndex: 1,
+            difficulty: 3,
+          },
+        ],
+      },
+    );
+    await processor.process(makeJob());
+
+    // 지문 2개 → Passage 행 2개
+    expect(tx.passage.create).toHaveBeenCalledTimes(2);
+    // 문항이 자기 지문을 문다: Q1 → p1, Q2·Q3 → p2
+    const passageIdsOfQuestions = tx.question.create.mock.calls.map(
+      (c: [{ data: { passageId: string | null } }]) => c[0].data.passageId,
+    );
+    expect(passageIdsOfQuestions).toEqual(['p1', 'p2', 'p2']);
+    // search_text에는 각 문항의 "자기" 지문 본문이 실린다
+    const searchTexts = tx.question.create.mock.calls.map(
+      (c: [{ data: { searchText: string } }]) => c[0].data.searchText,
+    );
+    expect(searchTexts[0]).toContain('첫 번째 문서 본문');
+    expect(searchTexts[0]).not.toContain('두 번째 문서 본문');
+    expect(searchTexts[1]).toContain('두 번째 문서 본문');
   });
 
   it('레지스트리에 없는 templateId는 경고만 남기고 무템플릿으로 진행한다(FAILED 아님)', async () => {
