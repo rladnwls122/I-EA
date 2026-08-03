@@ -212,9 +212,11 @@ export class AiGenerationProcessor extends WorkerHost {
   }
 
   /**
-   * 키워드 문자열 배열 → "키워드" 카테고리 태그 ID 배열(find-or-create).
-   * cache는 이 생성 배치(트랜잭션) 안에서 같은 이름을 중복 생성하지 않게 막는다 —
-   * catalog.service.createTag의 find-or-create와 같은 이유(동시 요청 중복 방지).
+   * 키워드 문자열 배열 → "키워드" 카테고리 태그 ID 배열(upsert).
+   * cache는 이 생성 배치(트랜잭션) 안에서 같은 이름을 재조회하지 않게 막는다.
+   * tags는 (category, name)이 유니크라 upsert가 멱등하다 —
+   * find-then-create는 동시 요청에서 둘 다 조회를 미스해 한쪽이 P2002로 터진다
+   * (catalog.service.createTag도 같은 이유로 upsert를 쓴다).
    */
   private async resolveKeywordTagIds(
     tx: Prisma.TransactionClient,
@@ -228,13 +230,13 @@ export class AiGenerationProcessor extends WorkerHost {
       const key = name.toLowerCase();
       let id = cache.get(key);
       if (!id) {
-        const existing = await tx.tag.findFirst({
-          where: { name, category: KEYWORD_TAG_CATEGORY },
+        const tag = await tx.tag.upsert({
+          where: { category_name: { category: KEYWORD_TAG_CATEGORY, name } },
+          update: {},
+          create: { name, category: KEYWORD_TAG_CATEGORY },
           select: { id: true },
         });
-        id = existing
-          ? existing.id
-          : (await tx.tag.create({ data: { name, category: KEYWORD_TAG_CATEGORY } })).id;
+        id = tag.id;
         cache.set(key, id);
       }
       ids.push(id);

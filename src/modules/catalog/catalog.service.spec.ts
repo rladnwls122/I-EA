@@ -8,11 +8,16 @@ import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
 const user = (roles: UserRoleType[]): CurrentUserPayload => ({ id: 'u1', email: 'u1@test.com', roles });
 
 describe('CatalogService.createTag', () => {
+  /**
+   * tags는 (category, name) 유니크라 생성 경로가 upsert 하나다.
+   * existingTag를 주면 "이미 있는 행을 그대로 돌려주는" upsert를 흉내낸다.
+   */
   async function setup(existingTag: unknown = null) {
     const prisma = {
       tag: {
-        findFirst: jest.fn().mockResolvedValue(existingTag),
-        create: jest.fn().mockImplementation(({ data }) => ({ id: 'new-tag', ...data })),
+        upsert: jest
+          .fn()
+          .mockImplementation(({ create }) => existingTag ?? { id: 'new-tag', ...create }),
       },
     } as unknown as PrismaService;
     const module = await Test.createTestingModule({
@@ -25,22 +30,33 @@ describe('CatalogService.createTag', () => {
     const { service, prisma } = await setup();
     const result = await service.createTag({ name: '이차방정식', category: '키워드' }, user([]));
     expect(result).toMatchObject({ name: '이차방정식', category: '키워드' });
-    expect(prisma.tag.create).toHaveBeenCalled();
+    expect(prisma.tag.upsert).toHaveBeenCalled();
+  });
+
+  it('같은 (카테고리, 이름)은 복합 유니크 키로 upsert해 중복 행을 만들지 않는다', async () => {
+    const { service, prisma } = await setup();
+    await service.createTag({ name: '이차방정식', category: '키워드' }, user([]));
+    expect(prisma.tag.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { category_name: { category: '키워드', name: '이차방정식' } },
+        update: {},
+      }),
+    );
   });
 
   it('"키워드" 카테고리는 같은 이름이 이미 있으면 재생성하지 않고 재사용한다', async () => {
     const existing = { id: 'existing-tag', name: '이차방정식', category: '키워드' };
-    const { service, prisma } = await setup(existing);
+    const { service } = await setup(existing);
     const result = await service.createTag({ name: '이차방정식', category: '키워드' }, user([]));
     expect(result).toBe(existing);
-    expect(prisma.tag.create).not.toHaveBeenCalled();
   });
 
   it('큐레이션 카테고리는 role 없는 유저를 막는다', async () => {
-    const { service } = await setup();
+    const { service, prisma } = await setup();
     expect(() => service.createTag({ name: '수능', category: '출처' }, user([]))).toThrow(
       ForbiddenException,
     );
+    expect(prisma.tag.upsert).not.toHaveBeenCalled();
   });
 
   it('큐레이션 카테고리는 CREATOR가 생성할 수 있다', async () => {
@@ -50,6 +66,6 @@ describe('CatalogService.createTag', () => {
       user([UserRoleType.CREATOR]),
     );
     expect(result).toMatchObject({ name: '수능', category: '출처' });
-    expect(prisma.tag.create).toHaveBeenCalled();
+    expect(prisma.tag.upsert).toHaveBeenCalled();
   });
 });

@@ -297,6 +297,9 @@ async function clean() {
   await prisma.passage.deleteMany();
   await prisma.aiGeneration.deleteMany();
   await prisma.tag.deleteMany();
+  // subject_details는 subjects를 참조한다(relationMode="prisma"라 Prisma가 참조를 검사).
+  // 먼저 지우지 않으면 하위요소가 한 건이라도 있는 순간 subject.deleteMany()가 막힌다.
+  await prisma.subjectDetail.deleteMany();
   await prisma.subject.deleteMany();
   await prisma.milestoneAchievement.deleteMany();
   await prisma.xpHistory.deleteMany();
@@ -458,12 +461,14 @@ async function main() {
   }
   await chunkCreate(prisma.subject, subjectRows);
 
-  // --- 4. Tags (출처/난이도/유형/단원/과목, 대폭 확장) ----------------------
+  // --- 4. Tags (출처/난이도/출제기법/단원/과목, 대폭 확장) ------------------
+  // '유형'은 questionType(객관식/주관식)·하위요소(SubjectDetail)와 뜻이 겹쳐
+  // 쓰지 않는다. 풀이 스킬·문두 형식 축은 '출제기법'으로 부른다.
   console.log('🏷️  tags...');
   const TAG_CATS: Record<string, string[]> = {
     출처: ['기출', '평가원', '교육청', 'EBS', '사설', 'N제', '수능특강', '수능완성', 'LEET', '모의고사', '교과서'],
     난이도: ['최고난도', '고난도', '중상', '중간', '기본', '심화', '개념'],
-    유형: [
+    출제기법: [
       '킬러',
       '준킬러',
       '계산',

@@ -85,45 +85,45 @@ enum CoinHistoryReason {
 // 1. users
 // ---------------------------------------------------------------------
 model User {
-  id             String    @id @default(uuid()) @db.Char(36)
-  email          String    @unique @db.VarChar(255)
+  id                String    @id @default(uuid()) @db.Char(36)
+  email             String    @unique @db.VarChar(255)
   // 이메일+비밀번호 가입: Bcrypt 해시만 저장(평문 금지)
-  passwordHash   String    @map("password_hash") @db.VarChar(255)
+  passwordHash      String    @map("password_hash") @db.VarChar(255)
   // 발급된 JWT를 서버가 무효화하기 위한 세대 번호.
   // 토큰에 발급 시점의 값을 심고, 검증 때 현재 값과 다르면 거부한다.
   // 로그아웃(전체 기기)·비밀번호 변경·계정 탈취 대응에서 +1 한다.
   // JwtStrategy가 어차피 매 요청 users를 읽으므로 추가 쿼리 비용은 없다.
-  tokenVersion   Int       @default(0) @map("token_version")
-  nickname       String    @db.VarChar(100)
-  creatorBio     String?   @map("creator_bio") @db.Text
+  tokenVersion      Int       @default(0) @map("token_version")
+  nickname          String    @db.VarChar(100)
+  creatorBio        String?   @map("creator_bio") @db.Text
   // 게이미피케이션(미니멀 설계): 개인 성장 지표만 둔다. 랭킹/티어/리그 없음.
   //   xp    = 누적 경험치. 정답·복습·스트릭 등으로 적립(적립 규칙은 XP_RULES).
   //   level = xp에서 파생(levelForXp). 저장해두면 조회 시 재계산이 필요 없다.
-  xp             Int       @default(0)
-  level          Int       @default(1)
+  xp                Int       @default(0)
+  level             Int       @default(1)
   // 스트릭(일 단위 연속 학습). 콤보(세션 내 연속 정답)는 제출 시 계산하므로 필드 없음.
   //   lastActiveDate = 마지막으로 학습(채점)한 날짜. 어제면 streak+1, 갭이면 리셋.
   //   xpBoostUntil   = 스트릭 7/30일 달성 시 부여되는 XP 2배 부스터 만료 시각.
-  lastActiveDate DateTime? @map("last_active_date") @db.Date
-  currentStreak  Int       @default(0) @map("current_streak")
-  longestStreak  Int       @default(0) @map("longest_streak")
-  xpBoostUntil   DateTime? @map("xp_boost_until")
-  coins          Int       @default(0)
-  equippedTitle  String?   @map("equipped_title") @db.VarChar(60)
-  nameColor      String?   @map("name_color") @db.VarChar(20)
+  lastActiveDate    DateTime? @map("last_active_date") @db.Date
+  currentStreak     Int       @default(0) @map("current_streak")
+  longestStreak     Int       @default(0) @map("longest_streak")
+  xpBoostUntil      DateTime? @map("xp_boost_until")
+  coins             Int       @default(0)
+  equippedTitle     String?   @map("equipped_title") @db.VarChar(60)
+  nameColor         String?   @map("name_color") @db.VarChar(20)
   // 힌트 하루 무료 소진 카운트(날짜 바뀌면 리셋). D-3 게이팅용.
-  hintFreeDate   DateTime? @map("hint_free_date") @db.Date
-  hintFreeUsed   Int       @default(0) @map("hint_free_used")
+  hintFreeDate      DateTime? @map("hint_free_date") @db.Date
+  hintFreeUsed      Int       @default(0) @map("hint_free_used")
   // 저자 발행 보상 하루 캡(날짜 바뀌면 리셋). hintFreeDate/hintFreeUsed와 동일 패턴.
   authorRewardDate  DateTime? @map("author_reward_date") @db.Date
   authorRewardCount Int       @default(0) @map("author_reward_count")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   roles            UserRole[]
   aiGenerations    AiGeneration[]
   passages         Passage[]
-  questionsCreated Question[]               @relation("QuestionCreator")
+  questionsCreated Question[]                @relation("QuestionCreator")
   mediaUploaded    MediaAsset[]
   examSessions     ExamSession[]
   questionReviews  QuestionReview[]
@@ -206,6 +206,7 @@ model Subject {
   aiGenerations AiGeneration[]
   examSessions  ExamSession[]
   questions     Question[]
+  details       SubjectDetail[]
 
   @@unique([examType, examCategory, name])
   @@index([examType, examCategory, sortOrder])
@@ -213,7 +214,38 @@ model Subject {
 }
 
 // ---------------------------------------------------------------------
+// 2-1. subject_details — 4단계 분류의 최하위 "하위요소"
+//   subjects(3단 리프, 예: NCS직업기초/의사소통능력) 아래에 실전 시험의
+//   하위요소(문서이해/문서작성/경청/의사표현 ...)를 담는다.
+//   NCS 전용이 아니라 전체 시험유형에 공통 적용되는 구조다.
+//
+//   questions.subject_detail_id는 nullable — 기존 문항은 전부 null이며
+//   재분류는 별도 작업이다. 통계/필터는 null을 "미분류" 버킷으로 노출한다.
+//
+//   ⚠️ relationMode="prisma"라 DB에 FK 제약이 없다. subject_detail_id가
+//      question의 subject_id와 같은 과목에 속하는지는 DB가 검사해 주지
+//      않으므로, 값을 받는 모든 진입점에서 앱단 검증이 필수다.
+// ---------------------------------------------------------------------
+model SubjectDetail {
+  id        String  @id @default(uuid()) @db.Char(36)
+  subjectId String  @map("subject_id") @db.Char(36)
+  name      String  @db.VarChar(100) // 하위요소 (문서이해, 경청 ...)
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  subject   Subject    @relation(fields: [subjectId], references: [id])
+  questions Question[]
+
+  // 마스터 데이터 시딩의 upsert 키 겸 중복 하위요소 방지
+  @@unique([subjectId, name])
+  @@index([subjectId, sortOrder])
+  @@map("subject_details")
+}
+
+// ---------------------------------------------------------------------
 // 3. tags
+//   category 예: 출처 / 난이도 / 출제기법 / 출제유형 / 키워드
+//   ("유형"은 questionType·하위요소와 뜻이 겹쳐 쓰지 않는다)
 // ---------------------------------------------------------------------
 model Tag {
   id       String @id @default(uuid()) @db.Char(36)
@@ -223,6 +255,9 @@ model Tag {
   questionTags QuestionTag[]
   workbookTags WorkbookTag[]
 
+  // find-or-create가 동시 요청에서 같은 태그를 둘로 쪼개는 것을 막는다.
+  // 태그가 필터축으로 쓰이므로 중복 행은 조용한 필터 누락이 된다.
+  @@unique([category, name])
   @@map("tags")
 }
 
@@ -293,6 +328,9 @@ model Question {
   creatorId         String         @map("creator_id") @db.Char(36)
   generationId      String?        @map("generation_id") @db.Char(36)
   subjectId         String         @map("subject_id") @db.Char(36) // 세부과목 (NOT NULL)
+  // 하위요소 (4단계, nullable). 반드시 subjectId와 같은 과목에 속해야 하며
+  // DB FK가 없으므로 앱단에서 검증한다.
+  subjectDetailId   String?        @map("subject_detail_id") @db.Char(36)
   passageId         String?        @map("passage_id") @db.Char(36)
   // "객관식" | "주관식" (앱단 상수/DTO로 제약)
   questionType      String         @map("question_type") @db.VarChar(20)
@@ -313,12 +351,12 @@ model Question {
   hintContent String? @map("hint_content") @db.Text
 
   // --- 정답률 캐시 컬럼 ---
-  totalSolvedCount   Int @default(0) @map("total_solved_count")
-  correctSolvedCount Int @default(0) @map("correct_solved_count")
+  totalSolvedCount   Int     @default(0) @map("total_solved_count")
+  correctSolvedCount Int     @default(0) @map("correct_solved_count")
   // 누적 10솔브 1회성 저자 보너스(+20코인) 지급 여부. 임계 체크만으로는 매 풀이마다 재발동하므로 플래그로 최초 1회만.
   solveBonusAwarded  Boolean @default(false) @map("solve_bonus_awarded")
   // 인기순 정렬 성능 최적화용 누적 조회수 캐시
-  viewCount          Int @default(0) @map("view_count")
+  viewCount          Int     @default(0) @map("view_count")
 
   // --- 평균 풀이시간 캐시 (avg = total/timed, 표본 0이면 null) ---
   // exam_session_answers.time_spent_sec를 매번 평균내지 않기 위한 누적 카운터.
@@ -328,10 +366,11 @@ model Question {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  creator    User          @relation("QuestionCreator", fields: [creatorId], references: [id])
-  generation AiGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
-  subject    Subject       @relation(fields: [subjectId], references: [id])
-  passage    Passage?      @relation(fields: [passageId], references: [id], onDelete: SetNull)
+  creator    User           @relation("QuestionCreator", fields: [creatorId], references: [id])
+  generation AiGeneration?  @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  subject    Subject        @relation(fields: [subjectId], references: [id])
+  detail     SubjectDetail? @relation(fields: [subjectDetailId], references: [id], onDelete: SetNull)
+  passage    Passage?       @relation(fields: [passageId], references: [id], onDelete: SetNull)
 
   mediaAssets          MediaAsset[]
   questionTags         QuestionTag[]
@@ -345,6 +384,8 @@ model Question {
 
   @@index([status])
   @@index([subjectId, status])
+  // relationMode="prisma"에서는 FK가 암묵적으로 만들던 인덱스를 직접 선언해야 한다.
+  @@index([subjectDetailId])
   @@index([totalSolvedCount])
   @@index([viewCount])
   @@index([creatorId])
