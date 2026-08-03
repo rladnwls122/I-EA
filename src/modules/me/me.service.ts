@@ -28,6 +28,12 @@ export interface ReasonStat {
   count: number;
 }
 
+/**
+ * 오답노트 채점 이력 조회 상한(#39 B-3) — 응답 크기 폭주 방지 보험.
+ * 프론트 복습 큐 상한(100) + 통계 표본으로 충분한 값. 상한 도달 시 truncated=true로 알린다.
+ */
+export const NOTES_GRADED_LIMIT = 500;
+
 @Injectable()
 export class MeService {
   constructor(private readonly prisma: PrismaService) {}
@@ -160,14 +166,21 @@ export class MeService {
           }
         : undefined;
 
-    const graded = await this.prisma.examSessionAnswer.findMany({
+    // 1차 응시(isReview: false)만 집계한다(#39 B-1) — 복습은 정의상 틀린 문제만 다시 푸는
+    // 행위라, 섞이면 과목별 정답률이 실력과 무관하게 출렁인다. 오답 판정도 1차 응시 기준.
+    // (복습에서 또 틀린 것은 복습 상태 테이블이 별도로 추적한다.)
+    // 최신 제출 순 + 상한(#39 B-3) — 채점 시각 컬럼이 없어 세션 제출 시각을 정렬 기준으로 쓴다.
+    // 상한+1건을 조회해 초과분 존재 여부로 truncated를 판정한다(정확히 상한 건수일 때 오판정 방지).
+    const gradedRows = await this.prisma.examSessionAnswer.findMany({
       where: {
         isCorrect: { not: null },
         examSessionQuestion: {
-          examSession: { userId, status: 'SUBMITTED' },
+          examSession: { userId, status: 'SUBMITTED', isReview: false },
           ...(questionWhere ? { question: questionWhere } : {}),
         },
       },
+      orderBy: { examSessionQuestion: { examSession: { submittedAt: 'desc' } } },
+      take: NOTES_GRADED_LIMIT + 1,
       include: {
         examSessionQuestion: {
           select: {
@@ -191,6 +204,10 @@ export class MeService {
         },
       },
     });
+
+    // 상한 초과 여부 판정 후, 여분 1건은 집계에 섞이지 않게 잘라낸다.
+    const truncated = gradedRows.length > NOTES_GRADED_LIMIT;
+    const graded = truncated ? gradedRows.slice(0, NOTES_GRADED_LIMIT) : gradedRows;
 
     const subjectMap = new Map<string, WrongStat>();
     const typeMap = new Map<string, WrongStat>();
@@ -241,6 +258,19 @@ export class MeService {
         });
       }
     }
+
+    // 미채점 서술형(#39 B-2) — 제출 완료된 1차 응시 세션에서 자기채점이 아직 안 된(is_correct
+    // IS NULL) 답안 수. 리마인드용 카운트만 노출하고 복습 큐에는 넣지 않는다(채점이 상태 전이의
+    // 입력이므로, 채점 전 문항을 복습시키는 것은 복습이 아니라 채점 독촉이다).
+    const ungradedCount = await this.prisma.examSessionAnswer.count({
+      where: {
+        isCorrect: null,
+        examSessionQuestion: {
+          examSession: { userId, status: 'SUBMITTED', isReview: false },
+          ...(questionWhere ? { question: questionWhere } : {}),
+        },
+      },
+    });
 
     // 내 주석 — byReason 통계 + 오답 문항별 주석 조인.
     // 범위 필터가 있으면 그 범위에서 채점된 문항의 주석만 센다(원인 통계도 범위를 따라간다).
@@ -323,9 +353,40 @@ export class MeService {
           .sort((a, b) => b.wrong - a.wrong || b.wrongRatio - a.wrongRatio),
         // 복습 큐 현황(유저 전체 기준, 필터 무관) — due = 재노출 도래 수, byStatus = 상태별 분포.
         review: { due, byStatus },
+        // 자기채점 대기 서술형 답안 수(#39 B-2) — 범위 필터를 따라간다. 0이면 프론트에서 숨김.
+        ungradedCount,
       },
       wrongQuestions,
+      // 채점 이력이 조회 상한(NOTES_GRADED_LIMIT)에 걸려 잘렸는지(#39 B-3).
+      truncated,
     };
+  }
+
+  /**
+   * 복습 요약(#39 C) — 전역 내비 due 배지용 경량 조회. 전량 로드 없이 count 두 번만.
+   *   due: 재노출 시각이 도래한(마스터 제외) 복습 대기 문항 수 — notes()의 due 정의와 동일.
+   *   ungraded: 제출 완료된 1차 응시 세션의 자기채점 대기 서술형 답안 수 — notes()의 ungradedCount와 동일.
+   */
+  async reviewSummary(userId: string) {
+    const now = new Date();
+    const [due, ungraded] = await Promise.all([
+      // nextReviewAt <= now 조건은 null을 매칭하지 않으므로 O/MASTERED(null)는 자연 제외되지만,
+      // notes() 집계와 정의를 정확히 맞추기 위해 MASTERED 제외 조건을 명시한다.
+      this.prisma.userQuestionReviewState.count({
+        where: {
+          userId,
+          status: { not: REVIEW_STATUS.MASTERED },
+          nextReviewAt: { lte: now },
+        },
+      }),
+      this.prisma.examSessionAnswer.count({
+        where: {
+          isCorrect: null,
+          examSessionQuestion: { examSession: { userId, status: 'SUBMITTED', isReview: false } },
+        },
+      }),
+    ]);
+    return { due, ungraded };
   }
 
   /** 지갑 — 코인·XP부스터·인벤토리(보호권/힌트)·코스메틱 보유·칭호·이름색·미개봉 상자 수. */

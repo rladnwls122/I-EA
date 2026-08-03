@@ -358,8 +358,20 @@ export interface MyNotesResponse {
       due: number;
       byStatus: { O: number; TRIANGLE: number; X: number; MASTERED: number };
     };
+    /** 자기채점을 기다리는 서술형 답안 수(1차 응시 기준, 범위 필터 적용). 0이면 숨김 */
+    ungradedCount?: number;
   };
   wrongQuestions: WrongQuestionItem[];
+  /** 채점 이력이 서버 조회 상한(500)에 걸려 잘렸는지 */
+  truncated?: boolean;
+}
+
+/** GET /me/review-summary 응답 — 전역 내비 due 배지용 경량 카운트 */
+export interface ReviewSummaryResponse {
+  /** 재노출 예정일이 도래한 복습 대기 문항 수(마스터 제외) */
+  due: number;
+  /** 자기채점을 기다리는 서술형 답안 수(1차 응시 기준) */
+  ungraded: number;
 }
 
 /** GET /me/exam-sessions 응답 항목 */

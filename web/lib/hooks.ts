@@ -18,6 +18,7 @@ import {
   fetchComments,
   fetchAnnotations,
   fetchMyNotes,
+  fetchReviewSummary,
   fetchMyExamSessions,
   createQuestion,
   updateQuestion,
@@ -355,6 +356,15 @@ export function useMyNotes(
   });
 }
 
+/** 복습 요약(due 배지용) — 마운트 시 1회 조회, 폴링 없음. 비로그인이면 enabled=false로 게이트. */
+export function useReviewSummary(enabled = true) {
+  return useQuery({
+    queryKey: ['review-summary'],
+    queryFn: fetchReviewSummary,
+    enabled,
+  });
+}
+
 /** 내 시험 세션 이력 */
 export function useMyExamSessions(enabled = true) {
   return useQuery({
@@ -500,6 +510,8 @@ export function useSubmitSession() {
       queryClient.invalidateQueries({ queryKey: ['active-session'] });
       // 채점이 복습 상태(O/세모/X/마스터)를 갱신하므로 오답노트도 재조회
       queryClient.invalidateQueries({ queryKey: ['my-notes'] });
+      // 제출로 due(복습 도래)·ungraded(자기채점 대기)가 바뀌므로 내비 배지 카운트도 재조회
+      queryClient.invalidateQueries({ queryKey: ['review-summary'] });
     },
   });
 }
@@ -523,6 +535,8 @@ export function useSelfGrade() {
       queryClient.invalidateQueries({ queryKey: ['milestones'] });
       // 자기채점도 복습 상태를 갱신한다
       queryClient.invalidateQueries({ queryKey: ['my-notes'] });
+      // 자기채점으로 ungraded(대기 수)·due가 바뀌므로 내비 배지 카운트도 재조회
+      queryClient.invalidateQueries({ queryKey: ['review-summary'] });
     },
   });
 }

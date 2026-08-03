@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { BookmarkCheck, BookOpenCheck, Lightbulb, Store, User } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { useMyNotes, useWallet } from "@/lib/hooks";
+import { useReviewSummary, useWallet } from "@/lib/hooks";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -17,9 +17,10 @@ export function AppSidebar() {
   }, [pathname]);
   const { data: wallet } = useWallet(hasToken);
   const unopenedBoxCount = wallet?.unopenedBoxCount ?? 0;
-  // 복습 예정일 도래 수 — 대시보드와 같은 쿼리 키(['my-notes', undefined])라 캐시 공유.
-  const { data: notes } = useMyNotes(undefined, hasToken);
-  const reviewDue = notes?.summary?.review?.due ?? 0;
+  // 복습 예정일 도래 수 — 경량 카운트 엔드포인트(/me/review-summary)로 조회.
+  // 오답노트 전량(/me/notes)을 배지 하나 때문에 내려받지 않는다(#39 C).
+  const { data: reviewSummary } = useReviewSummary(hasToken);
+  const reviewDue = reviewSummary?.due ?? 0;
   // 항목별 알림 뱃지 수 — 0이면 숨김
   const badgeByHref: Record<string, number> = {
     "/shop": unopenedBoxCount,

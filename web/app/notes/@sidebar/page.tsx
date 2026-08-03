@@ -17,6 +17,9 @@ const VegaStatWidget = dynamic(
 /** 한 세션 최대 문항 수 — 백엔드 CreateSessionDto의 SESSION_MAX_QUESTIONS와 동일해야 한다. */
 const SESSION_MAX_QUESTIONS = 100;
 
+/** 서버 채점 이력 조회 상한 — 백엔드 me.service의 NOTES_GRADED_LIMIT와 동일해야 한다. */
+const NOTES_GRADED_LIMIT = 500;
+
 export default function NotesSidebarPage() {
   const router = useRouter();
   // 본문에서 확정한 조회 필터를 그대로 사용 — 복습 시작이 사용자가 보고 있는 범위와 일치해야 한다.
@@ -24,6 +27,10 @@ export default function NotesSidebarPage() {
   const { data: notes } = useMyNotes(applied);
   const createSession = useCreateSession();
   const review = notes?.summary?.review;
+  // 자기채점 대기 서술형(#39 B-2) — 리마인드만, 큐 편입은 하지 않는다(채점이 상태 전이의 입력).
+  const ungradedCount = notes?.summary?.ungradedCount ?? 0;
+  // 채점 이력이 서버 상한(500)에 걸려 잘렸는지(#39 B-3) — 잘린 표본이면 큐가 불완전할 수 있다.
+  const truncated = notes?.truncated ?? false;
   // 마스터(복습 졸업) 문항은 기본 제외, 토글로 포함 — 이슈 #21 결정.
   const [includeMastered, setIncludeMastered] = useState(false);
 
@@ -99,9 +106,23 @@ export default function NotesSidebarPage() {
             </span>
           )}
         </p>
+        {/* 미채점 서술형 리마인드 — 자기채점이 끝나야 복습 큐에 반영되므로 채점을 독촉만 한다. */}
+        {ungradedCount > 0 && (
+          <p className="mb-1 text-[11px] text-amber-600 dark:text-amber-400">
+            자기채점을 기다리는 서술형{" "}
+            <span className="font-mono font-semibold">{ungradedCount}</span>문항 — 풀이기록의 세션
+            결과에서 채점하면 복습에 반영됩니다.
+          </p>
+        )}
         {overflow > 0 && (
           <p className="mb-1 text-[11px] text-muted-foreground">
             한 번에 {SESSION_MAX_QUESTIONS}문항까지 — 남은 {overflow}문항은 다음 복습에서 이어집니다.
+          </p>
+        )}
+        {/* 서버 조회 상한 도달 — 통계·큐가 최근 기록 기준임을 알린다(#39 B-3). */}
+        {truncated && (
+          <p className="mb-1 text-[11px] text-muted-foreground">
+            최근 채점 {NOTES_GRADED_LIMIT}건 기준입니다. 더 오래된 기록은 집계에서 제외됐어요.
           </p>
         )}
         {review && review.byStatus.MASTERED > 0 && (
@@ -131,7 +152,10 @@ export default function NotesSidebarPage() {
           <p className="mt-2 text-[11px] text-muted-foreground">
             {(wrongQuestions?.length ?? 0) > 0
               ? "예정된 복습이 아직 없어요. 간격(✗ 1일 · △ 3일)이 지나면 다시 나옵니다."
-              : "복습할 오답이 없어요."}
+              : // 잘린 표본에서는 오답이 더 있을 수 있으므로 단정하지 않는다.
+                truncated
+                ? `최근 채점 ${NOTES_GRADED_LIMIT}건에는 복습할 오답이 없어요.`
+                : "복습할 오답이 없어요."}
           </p>
         )}
       </section>

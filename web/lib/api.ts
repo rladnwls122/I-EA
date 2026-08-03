@@ -22,6 +22,7 @@ import type {
   AuthResponse,
   MeProfile,
   MyNotesResponse,
+  ReviewSummaryResponse,
   MyExamSession,
   PaginatedResponse,
   SessionDetail,
@@ -529,6 +530,11 @@ export function fetchMyNotes(params?: {
   return apiFetch<MyNotesResponse>(
     `/me/notes${qs ? `?${qs}` : ''}`,
   );
+}
+
+/** 복습 요약 — due 배지용 경량 카운트 (전량 로드 없음) */
+export function fetchReviewSummary() {
+  return apiFetch<ReviewSummaryResponse>('/me/review-summary');
 }
 
 /** 태그 목록 (category로 선택 필터) */
