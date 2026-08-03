@@ -1,4 +1,4 @@
-import { Check, Star, Triangle, X } from "lucide-react";
+import { Check, Clock, Star, Triangle, X } from "lucide-react";
 import type { ReviewStatus } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
@@ -52,6 +52,45 @@ export function ReviewStateBadge({
     >
       <Icon size={11} strokeWidth={2.5} aria-hidden />
       {s.label}
+    </span>
+  );
+}
+
+/**
+ * 다음 복습 예정일 라벨 — "언제 다시 나오나"가 상태 뱃지만으론 안 보여 붙인다.
+ * O/마스터(nextReviewAt=null)는 재노출이 없으므로 아무것도 그리지 않는다.
+ */
+export function ReviewDueLabel({
+  nextReviewAt,
+  className,
+}: {
+  nextReviewAt?: string | null;
+  className?: string;
+}) {
+  if (!nextReviewAt) return null;
+  const due = new Date(nextReviewAt).getTime();
+  if (Number.isNaN(due)) return null;
+
+  // 달력 기준 일수 차 — "1일 후"가 23시간 뒤에도 "오늘"로 보이지 않게 자정 기준으로 센다.
+  const startOfDay = (t: number) => {
+    const d = new Date(t);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  };
+  const days = Math.round((startOfDay(due) - startOfDay(Date.now())) / 86400000);
+  const overdue = days <= 0;
+  const text = overdue ? "복습 예정" : days === 1 ? "내일 복습" : `${days}일 후 복습`;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 font-mono text-[11px] tabular-nums",
+        overdue ? "font-medium text-primary" : "text-muted-foreground",
+        className,
+      )}
+    >
+      <Clock size={11} strokeWidth={2} aria-hidden />
+      {text}
     </span>
   );
 }

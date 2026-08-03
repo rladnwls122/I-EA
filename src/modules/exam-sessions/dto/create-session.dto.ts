@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -13,6 +14,9 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { QUESTION_KINDS, QuestionKind } from '@/common/constants/question';
+
+/** 한 세션에 담을 수 있는 최대 문항 수 — 플레이리스트/필터 모드 공통 상한. */
+export const SESSION_MAX_QUESTIONS = 100;
 
 /** exam_sessions.filter_criteria에 스냅샷으로 저장되는 조립 조건(필터 모드). */
 export class SessionFilterDto {
@@ -72,19 +76,31 @@ export class CreateSessionDto {
   isReview?: boolean;
 
   @ApiPropertyOptional({
-    description: '수동 플레이리스트: 지정 문항 ID들로 세트 구성(있으면 filter/questionCount 무시)',
+    description:
+      '수동 플레이리스트: 지정 문항 ID들로 세트 구성(있으면 filter/questionCount 무시). 최대 100문항',
     type: [String],
+    maxItems: SESSION_MAX_QUESTIONS,
   })
   @IsOptional()
   @IsArray()
+  // 제출 트랜잭션이 문항 수만큼 순차 DB 왕복(정답률·풀이시간·선지분포·복습상태)을 도는 구조라
+  // 상한이 없으면 오답노트 복습처럼 수백 문항이 한 세션에 들어와 트랜잭션 타임아웃(P2028)이 난다.
+  // 필터 모드의 questionCount 상한(100)과 같은 값으로 맞춘다.
+  @ArrayMaxSize(SESSION_MAX_QUESTIONS, {
+    message: `한 세션에는 최대 ${SESSION_MAX_QUESTIONS}문항까지 담을 수 있습니다.`,
+  })
   @IsUUID('4', { each: true })
   questionIds?: string[];
 
-  @ApiPropertyOptional({ description: '출제할 문항 수(필터 모드)', minimum: 1, maximum: 100 })
+  @ApiPropertyOptional({
+    description: '출제할 문항 수(필터 모드)',
+    minimum: 1,
+    maximum: SESSION_MAX_QUESTIONS,
+  })
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(SESSION_MAX_QUESTIONS)
   questionCount?: number;
 
   @ApiPropertyOptional({ description: '문항 필터 조건(필터 모드)', type: SessionFilterDto })

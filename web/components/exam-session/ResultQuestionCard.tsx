@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { useSelfGrade } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
 import type { SessionQuestionItem } from "@/lib/types";
-import { ReviewStateBadge } from "@/components/notes/ReviewStateBadge";
+import { ReviewDueLabel, ReviewStateBadge } from "@/components/notes/ReviewStateBadge";
 
 export function ResultQuestionCard({
   item,
@@ -63,7 +63,11 @@ export function ResultQuestionCard({
           {item.snapshot.questionType}
         </Badge>
         {isReview && item.reviewState && (
-          <ReviewStateBadge status={item.reviewState.status} />
+          <>
+            <ReviewStateBadge status={item.reviewState.status} />
+            {/* 재풀이 결과로 언제 다시 나오는지(✗ 1일 · △ 3일)를 결과 화면에서 바로 보여준다. */}
+            <ReviewDueLabel nextReviewAt={item.reviewState.nextReviewAt} />
+          </>
         )}
         {isCorrect === true && (
           <span className="ml-auto flex items-center gap-1 text-xs font-medium text-correct">

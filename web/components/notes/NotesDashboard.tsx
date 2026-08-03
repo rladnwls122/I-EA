@@ -11,7 +11,7 @@ import { extractPlainText } from "@/lib/prosemirror";
 import type { ReasonStat } from "@/lib/types";
 
 import { REASON_COLORS, FALLBACK_COLORS, reasonColor } from "./reason-colors";
-import { ReviewStateBadge } from "./ReviewStateBadge";
+import { ReviewDueLabel, ReviewStateBadge } from "./ReviewStateBadge";
 
 /** 도넛 차트 — 원인별 세그먼트 + 중앙 최다 원인. SVG stroke-dasharray로 그린다. */
 function ReasonDonut({ stats }: { stats: ReasonStat[] }) {
@@ -337,6 +337,9 @@ export function NotesDashboard() {
                     <div className="mb-2.5 flex flex-wrap items-center gap-2">
                       {/* 상태가 첫 스캔 축 — 행 맨 앞 */}
                       {q.reviewState && <ReviewStateBadge status={q.reviewState.status} />}
+                      {q.reviewState && (
+                        <ReviewDueLabel nextReviewAt={q.reviewState.nextReviewAt} />
+                      )}
                       <Badge
                         variant="secondary"
                         className="font-mono text-[11px] font-medium text-muted-foreground"
