@@ -8,7 +8,13 @@ import { PrismaService } from '@/prisma/prisma.service';
 // 실제 구현을 감싼 모듈 목으로 호출 횟수만 관찰한다.
 jest.mock('bcryptjs', () => {
   const actual = jest.requireActual('bcryptjs');
-  return { ...actual, compare: jest.fn(actual.compare) };
+  return {
+    ...actual,
+    compare: jest.fn(actual.compare),
+    // 서비스의 DUMMY_HASH(hashSync, SALT_ROUNDS=12)가 병렬 테스트 부하에서 느리다.
+    // 테스트에서만 라운드를 4로 낮춘다 — compare는 실제 구현 그대로라 검증 의미(호출 여부·결과)는 유지된다.
+    hashSync: jest.fn((data: string) => actual.hashSync(data, 4)),
+  };
 });
 const compareMock = bcrypt.compare as unknown as jest.Mock;
 
@@ -38,6 +44,7 @@ describe('AuthService.login', () => {
     expect(jwt.signAsync).toHaveBeenCalledWith({ sub: 'u1', email: 'a@b.com', tv: 7 });
   });
 
+  // 실제 bcrypt 비교 4회 — 머신 부하 시 5초 기본 타임아웃을 넘길 수 있어 개별 상향
   it('없는 계정과 틀린 비밀번호가 같은 예외·같은 메시지를 낸다(계정 열거 차단)', async () => {
     const wrongPasswordRow = {
       id: 'u1',
@@ -56,7 +63,7 @@ describe('AuthService.login', () => {
     await expect(wrong()).rejects.toBeInstanceOf(UnauthorizedException);
     await expect(missing()).rejects.toThrow('이메일 또는 비밀번호가 올바르지 않습니다.');
     await expect(wrong()).rejects.toThrow('이메일 또는 비밀번호가 올바르지 않습니다.');
-  });
+  }, 15000);
 
   it('없는 계정에서도 bcrypt 비교 비용을 치른다(타이밍 차이 제거)', async () => {
     compareMock.mockClear();
@@ -67,7 +74,7 @@ describe('AuthService.login', () => {
 
     // 더미 해시와 한 번 비교했어야 한다 — 즉시 반환했다면 호출이 0이다.
     expect(compareMock).toHaveBeenCalledTimes(1);
-  });
+  }, 15000);
 });
 
 describe('AuthService.logoutAll', () => {
