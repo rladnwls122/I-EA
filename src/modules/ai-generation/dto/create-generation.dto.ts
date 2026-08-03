@@ -13,6 +13,7 @@ import {
 } from 'class-validator';
 import { QUESTION_KINDS, QuestionKind } from '@/common/constants/question';
 import { OUTPUT_LANGUAGES, OutputLanguage } from '../exam-format';
+import { FORMAT_TEMPLATE_IDS } from '../format-templates';
 
 export class CreateGenerationDto {
   @ApiProperty({ description: '생성 문제가 분류될 세부과목 ID (questions.subject_id는 NOT NULL)' })
@@ -76,4 +77,13 @@ export class CreateGenerationDto {
   @IsOptional()
   @IsIn(OUTPUT_LANGUAGES)
   language?: OutputLanguage;
+
+  @ApiPropertyOptional({
+    description:
+      '출제 형식 템플릿 ID (GET /ai-generations/templates 참조). 템플릿이 선지 개수·언어·지문 여부·유형의 기본값을 깔고, 개별 파라미터를 명시하면 항상 그쪽이 우선한다. 과목의 시험(examType)과 맞지 않는 템플릿은 400.',
+    enum: FORMAT_TEMPLATE_IDS,
+  })
+  @IsOptional()
+  @IsIn(FORMAT_TEMPLATE_IDS, { message: '알 수 없는 출제 형식 템플릿입니다.' })
+  templateId?: string;
 }

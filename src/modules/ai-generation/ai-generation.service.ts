@@ -1,10 +1,11 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { PrismaService } from '@/prisma/prisma.service';
 import { GeminiLlmService } from './llm/gemini-llm.service';
 import { CreateGenerationDto } from './dto/create-generation.dto';
-import { AI_GENERATION_JOB, AI_GENERATION_QUEUE } from './ai-generation.constants';
+import { AI_GENERATION_JOB, AI_GENERATION_QUEUE, isAudioSubject } from './ai-generation.constants';
+import { getTemplate, listTemplates } from './format-templates';
 
 @Injectable()
 export class AiGenerationService {
@@ -23,9 +24,30 @@ export class AiGenerationService {
     // subject_id가 NOT NULL이므로 세부과목 존재를 먼저 확정한다.
     const subject = await this.prisma.subject.findUnique({
       where: { id: dto.subjectId },
-      select: { id: true },
+      select: { id: true, name: true, examCategory: true, examType: true },
     });
     if (!subject) throw new NotFoundException('세부과목을 찾을 수 없습니다.');
+
+    // 듣기(오디오) 소분류는 생성 대상이 아니다 — 오디오 파이프라인이 없다(#36 gap 7).
+    if (isAudioSubject(subject)) {
+      throw new BadRequestException('듣기(오디오) 과목은 AI 생성을 지원하지 않습니다.');
+    }
+
+    // 템플릿은 시험(examType)별 관행이다 — 과목의 시험과 안 맞으면 형식이 어긋난 문항이 나온다.
+    if (dto.templateId) {
+      const template = getTemplate(dto.templateId);
+      // DTO @IsIn이 먼저 거르지만, 레지스트리와 어긋나는 경로를 방어한다.
+      if (!template) throw new BadRequestException('알 수 없는 출제 형식 템플릿입니다.');
+      if (!template.examTypes.includes(subject.examType)) {
+        throw new BadRequestException(
+          `선택한 템플릿(${template.label})은 '${subject.examType}' 시험에서 쓸 수 없습니다.`,
+        );
+      }
+      // OX는 O/X 2지선다 단일정답이 정의라 복수정답 템플릿과 구조적으로 모순된다.
+      if (dto.ox && template.structure.answerMode === 'multiple') {
+        throw new BadRequestException('OX 형식은 복수정답 템플릿과 함께 쓸 수 없습니다.');
+      }
+    }
 
     const generation = await this.prisma.aiGeneration.create({
       data: {
@@ -38,13 +60,16 @@ export class AiGenerationService {
           prompt: dto.prompt,
           difficulty: dto.difficulty,
           questionCount: dto.questionCount,
-          includePassage: dto.includePassage ?? false,
+          // 지정 안 하면 null — 명시 false와 구분해, 템플릿 기본값(지문 세트형)이 깔릴 수 있게 한다(#43).
+          includePassage: dto.includePassage ?? null,
           questionType: dto.questionType ?? null,
           ox: dto.ox ?? false,
           // 지정 안 하면 null — 프로세서가 시험별 관행을 프롬프트 지시로만 흘려보낸다(#36 gap 1).
           choiceCount: dto.choiceCount ?? null,
           // 지정 안 하면 null — 프로세서가 시험/대분류로 추정한다(#36 gap 2).
           language: dto.language ?? null,
+          // 출제 형식 템플릿(#43). 프로세서가 기본값 해석에 쓰고, 재생성 시 그대로 재사용된다.
+          templateId: dto.templateId ?? null,
         },
       },
       select: { id: true, status: true, createdAt: true },
@@ -62,6 +87,17 @@ export class AiGenerationService {
     );
 
     return generation;
+  }
+
+  /** 출제 형식 템플릿 목록(#43). examType을 주면 그 시험에 노출되는 것만 필터한다. */
+  listFormatTemplates(examType?: string) {
+    return listTemplates(examType).map((t) => ({
+      id: t.id,
+      label: t.label,
+      description: t.description,
+      examTypes: t.examTypes,
+      structure: t.structure,
+    }));
   }
 
   /** 상태 폴링 + 완료 시 산출물(지문/문항 ID) 조회 */

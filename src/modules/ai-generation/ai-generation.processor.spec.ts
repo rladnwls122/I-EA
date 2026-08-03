@@ -1,5 +1,7 @@
 import { Test } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { Job } from 'bullmq';
 import { AiGenerationProcessor } from './ai-generation.processor';
 import { PrismaService } from '@/prisma/prisma.service';
 import { GeminiLlmService } from './llm/gemini-llm.service';
@@ -89,5 +91,111 @@ describe('AiGenerationProcessor.resolveKeywordTagIds', () => {
 
     expect(ids).toEqual([]);
     expect(tx.tag.upsert).not.toHaveBeenCalled();
+  });
+});
+
+// #43 템플릿 해석 — input_params 스냅샷의 templateId가 LLM 컨텍스트로 풀리는 경로.
+describe('AiGenerationProcessor.process — 템플릿 해석', () => {
+  const makeJob = () =>
+    ({ data: { generationId: 'gen-1' }, attemptsMade: 0, opts: { attempts: 2 } }) as unknown as Job<{
+      generationId: string;
+    }>;
+
+  async function setupProcess(inputParams: Record<string, unknown>) {
+    const generate = jest.fn().mockResolvedValue({
+      questions: [
+        {
+          questionType: '객관식',
+          stemText: '다음 중 옳은 것은?',
+          choices: [
+            { content: '선지1', isCorrect: true },
+            { content: '선지2', isCorrect: false },
+          ],
+          difficulty: 3,
+        },
+      ],
+    });
+    const tx = {
+      passage: { create: jest.fn().mockResolvedValue({ id: 'p1' }) },
+      question: { create: jest.fn().mockResolvedValue({ id: 'q1' }) },
+      aiGeneration: { update: jest.fn() },
+      tag: { upsert: jest.fn().mockResolvedValue({ id: 't1' }) },
+    };
+    const prisma = {
+      aiGeneration: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'gen-1',
+          status: 'PENDING',
+          creatorId: 'u1',
+          subjectId: 's1',
+          inputParams,
+          subject: { name: 'Part5_문법', examCategory: 'RC', examType: '토익' },
+        }),
+        update: jest.fn(),
+      },
+      tag: { findMany: jest.fn().mockResolvedValue([]) },
+      $transaction: jest
+        .fn()
+        .mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx)),
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        AiGenerationProcessor,
+        { provide: PrismaService, useValue: prisma },
+        { provide: GeminiLlmService, useValue: { generate } },
+      ],
+    }).compile();
+    return { processor: module.get(AiGenerationProcessor), generate };
+  }
+
+  it('템플릿 기본값이 LLM 컨텍스트에 깔린다(toeic-part5 → 4지·영어·지문 없음·단일정답)', async () => {
+    const { processor, generate } = await setupProcess({
+      prompt: '어법 문항',
+      difficulty: 3,
+      questionCount: 1,
+      templateId: 'toeic-part5',
+    });
+    await processor.process(makeJob());
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        choiceCount: 4,
+        language: 'en',
+        includePassage: false,
+        answerMode: 'single',
+        templateHints: expect.arrayContaining([expect.stringContaining('빈칸')]),
+      }),
+    );
+  });
+
+  it('요청에서 명시한 개별 파라미터가 템플릿 기본값보다 우선한다', async () => {
+    const { processor, generate } = await setupProcess({
+      prompt: '어법 문항',
+      difficulty: 3,
+      questionCount: 1,
+      templateId: 'toeic-part5',
+      choiceCount: 5,
+      language: 'ko',
+    });
+    await processor.process(makeJob());
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ choiceCount: 5, language: 'ko' }),
+    );
+  });
+
+  it('레지스트리에 없는 templateId는 경고만 남기고 무템플릿으로 진행한다(FAILED 아님)', async () => {
+    const { processor, generate } = await setupProcess({
+      prompt: '문항',
+      difficulty: 3,
+      questionCount: 1,
+      templateId: '없는-템플릿',
+    });
+    const warn = jest
+      .spyOn((processor as unknown as { logger: Logger }).logger, 'warn')
+      .mockImplementation();
+    await processor.process(makeJob());
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('없는-템플릿'));
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ templateHints: [], answerMode: 'single' }),
+    );
   });
 });

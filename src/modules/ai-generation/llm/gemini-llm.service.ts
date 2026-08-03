@@ -23,6 +23,7 @@ import {
   languageRule,
   resolveOutputLanguage,
 } from '../exam-format';
+import { AnswerMode } from '../format-templates';
 
 /**
  * 인라인 재생성은 사용자가 버튼을 누르고 기다린다. 배치보다 짧게 끊는다.
@@ -115,7 +116,8 @@ export class GeminiLlmService {
     );
     // choiceCount를 명시한 요청만 개수를 검증한다 — 시험별 관행 권고와 ox 힌트는
     // 종전대로 프롬프트 유도까지이고 검증 대상이 아니다(멀쩡한 배치를 FAILED로 떨구지 않도록).
-    return this.parseResult(raw, ctx.ox ? undefined : ctx.choiceCount);
+    // answerMode='multiple'(복수정답 템플릿, #43 gap 4)이면 "정답 정확히 1개" 강제를 "1개 이상"으로 완화한다.
+    return this.parseResult(raw, ctx.ox ? undefined : ctx.choiceCount, ctx.answerMode ?? 'single');
   }
 
   /**
@@ -504,7 +506,11 @@ export class GeminiLlmService {
     return (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
   }
 
-  private parseResult(raw: string, expectedChoiceCount?: number): LlmGenerationResult {
+  private parseResult(
+    raw: string,
+    expectedChoiceCount?: number,
+    answerMode: AnswerMode = 'single',
+  ): LlmGenerationResult {
     // 코드펜스/서두 텍스트가 섞여 와도 첫 JSON 오브젝트만 안전하게 추출한다.
     const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
     const start = cleaned.indexOf('{');
@@ -544,7 +550,12 @@ export class GeminiLlmService {
           );
         }
         const correctCount = q.choices.filter((c) => c.isCorrect === true).length;
-        if (correctCount !== 1) {
+        // 복수정답 모드(#43 gap 4)는 1개 이상이면 통과 — 채점(grading.util)은 정답 집합 비교라 그대로 호환된다.
+        if (answerMode === 'multiple') {
+          if (correctCount < 1) {
+            throw new ServiceUnavailableException('모델이 정답 선지가 없는 문항을 반환했습니다.');
+          }
+        } else if (correctCount !== 1) {
           throw new ServiceUnavailableException(
             `모델이 정답 선지 개수가 잘못된 문항을 반환했습니다(받은 값: ${correctCount}개).`,
           );
@@ -581,6 +592,14 @@ export class GeminiLlmService {
       '- keywords는 오답노트에서 "어느 개념에서 틀렸는지" 통계에 쓰인다 — 매 문항 반드시 채운다.',
       // 언어는 시험별로 갈린다 — 토익 RC는 전부 영어, 한국 시험의 영어 과목은 발문만 한국어(#36 gap 2).
       languageRule(language),
+      '',
+      // "시험급" 품질 기준 4축(#34, 결정 3) — 형식 규격은 파서가 검증하므로 여기서는 나머지 축만 지시한다.
+      '품질 기준(시험급):',
+      '- 발문은 실제 기출 패턴의 간결한 한 문장으로 쓴다. 부정발문이면 "않은"/"없는"을 발문에 명시한다.',
+      '- 오답 선지는 각각 그럴듯한 오해·실수에서 나오도록 설계하고, 해설에서 정답 근거와 대표 오답의 함정을 함께 짚는다.',
+      '- difficulty 기준: 1=개념 확인, 3=표준 적용, 5=다단계 추론·복합 자료 해석.',
+      '- 지문이 있는 문항은 지문을 읽어야만 풀리게 만든다. 일반 상식만으로 답이 나오는 문항은 금지.',
+      '',
       'JSON 외 문자는 절대 출력하지 않는다.',
     ].join('\n');
   }
@@ -683,6 +702,15 @@ export class GeminiLlmService {
     // 시험별 형식 지시 — 이게 없으면 모델 출력이 전부 수능 스타일로 치우친다(#36 gap 5).
     const formatHints = examFormatHints(ctx.examType);
     if (formatHints.length) lines.push('', ...formatHints);
+    // 출제 형식 템플릿 지시(#43) — 시험별 관행보다 구체적(발문 패턴·소재·선지 관행)이라 뒤에 싣는다.
+    if (ctx.templateHints?.length) lines.push('', ...ctx.templateHints);
+    // 복수정답 모드(#43 gap 4) — 검증 완화(parseResult)와 짝을 이루는 프롬프트 지시.
+    if (ctx.answerMode === 'multiple') {
+      lines.push(
+        '',
+        '복수정답: 정답(isCorrect:true)이 2개 이상일 수 있다. 발문에 "모두 고른 것은?"을 쓰고, 해설에 정답 조합의 근거를 밝힌다.',
+      );
+    }
     if (ctx.existingKeywords?.length) {
       lines.push(
         '',

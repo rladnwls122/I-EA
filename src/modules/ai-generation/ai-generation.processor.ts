@@ -13,6 +13,7 @@ import { KEYWORD_TAG_CATEGORY, QuestionKind } from '@/common/constants/question'
 import { GeminiLlmService } from './llm/gemini-llm.service';
 import { LlmGenerationContext, LlmQuestion } from './llm/llm.types';
 import { OutputLanguage, resolveOutputLanguage } from './exam-format';
+import { getTemplate, resolveTemplateFormat } from './format-templates';
 import { AI_GENERATION_QUEUE } from './ai-generation.constants';
 
 interface GenerationJobData {
@@ -50,20 +51,40 @@ export class AiGenerationProcessor extends WorkerHost {
     }
 
     const params = generation.inputParams as Record<string, unknown>;
+    // 출제 형식 템플릿 해석(#43) — 템플릿이 선지 개수·언어·지문 여부·유형의 기본값을 깔고,
+    // 요청에서 명시한 개별 파라미터(null이 아닌 값)가 항상 우선한다.
+    const templateId = params.templateId ? String(params.templateId) : undefined;
+    const template = templateId ? getTemplate(templateId) : undefined;
+    if (templateId && !template) {
+      // 스냅샷의 템플릿이 레지스트리에서 사라진 경우(id 변경·제거) — FAILED는 과하다.
+      // 무템플릿으로 진행해 재생성 가능성을 유지하되, 형식 지시가 빠졌음을 로그로 남긴다.
+      this.logger.warn(
+        `생성 작업 ${generationId}: 알 수 없는 템플릿 ID '${templateId}' — 템플릿 없이 진행합니다.`,
+      );
+    }
+    const format = resolveTemplateFormat(template, {
+      choiceCount: params.choiceCount != null ? Number(params.choiceCount) : undefined,
+      language: (params.language as OutputLanguage | null) ?? undefined,
+      includePassage: params.includePassage != null ? Boolean(params.includePassage) : undefined,
+      questionType: (params.questionType as QuestionKind | null) ?? undefined,
+    });
     const ctx: LlmGenerationContext = {
       prompt: String(params.prompt ?? ''),
       difficulty: Number(params.difficulty ?? 3),
       questionCount: Number(params.questionCount ?? 1),
-      includePassage: Boolean(params.includePassage ?? false),
-      questionType: (params.questionType as QuestionKind) ?? undefined,
+      includePassage: format.includePassage,
+      questionType: format.questionType,
       ox: Boolean(params.ox ?? false),
-      // 요청에 없으면 undefined로 둔다 — 시험별 관행은 프롬프트 지시로만 유도하고
+      // 템플릿·요청 어느 쪽에도 없으면 undefined — 시험별 관행은 프롬프트 지시로만 유도하고
       // 개수 검증은 걸지 않는다(모델이 하나 어긋났다고 배치 전체를 FAILED로 떨구지 않기 위함).
-      choiceCount: params.choiceCount != null ? Number(params.choiceCount) : undefined,
-      // 요청에 없으면 시험/대분류로 추정한다(토익 → 영어, 영어 대분류 → 지문 영어 + 발문 한국어).
+      choiceCount: format.choiceCount,
+      // 템플릿·요청 어느 쪽에도 없으면 시험/대분류로 추정한다(토익 → 영어, 영어 대분류 → 지문 영어 + 발문 한국어).
       language:
-        (params.language as OutputLanguage | null) ??
+        format.language ??
         resolveOutputLanguage(generation.subject?.examType, generation.subject?.examCategory),
+      // 복수정답 모드(#43 gap 4)와 템플릿 형식 지시 — 프롬프트 조립·검증 완화에 쓰인다.
+      answerMode: format.answerMode,
+      templateHints: format.promptHints,
       subjectName: generation.subject?.name,
       examCategory: generation.subject?.examCategory,
       examType: generation.subject?.examType,

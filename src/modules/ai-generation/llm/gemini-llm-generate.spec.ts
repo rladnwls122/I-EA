@@ -20,11 +20,11 @@ describe('GeminiLlmService.generate', () => {
     examType: '수능',
   };
 
-  /** 선지 n개짜리 객관식 1문항 응답(정답은 첫 선지). */
-  function response(choiceCount: number): string {
+  /** 선지 n개짜리 객관식 1문항 응답(정답은 앞에서부터 correctCount개, 기본 1개). */
+  function response(choiceCount: number, correctCount = 1): string {
     const choices = Array.from({ length: choiceCount }, (_, i) => ({
       content: `선지${i + 1}`,
-      isCorrect: i === 0,
+      isCorrect: i < correctCount,
     }));
     return JSON.stringify({
       questions: [
@@ -75,6 +75,34 @@ describe('GeminiLlmService.generate', () => {
     });
   });
 
+  describe('복수정답 모드 (#43 gap 4)', () => {
+    it('기본(single) 흐름은 종전대로 정답 정확히 1개를 강제한다', async () => {
+      spyCall(response(5, 2));
+      await expect(service.generate(baseCtx)).rejects.toThrow(
+        /정답 선지 개수가 잘못된 문항/,
+      );
+    });
+
+    it('answerMode=multiple이면 정답 2개 이상도 통과한다', async () => {
+      spyCall(response(5, 3));
+      const res = await service.generate({ ...baseCtx, answerMode: 'multiple' });
+      expect(res.questions[0].choices?.filter((c) => c.isCorrect)).toHaveLength(3);
+    });
+
+    it('answerMode=multiple이어도 정답 0개는 막는다(채점이 항상 오답이 된다)', async () => {
+      spyCall(response(5, 0));
+      await expect(service.generate({ ...baseCtx, answerMode: 'multiple' })).rejects.toThrow(
+        /정답 선지가 없는 문항/,
+      );
+    });
+
+    it('answerMode=multiple이면 복수정답 지시("모두 고른 것은?")가 프롬프트에 실린다', async () => {
+      const spy = spyCall(response(5, 2));
+      await service.generate({ ...baseCtx, answerMode: 'multiple' });
+      expect(spy.mock.calls[0][1]).toContain('모두 고른 것은?');
+    });
+  });
+
   describe('프롬프트 조립', () => {
     it('시험별 관행 선지 개수를 권고로 싣는다', async () => {
       const spy = spyCall(response(5));
@@ -108,6 +136,28 @@ describe('GeminiLlmService.generate', () => {
       const spy = spyCall(response(5));
       await service.generate(baseCtx);
       expect(spy.mock.calls[0][0]).toContain('모든 텍스트는 한국어');
+    });
+
+    it('템플릿 형식 지시(templateHints)가 시험별 관행 지시 뒤에 실린다(#43)', async () => {
+      const spy = spyCall(response(5));
+      await service.generate({
+        ...baseCtx,
+        templateHints: ['발문 패턴: "윗글에 대한 이해로 가장 적절한 것은?"'],
+      });
+      const userPrompt = spy.mock.calls[0][1] as string;
+      expect(userPrompt).toContain('윗글에 대한 이해로 가장 적절한 것은?');
+      expect(userPrompt.indexOf('수능 관행')).toBeLessThan(userPrompt.indexOf('발문 패턴'));
+    });
+
+    it('품질 기준 4축(#34)이 시스템 프롬프트에 실린다', async () => {
+      const spy = spyCall(response(5));
+      await service.generate(baseCtx);
+      const systemPrompt = spy.mock.calls[0][0] as string;
+      expect(systemPrompt).toContain('품질 기준');
+      expect(systemPrompt).toContain('부정발문');
+      expect(systemPrompt).toContain('오해·실수');
+      expect(systemPrompt).toContain('1=개념 확인');
+      expect(systemPrompt).toContain('지문을 읽어야만');
     });
   });
 });

@@ -5,6 +5,7 @@
  */
 import { QuestionKind } from '@/common/constants/question';
 import { OutputLanguage } from '../exam-format';
+import { AnswerMode } from '../format-templates';
 
 export interface LlmChoice {
   /** 선지 본문(평문) */
@@ -94,6 +95,16 @@ export interface LlmGenerationContext {
   examCategory?: string;
   /** 시험 (예: 수능, 내신). 누락 시 LLM이 수능 스타일로 치우친다. */
   examType?: string;
+  /**
+   * 정답 개수 모드(#43 gap 4). 'multiple'이면 정답(isCorrect:true) 2개 이상을 허용하고
+   * 프롬프트에 복수정답 지시를 싣는다(내신 "모두 고른 것은?"). 생략 시 종전대로 단일정답 강제.
+   */
+  answerMode?: AnswerMode;
+  /**
+   * 출제 형식 템플릿의 프롬프트 지시(#43). 시험별 관행(examFormatHints)보다 구체적인
+   * 발문 패턴·소재·선지 관행이 담기며, 프롬프트에서 examFormatHints 뒤에 그대로 실린다.
+   */
+  templateHints?: string[];
   /**
    * 이미 존재하는 #키워드 풀(태그명). LLM이 새 키워드를 남발하지 않고 가능한 한
    * 이 목록에서 골라 쓰게 해, 오답노트 개념별 통계가 흩어지지 않고 모이게 한다.
