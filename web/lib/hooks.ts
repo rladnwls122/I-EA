@@ -344,9 +344,13 @@ export function useMyNotes(
   params?: { examType?: string; examCategory?: string; subjectId?: string },
   enabled = true,
 ) {
+  // 빈 필터({}·값 전부 falsy)는 undefined로 정규화 — 무필터 호출부들
+  // (대시보드·AppSidebar·notes 스토어 기본값)이 캐시 한 장을 공유하게.
+  const normalized =
+    params && Object.values(params).some(Boolean) ? params : undefined;
   return useQuery({
-    queryKey: ['my-notes', params],
-    queryFn: () => fetchMyNotes(params),
+    queryKey: ['my-notes', normalized],
+    queryFn: () => fetchMyNotes(normalized),
     enabled,
   });
 }
@@ -494,6 +498,8 @@ export function useSubmitSession() {
       queryClient.invalidateQueries({ queryKey: ['me'] });
       queryClient.invalidateQueries({ queryKey: ['milestones'] });
       queryClient.invalidateQueries({ queryKey: ['active-session'] });
+      // 채점이 복습 상태(O/세모/X/마스터)를 갱신하므로 오답노트도 재조회
+      queryClient.invalidateQueries({ queryKey: ['my-notes'] });
     },
   });
 }
@@ -515,6 +521,8 @@ export function useSelfGrade() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me'] });
       queryClient.invalidateQueries({ queryKey: ['milestones'] });
+      // 자기채점도 복습 상태를 갱신한다
+      queryClient.invalidateQueries({ queryKey: ['my-notes'] });
     },
   });
 }

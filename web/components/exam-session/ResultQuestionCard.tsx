@@ -5,15 +5,19 @@ import { Badge } from "@/components/ui/badge";
 import { useSelfGrade } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
 import type { SessionQuestionItem } from "@/lib/types";
+import { ReviewStateBadge } from "@/components/notes/ReviewStateBadge";
 
 export function ResultQuestionCard({
   item,
   order,
   onSelfGraded,
+  isReview = false,
 }: {
   item: SessionQuestionItem;
   order: number;
   onSelfGraded: (sessionQuestionId: string, isCorrect: boolean) => void;
+  /** 복습 세션 결과면 상태 뱃지 노출(상태 변화가 복습의 보상) */
+  isReview?: boolean;
 }) {
   const selfGrade = useSelfGrade();
   const isObjective = item.snapshot.questionType === "객관식";
@@ -58,6 +62,9 @@ export function ResultQuestionCard({
         <Badge variant="secondary" className="text-[10px] font-medium">
           {item.snapshot.questionType}
         </Badge>
+        {isReview && item.reviewState && (
+          <ReviewStateBadge status={item.reviewState.status} />
+        )}
         {isCorrect === true && (
           <span className="ml-auto flex items-center gap-1 text-xs font-medium text-correct">
             <Check size={13} /> 정답

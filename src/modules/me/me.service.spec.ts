@@ -40,6 +40,18 @@ describe('MeService.notes', () => {
           .fn()
           .mockResolvedValue([{ id: 'a1', questionId: 'q1', reasonCode: 'CONCEPT', memoText: '개념 놓침' }]),
       },
+      // 복습 상태: q1은 X(어제 재노출 도래 → due), q2는 O(복습 대상 아님).
+      userQuestionReviewState: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            questionId: 'q1',
+            status: 'X',
+            consecutiveCorrect: 0,
+            nextReviewAt: new Date('2000-01-01T00:00:00Z'),
+          },
+          { questionId: 'q2', status: 'O', consecutiveCorrect: 1, nextReviewAt: null },
+        ]),
+      },
     } as unknown as PrismaService;
     const module = await Test.createTestingModule({
       providers: [MeService, { provide: PrismaService, useValue: prisma }],
@@ -57,6 +69,11 @@ describe('MeService.notes', () => {
     expect(result.summary.byKeyword).toEqual([
       { key: 't-meta', label: '비유', total: 2, wrong: 1, wrongRatio: 0.5 },
     ]);
+    // 복습 큐 현황 — q1(X, 재노출 도래)만 due, 상태 분포는 X 1 / O 1.
+    expect(result.summary.review).toEqual({
+      due: 1,
+      byStatus: { O: 1, TRIANGLE: 0, X: 1, MASTERED: 0 },
+    });
     expect(result.wrongQuestions).toEqual([
       {
         questionId: 'q1',
@@ -66,6 +83,12 @@ describe('MeService.notes', () => {
         sessionId: 's1',
         annotationCount: 1,
         annotations: [{ id: 'a1', questionId: 'q1', reasonCode: 'CONCEPT', memoText: '개념 놓침' }],
+        // q1의 복습 상태가 조인돼 내려온다.
+        reviewState: {
+          status: 'X',
+          consecutiveCorrect: 0,
+          nextReviewAt: new Date('2000-01-01T00:00:00Z'),
+        },
       },
     ]);
   });

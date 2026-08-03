@@ -305,6 +305,18 @@ export interface ReasonStat {
   count: number;
 }
 
+// ─── 복습 상태 (오답 복습 기능, 이슈 #15) ───────────────────────────
+
+/** O=처음부터 맞음 / TRIANGLE(세모)=재도전 성공 / X=연속 틀림 / MASTERED=2연속 정답(복습 졸업) */
+export type ReviewStatus = 'O' | 'TRIANGLE' | 'X' | 'MASTERED';
+
+export interface ReviewState {
+  status: ReviewStatus;
+  consecutiveCorrect: number;
+  /** 다음 복습 예정일. O/MASTERED는 null */
+  nextReviewAt: string | null;
+}
+
 export interface WrongQuestionItem {
   questionId: string;
   subjectId: string;
@@ -316,6 +328,8 @@ export interface WrongQuestionItem {
   sessionId: string;
   annotationCount: number;
   annotations: UserQuestionAnnotation[];
+  /** 복습 상태 — 채점 이력이 없으면 null(구데이터) */
+  reviewState?: ReviewState | null;
 }
 
 export interface MyNotesResponse {
@@ -329,6 +343,11 @@ export interface MyNotesResponse {
     byReason: ReasonStat[];
     /** 개념별(#키워드) 오답 — 틀린 횟수 많은 순. key=태그 id, label=키워드명. */
     byKeyword: WrongStat[];
+    /** 복습 현황 — due는 복습 예정일 도래 수(필터 무관, 유저 전체 기준) */
+    review?: {
+      due: number;
+      byStatus: { O: number; TRIANGLE: number; X: number; MASTERED: number };
+    };
   };
   wrongQuestions: WrongQuestionItem[];
 }
@@ -336,6 +355,8 @@ export interface MyNotesResponse {
 /** GET /me/exam-sessions 응답 항목 */
 export interface MyExamSession {
   id: string;
+  /** 복습 세션 여부 */
+  isReview?: boolean;
   /** 문제집 응시(교차 과목)면 null — 대신 workbookTitle 사용 */
   subjectName: string | null;
   workbookId: string | null;
@@ -405,6 +426,8 @@ export interface SessionQuestionItem {
   hintUsedAt: string | null;
   snapshot: SessionQuestionSnapshot;
   answer: SessionAnswer | null;
+  /** 채점 후 복습 상태 — IN_PROGRESS에는 없음 */
+  reviewState?: ReviewState | null;
 }
 
 export interface SessionDetail {
@@ -416,6 +439,8 @@ export interface SessionDetail {
   startedAt: string | null;
   submittedAt: string | null;
   durationSec: number | null;
+  /** 복습 세션 여부(정답 시 REVIEW_CORRECT 보너스, 전체 통계 미반영) */
+  isReview?: boolean;
   questions: SessionQuestionItem[];
 }
 

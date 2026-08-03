@@ -129,6 +129,7 @@ model User {
   questionReviews  QuestionReview[]
   questionComments QuestionComment[]
   annotations      UserQuestionAnnotation[]
+  reviewStates     UserQuestionReviewState[]
   workbooks        Workbook[]
   xpHistory        XpHistory[]
   milestones       MilestoneAchievement[]
@@ -338,6 +339,7 @@ model Question {
   reviews              QuestionReview[]
   comments             QuestionComment[]
   annotations          UserQuestionAnnotation[]
+  reviewStates         UserQuestionReviewState[]
   workbookQuestions    WorkbookQuestion[]
   choiceStats          QuestionChoiceStat[]
 
@@ -557,6 +559,36 @@ model UserQuestionAnnotation {
   @@index([userId, reasonCode])
   @@index([questionId])
   @@map("user_question_annotations")
+}
+
+// ---------------------------------------------------------------------
+// 15b. user_question_review_states — 오답 복습 상태 (이슈 #15)
+//   유저×문항당 1행. 상태 4종(O/세모/X/마스터)과 재노출 시각을 관리한다.
+//     status             = 'O' | 'TRIANGLE' | 'X' | 'MASTERED'
+//                          (questionType과 같은 VARCHAR 패턴 — 앱단 상수 REVIEW_STATUS로 제약)
+//     consecutiveCorrect = 연속 정답 수. 2연속(X→세모→마스터) 도달 시 복습 제외.
+//     nextReviewAt       = 재노출 시각. X=+1일, 세모=+3일. O/마스터는 null(복습 대상 아님).
+//   전이 규칙의 단일 출처는 exam-sessions/review-state.util.ts(transitionReviewState).
+// ---------------------------------------------------------------------
+model UserQuestionReviewState {
+  id                 String    @id @default(uuid()) @db.Char(36)
+  userId             String    @map("user_id") @db.Char(36)
+  questionId         String    @map("question_id") @db.Char(36)
+  status             String    @db.VarChar(20)
+  consecutiveCorrect Int       @default(0) @map("consecutive_correct")
+  nextReviewAt       DateTime? @map("next_review_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  // 복습 대기열 조회(status != MASTERED && next_review_at <= now)용.
+  @@index([userId, nextReviewAt])
+  // relationMode="prisma" — FK가 암묵적으로 만들던 인덱스를 직접 선언.
+  @@index([questionId])
+  @@map("user_question_review_states")
 }
 
 // ---------------------------------------------------------------------

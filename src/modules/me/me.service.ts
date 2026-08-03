@@ -13,6 +13,7 @@ import {
   xpToNextTier,
 } from '@/common/constants/xp';
 import { getShopItem, ShopItemKey } from '@/common/constants/shop';
+import { REVIEW_STATUS } from '@/modules/exam-sessions/review-state.util';
 
 export interface WrongStat {
   key: string;
@@ -75,6 +76,8 @@ export class MeService {
         id: s.id,
         // 문제집 응시(Pick & Mix)는 교차 과목이라 소분류가 없다. 대신 문제집 제목을 노출한다.
         subjectName: s.subject?.name ?? null,
+        // 복습(오답노트 출처) 세션 여부 — 목록에서 복습 회차를 구분해 표기한다.
+        isReview: s.isReview,
         workbookId: s.workbook?.id ?? null,
         workbookTitle: s.workbook?.title ?? null,
         status: s.status,
@@ -265,9 +268,44 @@ export class MeService {
       count,
     }));
 
+    // 복습 상태(O/세모/X/마스터) — 유저 전체를 한 번의 findMany로 배치 조회(N+1 금지).
+    // 오답 문항별 reviewState 조인과 summary.review(due/byStatus) 집계에 함께 쓴다.
+    // due/byStatus는 범위 필터와 무관하게 유저 전체 기준이다.
+    const reviewRows = await this.prisma.userQuestionReviewState.findMany({
+      where: { userId },
+      select: { questionId: true, status: true, consecutiveCorrect: true, nextReviewAt: true },
+    });
+    const reviewByQuestion = new Map(
+      reviewRows.map((r) => [
+        r.questionId,
+        { status: r.status, consecutiveCorrect: r.consecutiveCorrect, nextReviewAt: r.nextReviewAt },
+      ]),
+    );
+    const now = new Date();
+    const byStatus: Record<string, number> = {
+      [REVIEW_STATUS.O]: 0,
+      [REVIEW_STATUS.TRIANGLE]: 0,
+      [REVIEW_STATUS.X]: 0,
+      [REVIEW_STATUS.MASTERED]: 0,
+    };
+    // due = 재노출 시각이 도래한(마스터 제외) 복습 대기 문항 수.
+    let due = 0;
+    for (const r of reviewRows) {
+      if (r.status in byStatus) byStatus[r.status] += 1;
+      if (r.status !== REVIEW_STATUS.MASTERED && r.nextReviewAt !== null && r.nextReviewAt <= now) {
+        due += 1;
+      }
+    }
+
     const wrongQuestions = wrongList.map((w) => {
       const anns = annByQuestion.get(w.questionId) ?? [];
-      return { ...w, annotationCount: anns.length, annotations: anns };
+      return {
+        ...w,
+        annotationCount: anns.length,
+        annotations: anns,
+        // 이 문항의 내 복습 상태(기록 없으면 null) — 복습 진입 버튼/뱃지용.
+        reviewState: reviewByQuestion.get(w.questionId) ?? null,
+      };
     });
 
     return {
@@ -283,6 +321,8 @@ export class MeService {
         byKeyword: [...keywordMap.values()]
           .filter((k) => k.wrong > 0)
           .sort((a, b) => b.wrong - a.wrong || b.wrongRatio - a.wrongRatio),
+        // 복습 큐 현황(유저 전체 기준, 필터 무관) — due = 재노출 도래 수, byStatus = 상태별 분포.
+        review: { due, byStatus },
       },
       wrongQuestions,
     };
