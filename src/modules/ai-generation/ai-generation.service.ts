@@ -41,6 +41,10 @@ export class AiGenerationService {
           includePassage: dto.includePassage ?? false,
           questionType: dto.questionType ?? null,
           ox: dto.ox ?? false,
+          // 지정 안 하면 null — 프로세서가 시험별 관행을 프롬프트 지시로만 흘려보낸다(#36 gap 1).
+          choiceCount: dto.choiceCount ?? null,
+          // 지정 안 하면 null — 프로세서가 시험/대분류로 추정한다(#36 gap 2).
+          language: dto.language ?? null,
         },
       },
       select: { id: true, status: true, createdAt: true },

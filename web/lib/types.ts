@@ -153,6 +153,16 @@ export interface CreateAiGenerationInput {
   questionType?: QuestionType;
   /** OX(참/거짓) 2지선다 스타일 힌트. 저장되는 questionType은 그대로 객관식. */
   ox?: boolean;
+  /**
+   * 객관식 선지 개수(2~8). 생략하면 시험별 관행(수능·내신·한능검 5지 / 공무원·공기업·토익 4지)을
+   * 프롬프트로 유도만 하고 개수를 강제하지 않는다. ox가 true면 무시된다.
+   */
+  choiceCount?: number;
+  /**
+   * 출력 언어. 생략하면 시험·대분류로 추정한다(토익 → en, 영어 대분류 → en-passage-ko-stem).
+   * 'en-passage-ko-stem' = 지문·선지 영어 + 발문·해설 한국어.
+   */
+  language?: "ko" | "en" | "en-passage-ko-stem";
 }
 
 /** POST /ai-generations 응답 (즉시 202) */

@@ -12,6 +12,7 @@ import { buildRichBlocks, buildRichDoc, extractPlainText } from '@/common/prosem
 import { KEYWORD_TAG_CATEGORY, QuestionKind } from '@/common/constants/question';
 import { GeminiLlmService } from './llm/gemini-llm.service';
 import { LlmGenerationContext, LlmQuestion } from './llm/llm.types';
+import { OutputLanguage, resolveOutputLanguage } from './exam-format';
 import { AI_GENERATION_QUEUE } from './ai-generation.constants';
 
 interface GenerationJobData {
@@ -56,6 +57,13 @@ export class AiGenerationProcessor extends WorkerHost {
       includePassage: Boolean(params.includePassage ?? false),
       questionType: (params.questionType as QuestionKind) ?? undefined,
       ox: Boolean(params.ox ?? false),
+      // 요청에 없으면 undefined로 둔다 — 시험별 관행은 프롬프트 지시로만 유도하고
+      // 개수 검증은 걸지 않는다(모델이 하나 어긋났다고 배치 전체를 FAILED로 떨구지 않기 위함).
+      choiceCount: params.choiceCount != null ? Number(params.choiceCount) : undefined,
+      // 요청에 없으면 시험/대분류로 추정한다(토익 → 영어, 영어 대분류 → 지문 영어 + 발문 한국어).
+      language:
+        (params.language as OutputLanguage | null) ??
+        resolveOutputLanguage(generation.subject?.examType, generation.subject?.examCategory),
       subjectName: generation.subject?.name,
       examCategory: generation.subject?.examCategory,
       examType: generation.subject?.examType,

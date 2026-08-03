@@ -4,6 +4,7 @@
  * 저장 포맷 조립은 우리 코드(prosemirror.util)가 담당한다.
  */
 import { QuestionKind } from '@/common/constants/question';
+import { OutputLanguage } from '../exam-format';
 
 export interface LlmChoice {
   /** 선지 본문(평문) */
@@ -49,6 +50,8 @@ export interface LlmRegenerateChoicesContext {
   subjectName?: string;
   examCategory?: string;
   examType?: string;
+  /** 선지 언어. 생략 시 시험/대분류로 추정한다 — 영어 지문 문항에 한국어 선지가 붙지 않도록. */
+  language?: OutputLanguage;
 }
 
 /** 선지 재생성 결과. 정답 포함 전체 선지 집합을 새로 만든다. */
@@ -74,6 +77,17 @@ export interface LlmGenerationContext {
   questionType?: QuestionKind;
   /** OX(참/거짓) 2지선다 스타일 힌트. questionType 저장값은 그대로 객관식 — 별도 타입을 만들지 않는다. */
   ox?: boolean;
+  /**
+   * 객관식 선지 개수(2~8). 지정하면 프롬프트로 강제하고 응답 검증에서도 정확히 이 개수를 요구한다.
+   * 생략하면 시험별 관행(exam-format.ts)을 프롬프트 지시로만 흘려보내고 검증은 느슨하게 둔다 —
+   * 시험이 5지·4지로 갈리는데(#36) 지정 수단이 없던 것을 메운다.
+   */
+  choiceCount?: number;
+  /**
+   * 출력 언어. 생략 시 시험/대분류로 추정한다(resolveOutputLanguage).
+   * 한국어 강제를 풀지 않으면 영어 계열(토익 RC·수능/내신/공무원 영어)이 생성 자체가 안 된다(#36).
+   */
+  language?: OutputLanguage;
   /** 소분류명 (예: 문학) */
   subjectName?: string;
   /** 대분류 (예: 국어) */

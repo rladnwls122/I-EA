@@ -16,6 +16,13 @@ import {
   TutorTurn,
 } from './llm.types';
 import { GeminiKeyPool } from './gemini-key-pool';
+import {
+  OutputLanguage,
+  defaultChoiceCount,
+  examFormatHints,
+  languageRule,
+  resolveOutputLanguage,
+} from '../exam-format';
 
 /**
  * 인라인 재생성은 사용자가 버튼을 누르고 기다린다. 배치보다 짧게 끊는다.
@@ -102,8 +109,13 @@ export class GeminiLlmService {
    * 출력이 계약을 어기면 예외를 던져 프로세서가 FAILED 처리하도록 한다.
    */
   async generate(ctx: LlmGenerationContext): Promise<LlmGenerationResult> {
-    const raw = await this.callGemini(this.buildSystemPrompt(), this.buildUserPrompt(ctx));
-    return this.parseResult(raw);
+    const raw = await this.callGemini(
+      this.buildSystemPrompt(ctx.language ?? 'ko'),
+      this.buildUserPrompt(ctx),
+    );
+    // choiceCount를 명시한 요청만 개수를 검증한다 — 시험별 관행 권고와 ox 힌트는
+    // 종전대로 프롬프트 유도까지이고 검증 대상이 아니다(멀쩡한 배치를 FAILED로 떨구지 않도록).
+    return this.parseResult(raw, ctx.ox ? undefined : ctx.choiceCount);
   }
 
   /**
@@ -119,7 +131,11 @@ export class GeminiLlmService {
    */
   async regenerateChoices(ctx: LlmRegenerateChoicesContext): Promise<LlmRegenerateChoicesResult> {
     const raw = await this.callGemini(
-      this.buildChoicesSystemPrompt(ctx.choiceCount),
+      // 선지 재생성도 같은 언어 규칙을 따라야 한다 — 영어 지문 문항에 한국어 선지가 붙으면 못 쓴다.
+      this.buildChoicesSystemPrompt(
+        ctx.choiceCount,
+        ctx.language ?? resolveOutputLanguage(ctx.examType, ctx.examCategory),
+      ),
       this.buildChoicesUserPrompt(ctx),
       { timeoutMs: REGENERATE_TIMEOUT_MS, attempts: REGENERATE_ATTEMPTS, disableThinking: true },
     );
@@ -488,7 +504,7 @@ export class GeminiLlmService {
     return (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
   }
 
-  private parseResult(raw: string): LlmGenerationResult {
+  private parseResult(raw: string, expectedChoiceCount?: number): LlmGenerationResult {
     // 코드펜스/서두 텍스트가 섞여 와도 첫 JSON 오브젝트만 안전하게 추출한다.
     const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
     const start = cleaned.indexOf('{');
@@ -520,6 +536,13 @@ export class GeminiLlmService {
         if (q.choices.some((c) => typeof c?.content !== 'string' || !c.content.trim())) {
           throw new ServiceUnavailableException('모델이 빈 선지를 포함한 문항을 반환했습니다.');
         }
+        // 요청이 선지 개수를 명시했으면 정확히 그 개수여야 한다 —
+        // 4지/5지 관행이 갈리는 시험을 섞어 쓰는 이상, 어긋난 개수는 조용히 저장하면 안 된다(#36).
+        if (expectedChoiceCount && q.choices.length !== expectedChoiceCount) {
+          throw new ServiceUnavailableException(
+            `모델이 선지 ${expectedChoiceCount}개를 반환하지 않았습니다(받은 값: ${q.choices.length}개).`,
+          );
+        }
         const correctCount = q.choices.filter((c) => c.isCorrect === true).length;
         if (correctCount !== 1) {
           throw new ServiceUnavailableException(
@@ -531,7 +554,7 @@ export class GeminiLlmService {
     return parsed;
   }
 
-  private buildSystemPrompt(): string {
+  private buildSystemPrompt(language: OutputLanguage = 'ko'): string {
     return [
       '너는 한국 시험 문항 출제 전문가다. 요청에 맞는 문항을 생성하고,',
       '아래 JSON 스키마를 "그대로" 따르는 JSON 하나만 출력한다. 서두/설명/코드펜스 금지.',
@@ -556,7 +579,9 @@ export class GeminiLlmService {
       '- 주관식 단답형은 answerText에 정답을 넣는다(자동채점 대상).',
       '- 주관식 서술형은 answerText 없이 explanationText에 모범답안을 서술한다.',
       '- keywords는 오답노트에서 "어느 개념에서 틀렸는지" 통계에 쓰인다 — 매 문항 반드시 채운다.',
-      '- 모든 텍스트는 한국어. JSON 외 문자는 절대 출력하지 않는다.',
+      // 언어는 시험별로 갈린다 — 토익 RC는 전부 영어, 한국 시험의 영어 과목은 발문만 한국어(#36 gap 2).
+      languageRule(language),
+      'JSON 외 문자는 절대 출력하지 않는다.',
     ].join('\n');
   }
 
@@ -599,7 +624,7 @@ export class GeminiLlmService {
     return { choices };
   }
 
-  private buildChoicesSystemPrompt(choiceCount: number): string {
+  private buildChoicesSystemPrompt(choiceCount: number, language: OutputLanguage = 'ko'): string {
     return [
       '너는 한국 시험 문항 출제 전문가다. 주어진 발문에 대한 선지 집합을 새로 만든다.',
       '아래 JSON 스키마를 "그대로" 따르는 JSON 하나만 출력한다. 서두/설명/코드펜스 금지.',
@@ -611,7 +636,11 @@ export class GeminiLlmService {
       '- isCorrect:true는 정확히 1개(단일정답).',
       '- 오답 선지는 그럴듯하되 명확히 틀려야 한다. 정답과 의미가 겹치면 안 된다.',
       '- 수식은 순수 텍스트로만 쓴다(예: x^2 - 2x = 0, f\'(x)). LaTeX/KaTeX 문법 금지.',
-      '- 모든 텍스트는 한국어. JSON 외 문자는 절대 출력하지 않는다.',
+      // 선지 언어는 지문 언어를 따라간다 — 'en-passage-ko-stem'(발문만 한국어)에서도 선지는 영어다.
+      language === 'ko'
+        ? '- 선지 본문은 한국어로 쓴다.'
+        : '- 선지 본문은 영어로 쓴다. 해설(explanation)은 한국어로 써도 된다.',
+      'JSON 외 문자는 절대 출력하지 않는다.',
     ].join('\n');
   }
 
@@ -639,6 +668,21 @@ export class GeminiLlmService {
       `지문 포함: ${ctx.includePassage ? '예' : '아니오'}`,
     ];
     if (ctx.questionType) lines.push(`선호 유형: ${ctx.questionType}`);
+    // 선지 개수 — 명시값이 있으면 강제, 없으면 시험별 관행(5지/4지)을 권고로만 흘린다(#36 gap 1).
+    // ox는 2지선다를 따로 지시하므로 여기서 겹쳐 말하지 않는다.
+    if (!ctx.ox) {
+      if (ctx.choiceCount) {
+        lines.push(`선지 개수: 객관식 문항의 선지는 정확히 ${ctx.choiceCount}개.`);
+      } else {
+        const conventional = defaultChoiceCount(ctx.examType);
+        if (conventional) {
+          lines.push(`선지 개수: 이 시험의 관행은 ${conventional}지선다다. 특별한 이유가 없으면 따른다.`);
+        }
+      }
+    }
+    // 시험별 형식 지시 — 이게 없으면 모델 출력이 전부 수능 스타일로 치우친다(#36 gap 5).
+    const formatHints = examFormatHints(ctx.examType);
+    if (formatHints.length) lines.push('', ...formatHints);
     if (ctx.existingKeywords?.length) {
       lines.push(
         '',
