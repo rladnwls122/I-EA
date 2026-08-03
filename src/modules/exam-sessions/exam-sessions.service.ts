@@ -82,6 +82,19 @@ export class ExamSessionsService {
       if (!dto.questionCount) {
         throw new BadRequestException('questionCount 또는 questionIds 중 하나가 필요합니다.');
       }
+      // 하위요소 필터 — relationMode="prisma"라 DB FK가 없으므로 소속 과목을 앱단에서 검증한다
+      // (schema의 subject_details 주석 참조). 요청 subjectId 소속이 아니면 조합 자체가 모순이라
+      // "조건에 맞는 문제가 없습니다"로 흘리지 않고 명시적으로 거부한다.
+      if (dto.filter?.subjectDetailId) {
+        const detail = await this.prisma.subjectDetail.findUnique({
+          where: { id: dto.filter.subjectDetailId },
+          select: { subjectId: true },
+        });
+        if (!detail) throw new NotFoundException('하위요소를 찾을 수 없습니다.');
+        if (detail.subjectId !== dto.subjectId) {
+          throw new BadRequestException('하위요소가 요청한 소분류(subjectId)에 속하지 않습니다.');
+        }
+      }
       // 후보 ID만 가볍게 조회한 뒤 앱에서 셔플·표본추출(간단·MySQL 무관).
       const candidates = await this.prisma.question.findMany({
         where: this.buildQuestionWhere(dto),
@@ -984,6 +997,8 @@ export class ExamSessionsService {
       status: 'PUBLISHED',
       // 소분류 소속. 필터 모드에서만 호출되며 DTO의 @ValidateIf가 존재를 보장한다.
       subjectId: dto.subjectId!,
+      // 하위요소(4단계) 필터 — 소속 검증은 create()가 사전에 수행한다.
+      ...(f.subjectDetailId ? { subjectDetailId: f.subjectDetailId } : {}),
       ...(f.questionTypes?.length ? { questionType: { in: f.questionTypes } } : {}),
       ...(difficulty ? { difficulty } : {}),
       ...(f.tagIds?.length ? { questionTags: { some: { tagId: { in: f.tagIds } } } } : {}),

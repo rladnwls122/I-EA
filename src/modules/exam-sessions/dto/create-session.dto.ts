@@ -20,6 +20,13 @@ export const SESSION_MAX_QUESTIONS = 100;
 
 /** exam_sessions.filter_criteria에 스냅샷으로 저장되는 조립 조건(필터 모드). */
 export class SessionFilterDto {
+  @ApiPropertyOptional({
+    description: '하위요소(subject_details) ID — 요청 subjectId 소속이어야 한다(앱단 검증)',
+  })
+  @IsOptional()
+  @IsUUID()
+  subjectDetailId?: string;
+
   @ApiPropertyOptional({ description: '태그 ID 목록(OR 매칭)', type: [String] })
   @IsOptional()
   @IsArray()

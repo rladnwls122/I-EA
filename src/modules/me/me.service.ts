@@ -29,6 +29,13 @@ export interface ReasonStat {
 }
 
 /**
+ * bySubjectDetail의 미분류 버킷 키 — subject_detail_id가 null인 문항(기존 문항 전부)의 집계처.
+ * 스키마 방침(subject_details 주석)대로 null은 숨기지 않고 "미분류"로 노출한다.
+ */
+export const UNCLASSIFIED_DETAIL_KEY = 'UNCLASSIFIED';
+export const UNCLASSIFIED_DETAIL_LABEL = '미분류';
+
+/**
  * 오답노트 채점 이력 조회 상한(#39 B-3) — 응답 크기 폭주 방지 보험.
  * 프론트 복습 큐 상한(100) + 통계 표본으로 충분한 값. 상한 도달 시 truncated=true로 알린다.
  */
@@ -142,7 +149,7 @@ export class MeService {
   }
 
   /**
-   * 통합 오답노트 — 통계(bySubject/byType/byReason) + 오답 문항 + 각 문항의 내 주석을 한 번에.
+   * 통합 오답노트 — 통계(bySubject/bySubjectDetail/byType/byReason) + 오답 문항 + 각 문항의 내 주석을 한 번에.
    * 정오가 확정된(is_correct NOT NULL) 답안만 통계 대상(서술형은 자기채점 후 반영).
    * filter(시험/대분류/세부과목)가 오면 그 범위의 문항만 집계한다.
    */
@@ -193,6 +200,9 @@ export class MeService {
                 stem: true,
                 difficulty: true,
                 subject: { select: { name: true } },
+                // 하위요소(4단계)별 오답 통계용 — null(미분류)은 미분류 버킷으로 집계한다.
+                subjectDetailId: true,
+                detail: { select: { name: true } },
                 // 개념별(#키워드) 오답 통계용 — "키워드" 카테고리 태그만.
                 questionTags: {
                   where: { tag: { category: KEYWORD_TAG_CATEGORY } },
@@ -211,6 +221,8 @@ export class MeService {
 
     const subjectMap = new Map<string, WrongStat>();
     const typeMap = new Map<string, WrongStat>();
+    // 하위요소(4단계)별 통계 — 약점 진단(#37)의 분류축. null은 미분류 버킷으로 흘린다.
+    const detailMap = new Map<string, WrongStat>();
     // 개념별(#키워드) 오답 통계 — 태그 id로 집계하고 라벨은 태그명을 쓴다.
     const keywordMap = new Map<string, WrongStat>();
     const sessionIds = new Set<string>();
@@ -243,6 +255,12 @@ export class MeService {
       sessionIds.add(sq.examSessionId);
       bump(subjectMap, q.subjectId, q.subject.name, isWrong);
       bump(typeMap, q.questionType, q.questionType, isWrong);
+      // 하위요소 미지정(기존 문항 전부 null)은 미분류 버킷에 쌓아 표본이 새지 않게 한다.
+      if (q.subjectDetailId && q.detail) {
+        bump(detailMap, q.subjectDetailId, q.detail.name, isWrong);
+      } else {
+        bump(detailMap, UNCLASSIFIED_DETAIL_KEY, UNCLASSIFIED_DETAIL_LABEL, isWrong);
+      }
       for (const qt of q.questionTags) {
         bump(keywordMap, qt.tag.id, qt.tag.name, isWrong);
       }
@@ -345,6 +363,8 @@ export class MeService {
         correct,
         scorePercent: solved > 0 ? Math.round((correct / solved) * 1000) / 10 : 0,
         bySubject: [...subjectMap.values()],
+        // 하위요소별(4단계) — 약점 진단(#37)용. total(표본)·wrong에서 정답 수(total-wrong)가 나온다.
+        bySubjectDetail: [...detailMap.values()],
         byType: [...typeMap.values()],
         byReason,
         // 개념별 오답 — 틀린 횟수 많은 순. 오답이 하나도 없는 키워드는 노출하지 않는다.

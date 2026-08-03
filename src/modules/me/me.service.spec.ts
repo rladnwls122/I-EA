@@ -18,6 +18,9 @@ describe('MeService.notes', () => {
                 subjectId: 'sub1',
                 questionType: '객관식',
                 subject: { name: '문학' },
+                // 하위요소(4단계) 지정 문항 — bySubjectDetail의 일반 버킷으로 집계.
+                subjectDetailId: 'd1',
+                detail: { name: '문서이해' },
                 questionTags: [{ tag: { id: 't-meta', name: '비유' } }],
               },
             },
@@ -31,6 +34,9 @@ describe('MeService.notes', () => {
                 subjectId: 'sub1',
                 questionType: '객관식',
                 subject: { name: '문학' },
+                // 하위요소 미지정(null) 문항 — 미분류 버킷으로 집계.
+                subjectDetailId: null,
+                detail: null,
                 questionTags: [{ tag: { id: 't-meta', name: '비유' } }],
               },
             },
@@ -64,6 +70,11 @@ describe('MeService.notes', () => {
 
     expect(result.summary.bySubject).toEqual([
       { key: 'sub1', label: '문학', total: 2, wrong: 1, wrongRatio: 0.5 },
+    ]);
+    // 하위요소(4단계)별 — 지정 문항은 d1 버킷, null 문항은 미분류 버킷으로(표본이 새지 않는다).
+    expect(result.summary.bySubjectDetail).toEqual([
+      { key: 'd1', label: '문서이해', total: 1, wrong: 1, wrongRatio: 1 },
+      { key: 'UNCLASSIFIED', label: '미분류', total: 1, wrong: 0, wrongRatio: 0 },
     ]);
     expect(result.summary.byType[0]).toMatchObject({ key: '객관식', wrong: 1, total: 2 });
     expect(result.summary.byReason).toEqual([{ code: 'CONCEPT', label: '개념부족', count: 1 }]);
@@ -132,6 +143,8 @@ describe('MeService.notes', () => {
           subjectId: 'sub1',
           questionType: '객관식',
           subject: { name: '문학' },
+          subjectDetailId: null,
+          detail: null,
           questionTags: [],
         },
       },
