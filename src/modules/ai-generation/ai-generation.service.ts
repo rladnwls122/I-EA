@@ -61,7 +61,7 @@ export class AiGenerationService {
   }
 
   /** 상태 폴링 + 완료 시 산출물(지문/문항 ID) 조회 */
-  async getGeneration(id: string) {
+  async getGeneration(id: string, userId: string) {
     const generation = await this.prisma.aiGeneration.findUnique({
       where: { id },
       include: {
@@ -70,6 +70,12 @@ export class AiGenerationService {
       },
     });
     if (!generation) throw new NotFoundException('생성 작업을 찾을 수 없습니다.');
+    // 소유자 검사(IDOR 방지). 예전에는 이 검사가 없어서 로그인만 하면 UUID로
+    // 남의 생성 잡(프롬프트 스냅샷·산출 문항 ID)을 읽을 수 있었다.
+    // 존재 여부까지 감추도록 403이 아니라 위와 같은 404 메시지를 쓴다.
+    if (generation.creatorId !== userId) {
+      throw new NotFoundException('생성 작업을 찾을 수 없습니다.');
+    }
 
     return {
       id: generation.id,

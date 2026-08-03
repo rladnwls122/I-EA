@@ -1,0 +1,36 @@
+version: 2
+
+# 취약점 패치를 사람이 npm audit을 기억해서 돌리는 데 의존하지 않게 한다.
+# 보안 업데이트는 Dependabot이 기본으로 즉시 열고, 아래 설정은 일반 버전 갱신 주기다.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # 개별 PR이 쏟아지지 않게 묶는다. 보안 패치는 이 그룹과 무관하게 따로 열린다.
+      nest:
+        patterns: ['@nestjs/*']
+      prisma:
+        patterns: ['prisma', '@prisma/*']
+      dev-tooling:
+        dependency-type: development
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      next:
+        patterns: ['next', 'eslint-config-next', '@next/*']
+      react:
+        patterns: ['react', 'react-dom', '@types/react', '@types/react-dom']
+      dev-tooling:
+        dependency-type: development
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

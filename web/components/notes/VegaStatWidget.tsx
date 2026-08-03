@@ -25,7 +25,7 @@ export function VegaStatWidget() {
   }, []);
 
   const spec: any = {
-    $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
+    $schema: 'https://vega.github.io/schema/vega-lite/v6.json',
     width: 'container',
     height: 180,
     background: 'transparent',

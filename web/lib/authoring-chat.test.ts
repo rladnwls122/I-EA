@@ -1,3 +1,9 @@
+/**
+ * 주의: web에는 아직 테스트 러너가 없어서 이 파일은 **실행되지 않는다**.
+ * 루트 jest는 rootDir=src / testRegex=*.spec.ts 라 여기까지 오지 않는다.
+ * 지금은 `tsc --noEmit`로 타입만 검증된다(@types/jest는 그래서 devDependency에 있다).
+ * 러너(vitest 등)를 붙이면 그때부터 실제로 돈다 — 그 전까지 통과 여부는 보장되지 않는다.
+ */
 import { parseQuestionBlocks, stripQuestionBlocks } from './authoring-chat';
 
 const withBlock = [

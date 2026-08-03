@@ -24,9 +24,11 @@ export function StatsPanel({ questionId }: { questionId: string }) {
 
   const dist = stats.choiceDistribution || [];
   const totalPicks = dist.reduce((sum, d) => sum + d.count, 0);
-  // 매력 오답: 오답 중 가장 많이 선택된 선지(표본 있을 때만)
+  // 매력 오답: 오답 중 가장 많이 선택된 선지(표본 있을 때만).
+  // isCorrect가 null이면 서버가 정답 노출 자격을 주지 않은 상태다(비로그인/응시 중).
+  // 이때 `!d.isCorrect`로 접으면 정답이 매력 오답으로 표시되므로 명시적으로 false만 센다.
   const decoy = dist
-    .filter((d) => !d.isCorrect && d.count > 0)
+    .filter((d) => d.isCorrect === false && d.count > 0)
     .sort((a, b) => b.count - a.count)[0];
 
   return (

@@ -18,7 +18,24 @@ lerna-debug.log*
 .env.development
 .env.test
 .env.production
+# .env.example 은 값이 없는 양식이므로 추적한다.
+!.env.example
+# 지역/로컬 오버라이드까지 빠짐없이 막는다.
+.env.*.local
+.env.local
 
 # temp directory
 .temp
 .tmp
+.tmp-verify/
+
+# 빌드 부산물 — 커밋하면 리뷰 노이즈만 늘고 병합 충돌을 만든다.
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+package-lock.json.head
+
+# 크레덴셜 파일을 실수로 커밋하는 사고를 구조적으로 막는다.
+*credentials*.json
+*service-account*.json
+*.pem
+*.key

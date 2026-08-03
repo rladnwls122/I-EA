@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { AI_GENERATION_THROTTLE } from '@/common/throttler/throttler.config';
 import { JwtAuthGuard } from '@/modules/auth/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
@@ -31,7 +33,11 @@ export class AiGenerationController {
 
   @Post()
   @HttpCode(202)
-  @ApiOperation({ summary: 'AI 문항 생성 요청 (비동기, 202 반환 후 폴링)' })
+  @Throttle({ default: AI_GENERATION_THROTTLE })
+  @ApiOperation({
+    summary: 'AI 문항 생성 요청 (비동기, 202 반환 후 폴링)',
+    description: '레이트리밋: 1시간 30건. 잡 하나가 Gemini 호출 비용을 유발한다.',
+  })
   create(@CurrentUser() user: CurrentUserPayload, @Body() dto: CreateGenerationDto) {
     return this.service.createGeneration(user.id, dto);
   }
@@ -47,8 +53,8 @@ export class AiGenerationController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: '생성 작업 상태/산출물 조회' })
-  get(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getGeneration(id);
+  @ApiOperation({ summary: '생성 작업 상태/산출물 조회 (요청자 본인 작업만)' })
+  get(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.service.getGeneration(id, user.id);
   }
 }

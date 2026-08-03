@@ -7,7 +7,14 @@ import { titleForLevel, xpToNextTier, isBoostActive } from '@/common/constants/x
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
-const SALT_ROUNDS = 10;
+const SALT_ROUNDS = 12;
+
+/**
+ * 존재하지 않는 계정으로 로그인을 시도했을 때 태울 더미 해시.
+ * 실제 해시와 같은 라운드로 만들어 두어야 비교 비용이 비슷해진다.
+ * 모듈 로드 시 1회만 계산한다(매 요청 hash를 다시 만들면 그게 또 다른 타이밍 차이가 된다).
+ */
+const DUMMY_HASH = bcrypt.hashSync('q-idea-dummy-password-for-timing-parity', SALT_ROUNDS);
 
 @Injectable()
 export class AuthService {
@@ -35,7 +42,13 @@ export class AuthService {
         nickname: dto.nickname ?? dto.email.split('@')[0],
         roles: { create: [{ role: UserRoleType.CONSUMER }] },
       },
-      select: { id: true, email: true, nickname: true, roles: { select: { role: true } } },
+      select: {
+        id: true,
+        email: true,
+        nickname: true,
+        tokenVersion: true,
+        roles: { select: { role: true } },
+      },
     });
     return this.issueToken(user);
   }
@@ -52,13 +65,19 @@ export class AuthService {
         email: true,
         nickname: true,
         passwordHash: true,
+        tokenVersion: true,
         roles: { select: { role: true } },
       },
     });
-    if (!user) throw new UnauthorizedException('이메일 또는 비밀번호가 올바르지 않습니다.');
-
-    const ok = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!ok) throw new UnauthorizedException('이메일 또는 비밀번호가 올바르지 않습니다.');
+    // 계정 열거 방지는 메시지만으로는 부족하다 — 없는 이메일에서 bcrypt를 건너뛰면
+    // 응답이 눈에 띄게 빨라져 타이밍만으로 가입 여부를 알 수 있다.
+    // 사용자가 없을 때도 더미 해시로 같은 비용을 치른 뒤 동일한 예외를 던진다.
+    const ok = user
+      ? await bcrypt.compare(dto.password, user.passwordHash)
+      : await this.burnCompare(dto.password);
+    if (!user || !ok) {
+      throw new UnauthorizedException('이메일 또는 비밀번호가 올바르지 않습니다.');
+    }
 
     return this.issueToken(user);
   }
@@ -101,13 +120,34 @@ export class AuthService {
     };
   }
 
+  /** 사용자가 없을 때도 bcrypt 비용을 동일하게 치러 타이밍 차이를 없앤다. 항상 false. */
+  private async burnCompare(password: string): Promise<boolean> {
+    return bcrypt.compare(password, DUMMY_HASH);
+  }
+
+  /**
+   * 이 사용자의 모든 기기에서 로그아웃한다(발급된 토큰 일괄 무효화).
+   * token_version을 올리면 그 전에 발급된 JWT는 만료 전이라도 JwtStrategy가 거부한다.
+   * 비밀번호 변경 흐름이 생기면 거기서도 이걸 불러야 한다.
+   */
+  async logoutAll(userId: string) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } },
+      select: { tokenVersion: true },
+    });
+    return { revoked: true, tokenVersion: user.tokenVersion };
+  }
+
   private async issueToken(user: {
     id: string;
     email: string;
     nickname: string;
+    tokenVersion: number;
     roles: { role: UserRoleType }[];
   }) {
-    const payload = { sub: user.id, email: user.email };
+    // tv = 발급 시점의 token_version. 검증 때 DB 값과 대조해 무효화를 판정한다.
+    const payload = { sub: user.id, email: user.email, tv: user.tokenVersion };
     const accessToken = await this.jwt.signAsync(payload);
     return {
       accessToken,

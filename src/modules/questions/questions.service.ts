@@ -13,6 +13,7 @@ import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QueryQuestionDto } from './dto/query-question.dto';
 import { RegenerateChoicesDto } from './dto/regenerate-choices.dto';
+import { maskQuestionAnswers } from './answer-masking';
 
 // Prisma 생성 클라이언트가 InputJsonValue를 표면화하지 않으므로 Json 컬럼 쓰기 시 국소 캐스팅.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,12 +121,30 @@ export class QuestionsService {
       },
     });
 
-    return {
+    // 응시 중 정답 마스킹 우회 차단 — 자세한 배경은 answer-masking.ts 주석 참고.
+    // 출제자 본인은 어차피 정답을 아는 사람이고 편집 UI가 원본을 필요로 하므로 예외.
+    const inActiveSession =
+      question.creatorId !== userId && (await this.hasActiveSessionFor(id, userId));
+
+    const payload = {
       ...question,
       tags: question.questionTags.map((qt) => qt.tag),
       correctRatePercent: correctRate,
       solvedByMe: solvedCount > 0,
     };
+
+    return inActiveSession
+      ? { ...maskQuestionAnswers(payload), maskedForActiveSession: true as const }
+      : payload;
+  }
+
+  /** 요청자가 이 문항을 품은 진행 중(IN_PROGRESS) 세션을 갖고 있는지. */
+  private async hasActiveSessionFor(questionId: string, userId: string): Promise<boolean> {
+    const active = await this.prisma.examSessionQuestion.findFirst({
+      where: { questionId, examSession: { userId, status: 'IN_PROGRESS' } },
+      select: { id: true },
+    });
+    return active !== null;
   }
 
   /** 문항 직접 생성(DRAFT). tagIds가 있으면 question_tags도 함께 매핑한다. */
@@ -254,7 +273,7 @@ export class QuestionsService {
    * (selectedChoiceIds가 Json이라 앱단 풀스캔이 되고, TiDB 호환 때문에
    *  MySQL JSON 함수를 쓸 수 없다 — 제출 시점에 카운터를 갱신해 둔다).
    */
-  async getStats(id: string) {
+  async getStats(id: string, userId: string | null) {
     const question = await this.prisma.question.findUnique({
       where: { id },
       select: {
@@ -279,6 +298,15 @@ export class QuestionsService {
         ? Math.round(question.totalTimeSpentSec / question.timedSolvedCount)
         : null;
 
+    // 이 라우트는 인증 없이도 열리므로(@Public), 예전에는 isCorrect를 무조건 실어
+    // 보내 **로그인조차 없이 정답 키 전체를 덤프**할 수 있었다. 분포(선택 수)는
+    // 공개 가치가 있으니 그대로 두고, 정답 여부만 자격을 확인해 노출한다.
+    //   - 비로그인: 노출하지 않는다.
+    //   - 로그인 + 해당 문항을 품은 IN_PROGRESS 세션 보유: 노출하지 않는다(응시 중 커닝 차단).
+    //   - 그 외 로그인 사용자: 기존대로 노출.
+    const revealCorrect =
+      userId !== null && !(await this.hasActiveSessionFor(id, userId));
+
     // 선지 순서·정답 여부는 questions.choices(Json)가 단일 출처다.
     // 통계 테이블은 choiceId만 알고 있으므로 여기서 조인한다.
     const countByChoiceId = new Map(question.choiceStats.map((s) => [s.choiceId, s.count]));
@@ -290,7 +318,9 @@ export class QuestionsService {
         index, // 0-based. 프론트가 "N번 선지"로 표시할 때 +1 한다.
         choiceId,
         count: countByChoiceId.get(choiceId) ?? 0,
-        isCorrect: c.isCorrect === true,
+        // 자격이 없으면 필드 자체를 null로 준다(false로 주면 "이건 오답"이라는
+        // 정보가 되어 소거법으로 정답이 역산된다).
+        isCorrect: revealCorrect ? c.isCorrect === true : null,
       };
     });
 

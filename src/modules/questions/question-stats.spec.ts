@@ -14,6 +14,8 @@ const choices = () => [
 async function makeService(question: unknown) {
   const prisma = {
     question: { findUnique: jest.fn().mockResolvedValue(question) },
+    // 진행 중 세션 없음 = 정답 노출 자격 있음(마스킹 분기는 별도 spec에서 검증).
+    examSessionQuestion: { findFirst: jest.fn().mockResolvedValue(null) },
   } as unknown as PrismaService;
   const module = await Test.createTestingModule({
     providers: [
@@ -40,7 +42,7 @@ describe('QuestionsService.getStats (B1)', () => {
       ],
     });
 
-    const stats = await service.getStats('q1');
+    const stats = await service.getStats('q1', 'u1');
 
     expect(stats.correctRate).toBe(75); // 15/20
     expect(stats.avgTimeSpentSec).toBe(30); // 600/20
@@ -57,7 +59,7 @@ describe('QuestionsService.getStats (B1)', () => {
       choiceStats: [{ choiceId: 'c2', count: 8 }],
     });
 
-    const stats = await service.getStats('q1');
+    const stats = await service.getStats('q1', 'u1');
 
     expect(stats.correctRate).toBeNull();
     expect(stats.avgTimeSpentSec).toBeNull();
@@ -75,7 +77,7 @@ describe('QuestionsService.getStats (B1)', () => {
       choiceStats: [],
     });
 
-    const stats = await service.getStats('q1');
+    const stats = await service.getStats('q1', 'u1');
 
     expect(stats.correctRate).toBe(50);
     expect(stats.avgTimeSpentSec).toBeNull();
@@ -92,7 +94,7 @@ describe('QuestionsService.getStats (B1)', () => {
       choiceStats: [{ choiceId: 'c3', count: 12 }],
     });
 
-    const stats = await service.getStats('q1');
+    const stats = await service.getStats('q1', 'u1');
 
     expect(stats.choiceDistribution).toEqual([
       { index: 0, choiceId: 'c1', count: 0, isCorrect: true },
@@ -111,7 +113,7 @@ describe('QuestionsService.getStats (B1)', () => {
       choiceStats: [{ choiceId: 'ghost', count: 99 }],
     });
 
-    const stats = await service.getStats('q1');
+    const stats = await service.getStats('q1', 'u1');
 
     expect(stats.choiceDistribution).toHaveLength(1);
     expect(stats.choiceDistribution[0].count).toBe(0);
@@ -127,7 +129,7 @@ describe('QuestionsService.getStats (B1)', () => {
       choiceStats: [],
     });
 
-    const stats = await service.getStats('q1');
+    const stats = await service.getStats('q1', 'u1');
 
     expect(stats.choiceDistribution).toEqual([]);
     expect(stats.correctRate).toBe(100);
@@ -135,6 +137,6 @@ describe('QuestionsService.getStats (B1)', () => {
 
   it('없는 문항이면 404', async () => {
     const service = await makeService(null);
-    await expect(service.getStats('nope')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getStats('nope', 'u1')).rejects.toBeInstanceOf(NotFoundException);
   });
 });

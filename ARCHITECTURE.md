@@ -81,7 +81,16 @@ AI를 통한 문항 생성은 시간이 오래 걸리는 작업이므로 **비�
 
 - **Global Auth Guard**: 모든 API 경로는 기본적으로 `JwtAuthGuard`에 의해 보호됩니다. 공개가 필요한 경로에만 `@Public()` 데코레이터를 사용합니다.
 - **Role-based Access Control (RBAC)**: `CREATOR`, `ADMIN` 등 역할에 따른 권한 제어를 수행합니다.
-- **Presigned Upload**: 미디어 파일은 서버를 거치지 않고 클라이언트에서 스토리지로 직접 업로드하여 서버 부하를 최소화합니다.
+- **Presigned Upload**: 미디어 파일은 서버를 거치지 않고 클라이언트에서 스토리지로 직접 업로드하여 서버 부하를 최소화합니다. presigned **POST**(PUT 아님)를 써서 Content-Type과 크기를 policy로 서버가 강제하고, 등록되는 URL은 우리 버킷 접두인지 검증합니다.
+- **부팅 시 환경변수 검증** (`src/config/env.validation.ts`): `JWT_SECRET` 등 없으면 보안이 깨지는 값을 부팅 시점에 확인하고, 미설정이면 프로세스를 띄우지 않습니다. 코드 어디에도 시크릿 fallback 기본값은 없습니다.
+- **토큰 무효화**: JWT에 발급 시점 `users.token_version`(`tv` 클레임)을 심고 매 요청 대조합니다. `POST /api/auth/logout-all`이 이 값을 올려 발급된 토큰을 만료 전이라도 전부 끊습니다.
+- **레이트리밋**: 전역 IP 기준(1분 120회) 위에, 로그인·회원가입은 IP 버킷과 계정(이메일) 버킷을 따로 두어 분산 무차별 대입까지 막습니다. AI 생성은 비용 방어로 시간당 30건입니다. 스로틀 가드는 인증 가드보다 **먼저** 돕니다(인증이 매 요청 DB를 치므로).
+- **정답 노출 경계**: 진행 중 세션은 스냅샷을 `maskSnapshot()`으로 가립니다. 같은 문항을 `GET /questions/:id`나 `/stats`로 우회 조회하는 경로도 함께 막혀 있습니다(`answer-masking.ts`). 정답이 XP·코인 → 상점 실물 상품으로 이어지므로 표시상의 문제가 아니라 재화 경계입니다.
+- **리치텍스트 검증**: 저장되는 ProseMirror JSON은 노드/마크/attrs 화이트리스트를 통과해야 합니다(`prosemirror.sanitize.ts`). 링크·이미지 URL은 `http/https/mailto` 스킴만 허용합니다.
+- **보안 헤더**: API는 `helmet`, 프런트는 `next.config.mjs`의 `headers()`로 CSP·HSTS·`X-Content-Type-Options`·`frame-ancestors` 등을 내려보냅니다.
+- **CORS**: `ALLOWED_ORIGINS`에 명시한 origin만 허용합니다. 운영에서 목록이 비면 부팅이 중단됩니다. Vercel 프리뷰는 `VERCEL_PREVIEW_PREFIX` 접두가 일치하는 것만 통과합니다.
+- **Swagger**: `/api/docs`는 운영에서 기본 비활성입니다(`ENABLE_SWAGGER=true`로 명시적 활성화).
+- **오류 노출**: 전역 `AllExceptionsFilter`가 의도치 않은 예외를 500 고정 문구로 바꿔 Prisma 내부 메시지(테이블·컬럼명) 유출을 막습니다.
 
 ---
 

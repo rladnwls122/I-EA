@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { useMe } from "@/lib/hooks";
+import { logoutAll } from "@/lib/api";
 
 /** 내 정보 — 이메일/닉네임/레벨/XP/스트릭 + 로그아웃. */
 export default function MePage() {
@@ -22,7 +23,16 @@ export default function MePage() {
 
   const { data: me, isLoading } = useMe(checked);
 
-  const logout = () => {
+  // 서버에 토큰 무효화를 먼저 요청한 뒤 로컬을 정리한다.
+  // localStorage만 지우면 그 토큰은 만료(7일)까지 계속 유효하다 — 공용 PC에서
+  // "로그아웃했다"는 감각과 실제 상태가 어긋난다.
+  // 서버 호출이 실패해도 로컬 정리는 반드시 진행한다(로그아웃을 막지 않는다).
+  const logout = async () => {
+    try {
+      await logoutAll();
+    } catch {
+      // 네트워크/서버 오류. 로컬 로그아웃까지 막을 이유는 없다.
+    }
     localStorage.removeItem("token");
     router.push("/login");
   };
