@@ -9,6 +9,11 @@ import {
 import type { Response } from 'express';
 import type Redis from 'ioredis';
 import { PrismaService } from '@/prisma/prisma.service';
+import {
+  AI_CREDIT_ITEM_KEY,
+  AI_FREE_PER_DAY,
+  resolveAiCreditQuota,
+} from '@/common/constants/shop';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
 import { TutorTurn } from '@/modules/ai-generation/llm/llm.types';
 import { QuestionSnapshot } from '@/modules/exam-sessions/grading.util';
@@ -76,12 +81,17 @@ export class TutorService {
   async reviewChat(userId: string, dto: ReviewTutorChatDto, res: Response): Promise<void> {
     const ctx = await this.authorizeReview(userId, dto.questionId);
     await this.enforceRateLimit(userId, dto.questionId);
+    // 잔량이 없으면 LLM을 부르기 전에 끊는다. 실제 차감은 아래에서 다시 판정한다.
+    await this.assertAiCreditAvailable(userId);
 
     const system = buildReviewTutorSystemPrompt(ctx.snapshot, ctx.attempt);
     const history = await this.loadHistoryAt(this.reviewHistoryKey(userId, dto.questionId));
 
     const iterator = this.gemini.streamChat(system, history, dto.message)[Symbol.asyncIterator]();
+    // 차감은 이 await **이후**다. LLM이 아예 응답하지 않으면 여기서 예외가 나고,
+    // 헤더도 안 나간 상태라 일반 HTTP 에러로 끝난다 — 크레딧은 그대로 남는다.
     const first = await iterator.next();
+    await this.consumeAiCredit(userId);
 
     res.status(HttpStatus.OK);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -117,6 +127,85 @@ export class TutorService {
     } finally {
       res.end();
     }
+  }
+
+  // --- AI 크레딧 (폐기된 HINT_TOKEN의 후신) ---------------------------
+  //
+  // 무료분을 먼저 태우고, 떨어지면 보유 크레딧을 쓴다. 두 단계로 나눈 이유:
+  //   1) `assertAiCreditAvailable` — LLM을 부르기 **전** 사전 차단. 잔량이 없는데
+  //      Gemini를 호출하면 돈만 쓰고 402를 준다.
+  //   2) `consumeAiCredit` — 첫 토큰이 온 **뒤** 실제 차감. 트랜잭션 안에서 다시
+  //      판정하므로 (1)의 결과를 믿지 않는다. 사전 차단은 최적화일 뿐 권위가 아니다.
+
+  /** 잔량 사전 확인. 여기서 통과해도 실제 차감은 다시 판정한다. */
+  private async assertAiCreditAvailable(userId: string): Promise<void> {
+    const [user, inv] = await Promise.all([
+      this.prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { aiFreeDate: true, aiFreeUsed: true },
+      }),
+      this.prisma.userInventory.findUnique({
+        where: { userId_itemKey: { userId, itemKey: AI_CREDIT_ITEM_KEY } },
+        select: { quantity: true },
+      }),
+    ]);
+    const quota = resolveAiCreditQuota(
+      user.aiFreeDate,
+      user.aiFreeUsed,
+      inv?.quantity ?? 0,
+      new Date(),
+    );
+    if (!quota.allow) throw this.outOfCredit();
+  }
+
+  /** 한 턴 차감. 무료분 우선, 없으면 크레딧 1개. */
+  private async consumeAiCredit(userId: string): Promise<void> {
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { aiFreeDate: true, aiFreeUsed: true },
+      });
+      const inv = await tx.userInventory.findUnique({
+        where: { userId_itemKey: { userId, itemKey: AI_CREDIT_ITEM_KEY } },
+        select: { quantity: true },
+      });
+      const quota = resolveAiCreditQuota(user.aiFreeDate, user.aiFreeUsed, inv?.quantity ?? 0, now);
+      if (!quota.allow) throw this.outOfCredit();
+
+      if (quota.useCredit) {
+        // 조건부 UPDATE로 원자적으로 깎는다. 위에서 읽은 quantity를 믿고 무조건
+        // decrement하면 동시 요청이 잔량을 음수로 만든다.
+        const hit = await tx.userInventory.updateMany({
+          where: { userId, itemKey: AI_CREDIT_ITEM_KEY, quantity: { gt: 0 } },
+          data: { quantity: { decrement: 1 } },
+        });
+        if (hit.count === 0) throw this.outOfCredit();
+        return;
+      }
+
+      // 무료분도 compare-and-set. 경합에 지면 카운트를 올리지 않고 그냥 통과시킨다 —
+      // 이 경우 최악이 "무료 1턴을 덤으로 줬다"이고, 그게 산 크레딧을 잘못 태우거나
+      // 대화 중에 에러를 띄우는 것보다 싸다.
+      const hit = await tx.user.updateMany({
+        where: { id: userId, aiFreeDate: user.aiFreeDate, aiFreeUsed: user.aiFreeUsed },
+        data: { aiFreeDate: now, aiFreeUsed: quota.newFreeUsed },
+      });
+      if (hit.count === 0) {
+        this.logger.debug(`AI 크레딧 무료분 경합 — 차감 생략 (user=${userId})`);
+      }
+    });
+  }
+
+  private outOfCredit(): HttpException {
+    return new HttpException(
+      {
+        statusCode: HttpStatus.PAYMENT_REQUIRED,
+        message: `오늘 무료 ${AI_FREE_PER_DAY}턴을 다 썼고 AI 크레딧도 없습니다. 상점에서 충전해주세요.`,
+        error: 'AI_CREDIT_EXHAUSTED',
+      },
+      HttpStatus.PAYMENT_REQUIRED,
+    );
   }
 
   /** 복습 튜터 히스토리 조회. 인가는 채팅과 동일하다. */

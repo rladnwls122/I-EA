@@ -12,7 +12,12 @@ import {
   titleForLevel,
   xpToNextTier,
 } from '@/common/constants/xp';
-import { getShopItem, ShopItemKey } from '@/common/constants/shop';
+import {
+  AI_CREDIT_ITEM_KEY,
+  aiFreeRemainingToday,
+  getShopItem,
+  ShopItemKey,
+} from '@/common/constants/shop';
 import { REVIEW_STATUS } from '@/modules/exam-sessions/review-state.util';
 import { rankWeaknesses } from './weakness.util';
 
@@ -438,7 +443,14 @@ export class MeService {
     const [user, inv, unopenedBoxCount] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
-        select: { coins: true, xpBoostUntil: true, equippedTitle: true, nameColor: true },
+        select: {
+          coins: true,
+          xpBoostUntil: true,
+          equippedTitle: true,
+          nameColor: true,
+          aiFreeDate: true,
+          aiFreeUsed: true,
+        },
       }),
       this.prisma.userInventory.findMany({
         where: { userId },
@@ -451,10 +463,12 @@ export class MeService {
     return {
       coins: user.coins,
       xpBoostUntil: user.xpBoostUntil,
-      // HINT_TOKEN은 상점에서 내렸지만(응시 중 AI 힌트 폐기, 2026-08-04) 이미 코인을 주고
-      // 산 사용자가 있을 수 있어 보유 수량은 계속 보여준다. 소리 없이 감추면 "산 게 사라졌다"가 된다.
-      // 보상/회수 처리는 제품 결정 사항이라 여기서 임의로 하지 않는다.
-      inventory: { STREAK_SHIELD: qty('STREAK_SHIELD'), HINT_TOKEN: qty('HINT_TOKEN') },
+      // HINT_TOKEN은 폐기됐다(2026-08-04 응시 중 AI 힌트 제거 → 2026-08-04 보유분 리셋).
+      // 후신은 AI_CREDIT이고 복습 튜터 대화 한 턴에 1개 쓴다.
+      inventory: { STREAK_SHIELD: qty('STREAK_SHIELD'), AI_CREDIT: qty(AI_CREDIT_ITEM_KEY) },
+      // 오늘 남은 무료 턴. 크레딧보다 먼저 소모되므로 UI가 이걸 앞에 보여줘야
+      // "왜 산 게 안 줄지?"라는 오해가 안 생긴다.
+      aiFreeRemaining: aiFreeRemainingToday(user.aiFreeDate, user.aiFreeUsed, new Date()),
       cosmetics: {
         owned: inv.filter((i) => i.itemKey.startsWith('COSMETIC_') && i.quantity > 0).map((i) => i.itemKey),
         equippedTitle: user.equippedTitle,

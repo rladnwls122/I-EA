@@ -1,12 +1,12 @@
 "use client";
-import { Loader2, Lightbulb, Palette, ShieldCheck } from "lucide-react";
+import { Loader2, Lightbulb, Palette, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useEquipCosmetic } from "@/lib/hooks";
 import type { ShopItem, Wallet } from "@/lib/types";
 
-/** 보호권/힌트토큰 보유 수 + 코스메틱 소유·장착 스트립. */
+/** 보호권/AI 크레딧 보유 수 + 오늘 남은 무료 AI 턴 + 코스메틱 소유·장착 스트립. */
 export function InventoryStrip({ wallet, shopItems }: { wallet: Wallet; shopItems: ShopItem[] }) {
   const equip = useEquipCosmetic();
   const ownedCosmetics = wallet.cosmetics.owned || [];
@@ -36,11 +36,20 @@ export function InventoryStrip({ wallet, shopItems }: { wallet: Wallet; shopItem
               {wallet.inventory.STREAK_SHIELD}
             </span>
           </div>
+          {/* 무료분을 먼저 보여준다 — 크레딧보다 먼저 소모되므로,
+              순서를 바꾸면 "샀는데 왜 안 줄지?"라는 오해가 생긴다. */}
+          <div className="flex items-center gap-2 rounded-lg border border-border px-3.5 py-2.5">
+            <Sparkles size={16} className="text-primary" />
+            <span className="text-sm text-muted-foreground">오늘 무료 AI</span>
+            <span className="font-mono text-sm font-semibold tabular-nums">
+              {wallet.aiFreeRemaining}
+            </span>
+          </div>
           <div className="flex items-center gap-2 rounded-lg border border-border px-3.5 py-2.5">
             <Lightbulb size={16} className="text-primary" />
-            <span className="text-sm text-muted-foreground">힌트 토큰</span>
+            <span className="text-sm text-muted-foreground">AI 크레딧</span>
             <span className="font-mono text-sm font-semibold tabular-nums">
-              {wallet.inventory.HINT_TOKEN}
+              {wallet.inventory.AI_CREDIT}
             </span>
           </div>
         </div>
