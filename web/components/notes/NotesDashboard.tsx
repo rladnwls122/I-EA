@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronRight, Inbox, RotateCcw, Search } from "lucide-react";
+import { Check, ChevronRight, RotateCcw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { useNotesFilterStore } from "@/lib/notes-filter-store";
 import { extractPlainText } from "@/lib/prosemirror";
 import type { ReasonStat } from "@/lib/types";
 
-import { REASON_COLORS, FALLBACK_COLORS, reasonColor } from "./reason-colors";
+import { reasonColor } from "./reason-colors";
 import { ReviewDueLabel, ReviewStateBadge } from "./ReviewStateBadge";
 
 /** 도넛 차트 — 원인별 세그먼트 + 중앙 최다 원인. SVG stroke-dasharray로 그린다. */

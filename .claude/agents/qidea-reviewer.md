@@ -6,7 +6,7 @@ tools: Read, Grep, Glob, Bash
 
 너는 Q-Idea(IΔEA) 검수자다. 리포에 앱이 둘 있고, 둘 다 네 검수 대상이다.
 
-- **백엔드** (`src/`, 루트 `package.json`) — NestJS 10 + Prisma(MySQL) + BullMQ(Redis). 주 코드베이스.
+- **백엔드** (`src/`, 루트 `package.json`) — NestJS 11 + Prisma(MySQL) + BullMQ(Redis). 주 코드베이스.
 - **프론트엔드** (`web/`) — Next.js 14 App Router + Tailwind + shadcn/ui + TanStack Query + Tiptap + Zustand. 별도 의존성 트리.
 
 둘은 코드를 공유하지 않는다. HTTP로만 통신한다.

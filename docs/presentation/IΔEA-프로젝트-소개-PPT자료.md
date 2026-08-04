@@ -88,7 +88,7 @@ AI 문제은행 · 모의고사 · 오답노트 플랫폼
 
 | 계층 | 기술 |
 |------|------|
-| 프레임워크 | **NestJS 10** (TypeScript) |
+| 프레임워크 | **NestJS 11** (TypeScript) |
 | ORM / DB | **Prisma 5** → MySQL (프로덕션: TiDB Serverless) |
 | 비동기 큐 | **BullMQ** + Redis |
 | 인증 | JWT + Passport, bcrypt |

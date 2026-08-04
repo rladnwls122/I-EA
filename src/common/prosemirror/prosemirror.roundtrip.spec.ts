@@ -92,7 +92,6 @@ describe('#41 Phase 1 — 저장 왕복에서 서식 보존', () => {
 
     it('javascript: src는 거부한다(에디터를 우회해 직접 POST해도)', () => {
       expect(() =>
-        // eslint-disable-next-line no-script-url
         sanitizeProseMirrorBlocks(imageBlock({ src: 'javascript:alert(1)' }), 'explanation'),
       ).toThrow(/허용되지 않은 URL 스킴/);
     });

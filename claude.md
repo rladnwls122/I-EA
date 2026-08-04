@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **IΔEA / Q-Idea** — an AI question-authoring and mock-exam platform for Korean exam prep. This repo contains two independent apps:
 
-- **Backend (`src/`, root `package.json`)** — NestJS 10 REST API. Prisma → MySQL, BullMQ → Redis. This is the primary codebase.
+- **Backend (`src/`, root `package.json`)** — NestJS 11 REST API. Prisma → MySQL, BullMQ → Redis. This is the primary codebase.
 - **Frontend (`web/`)** — Next.js 14 (App Router) app with its own `package.json`, tsconfig, and dependency tree. Largely a scaffold (shadcn/ui components, TanStack Query, Tiptap, Zustand).
 
 The two share **no code**; they communicate over HTTP. Most work happens in the backend.
