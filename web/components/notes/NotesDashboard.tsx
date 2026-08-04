@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useMyNotes, useSubjects } from "@/lib/hooks";
+import { WeaknessCard } from "./WeaknessCard";
 import { useNotesFilterStore } from "@/lib/notes-filter-store";
 import { extractPlainText } from "@/lib/prosemirror";
 import type { ReasonStat } from "@/lib/types";
@@ -176,6 +177,10 @@ export function NotesDashboard() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
         {/* ═══ 본문 ═══ */}
         <div className="min-w-0 lg:order-1">
+          {/* 약점 진단(#37) — 진단 규칙은 서버가 계산해 내려준다(weakness.util).
+              subjectId가 있어야 "공략 세트" 조립이 가능해 필터의 과목을 그대로 넘긴다. */}
+          <WeaknessCard report={data?.summary.weakness} subjectId={applied.subjectId} />
+
           {/* 원인 분석 — 도넛 + 원인별 랭킹 */}
           <section className="mb-6 rounded-xl border border-border bg-card p-6">
             <div className="mb-4 flex items-baseline justify-between gap-3">
