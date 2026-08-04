@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -9,7 +8,6 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { QuestionKind } from '@/common/constants/question';
 import { rollBoxTier, type BoxTier, SOLVE_MILESTONE_THRESHOLD, SOLVE_MILESTONE_COINS } from '@/common/constants/shop';
-import { extractPlainText, PMNode } from '@/common/prosemirror/prosemirror.util';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
 import {
   XP_RULES,
