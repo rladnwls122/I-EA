@@ -28,7 +28,6 @@ import type {
   SessionDetail,
   SubmitAnswerInput,
   SubmitAnswerResult,
-  RevealHintResult,
   SubmitSessionResult,
   SelfGradeResult,
   QuestionReview,
@@ -668,13 +667,6 @@ export function submitSessionAnswer(
   );
 }
 
-/** 힌트 열람 (힌트 없는 문항이면 404) */
-export function revealSessionHint(sessionQuestionId: string) {
-  return apiFetch<RevealHintResult>(
-    `/exam-sessions/questions/${sessionQuestionId}/hint`,
-    { method: 'POST' },
-  );
-}
 
 /** 세션 최종 제출 — 채점 집계 + XP 적립 */
 export function submitSession(id: string) {

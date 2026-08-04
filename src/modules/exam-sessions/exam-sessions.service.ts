@@ -9,10 +9,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { QuestionKind } from '@/common/constants/question';
 import { rollBoxTier, type BoxTier, SOLVE_MILESTONE_THRESHOLD, SOLVE_MILESTONE_COINS } from '@/common/constants/shop';
-import { resolveHintQuota } from './hint-quota';
 import { extractPlainText, PMNode } from '@/common/prosemirror/prosemirror.util';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
-import { LlmHintContext } from '@/modules/ai-generation/llm/llm.types';
 import {
   XP_RULES,
   levelForXp,
@@ -234,8 +232,6 @@ export class ExamSessionsService {
           sessionQuestionId: sq.id,
           questionId: sq.questionId,
           displayOrder: sq.displayOrder,
-          isHintUsed: sq.isHintUsed,
-          hintUsedAt: sq.hintUsedAt,
           // 진행 중에는 정답 은닉, 채점 완료 후에는 원본 스냅샷 공개.
           snapshot: inProgress ? maskSnapshot(snapshot) : snapshot,
           // 제출 후에만 문항별 복습 상태 노출(기록 없으면 null).
@@ -298,134 +294,6 @@ export class ExamSessionsService {
 
     // 진행 중에는 정오 결과를 숨기고, 저장 여부만 반환한다.
     return { sessionQuestionId, saved: true };
-  }
-
-  /**
-   * 문항 힌트 열람. 최초 열람 시각을 exam_session_questions에 기록하고(is_hint_used),
-   * 라이브 문제의 hint_content를 반환한다. 채점 근거가 아니므로 스냅샷이 아닌 원본에서 가져온다.
-   */
-  async revealHint(sessionQuestionId: string, userId: string) {
-    const sq = await this.prisma.examSessionQuestion.findUnique({
-      where: { id: sessionQuestionId },
-      select: {
-        id: true,
-        isHintUsed: true,
-        hintUsedAt: true,
-        question: {
-          select: {
-            hintContent: true,
-            questionType: true,
-            stem: true,
-            choices: true,
-            correctAnswerText: true,
-            explanation: true,
-            difficulty: true,
-            subject: { select: { name: true, examCategory: true, examType: true } },
-          },
-        },
-        examSession: { select: { userId: true, status: true } },
-      },
-    });
-    if (!sq) throw new NotFoundException('세션 문항을 찾을 수 없습니다.');
-    if (sq.examSession.userId !== userId) throw new ForbiddenException('본인 세션만 응시할 수 있습니다.');
-    if (sq.examSession.status !== 'IN_PROGRESS') {
-      throw new BadRequestException('이미 제출된 세션입니다.');
-    }
-
-    // 최초 열람 시각만 남긴다(이미 열람했으면 기존 값 유지).
-    const hintUsedAt = sq.hintUsedAt ?? new Date();
-
-    // 출제자 작성 힌트가 있으면 그대로(빠른 경로), 없으면 AI로 즉석 생성(휘발 — 저장하지 않는다).
-    const resolveHintText = async (): Promise<string> =>
-      sq.question.hintContent ?? (await this.geminiLlm.generateHint(this.buildHintContext(sq.question))).hint;
-
-    let hint: string;
-    if (!sq.isHintUsed) {
-      // 하루 무료 3회를 넘기면 힌트 토큰 1개를 소모한다. 토큰도 없으면 열람을 막는다.
-      // AI 힌트는 LLM 호출 비용이 들기 때문에, 쿼터를 넘긴 요청은 힌트를 생성하기 전에 먼저 차단한다.
-      const today = new Date();
-      const [user, tokenInv] = await Promise.all([
-        this.prisma.user.findUnique({
-          where: { id: userId },
-          select: { hintFreeDate: true, hintFreeUsed: true },
-        }),
-        this.prisma.userInventory.findUnique({
-          where: { userId_itemKey: { userId, itemKey: 'HINT_TOKEN' } },
-          select: { quantity: true },
-        }),
-      ]);
-      const quota = resolveHintQuota(
-        user?.hintFreeDate ?? null,
-        user?.hintFreeUsed ?? 0,
-        tokenInv?.quantity ?? 0,
-        today,
-      );
-      if (!quota.allow) {
-        throw new ConflictException('오늘 무료 힌트를 다 썼어요. 힌트 토큰이 필요합니다.');
-      }
-
-      // 쿼터를 통과한 뒤에야 힌트 본문을 확정한다.
-      hint = await resolveHintText();
-
-      await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        // 토큰 소모는 동시 열람 시 음수로 빠지면 안 되므로, 수량이 남아있을 때만
-        // 원자적으로 차감한다(loot-boxes open()의 openedAt 가드와 같은 패턴).
-        // count===0이면 이미 다른 요청이 토큰을 다 써버린 것 — 열람을 거부한다.
-        if (quota.useToken) {
-          const debit = await tx.userInventory.updateMany({
-            where: { userId, itemKey: 'HINT_TOKEN', quantity: { gt: 0 } },
-            data: { quantity: { decrement: 1 } },
-          });
-          if (debit.count === 0) {
-            throw new ConflictException('힌트 토큰이 없습니다.');
-          }
-        }
-        await tx.examSessionQuestion.update({
-          where: { id: sessionQuestionId },
-          data: { isHintUsed: true, hintUsedAt },
-        });
-        await tx.user.update({
-          where: { id: userId },
-          data: { hintFreeDate: today, hintFreeUsed: quota.newFreeUsed },
-        });
-      });
-    } else {
-      // 이미 열람한 문항: 쿼터 소모는 최초 1회뿐이므로 재차 게이트를 걸지 않고 힌트 본문만 다시 확인해 준다.
-      hint = await resolveHintText();
-    }
-
-    return { sessionQuestionId, hint, isHintUsed: true, hintUsedAt };
-  }
-
-  /**
-   * 라이브 question(스냅샷 아님 — 힌트는 채점 근거가 아니다)에서 힌트 생성 컨텍스트를 만든다.
-   * ProseMirror JSON(stem/choices[].content)은 extractPlainText로 평문화한다.
-   */
-  private buildHintContext(q: {
-    questionType: string;
-    stem: unknown;
-    choices: unknown;
-    correctAnswerText: string | null;
-    explanation: unknown;
-    difficulty: number;
-    subject: { name: string; examCategory: string; examType: string };
-  }): LlmHintContext {
-    const rawChoices = Array.isArray(q.choices) ? (q.choices as Array<Record<string, unknown>>) : [];
-    const choices = rawChoices.map((c) => ({
-      content: extractPlainText(c.content as PMNode | PMNode[] | null | undefined),
-      isCorrect: c.isCorrect === true,
-    }));
-    return {
-      questionType: q.questionType as QuestionKind,
-      stemText: extractPlainText(q.stem as PMNode | PMNode[] | null | undefined),
-      choices: choices.length ? choices : undefined,
-      correctAnswerText: q.correctAnswerText ?? undefined,
-      explanationText: extractPlainText(q.explanation as PMNode | PMNode[] | null | undefined) || undefined,
-      difficulty: q.difficulty,
-      subjectName: q.subject.name,
-      examCategory: q.subject.examCategory,
-      examType: q.subject.examType,
-    };
   }
 
   /**

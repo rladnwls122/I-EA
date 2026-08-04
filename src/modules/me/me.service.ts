@@ -451,6 +451,9 @@ export class MeService {
     return {
       coins: user.coins,
       xpBoostUntil: user.xpBoostUntil,
+      // HINT_TOKEN은 상점에서 내렸지만(응시 중 AI 힌트 폐기, 2026-08-04) 이미 코인을 주고
+      // 산 사용자가 있을 수 있어 보유 수량은 계속 보여준다. 소리 없이 감추면 "산 게 사라졌다"가 된다.
+      // 보상/회수 처리는 제품 결정 사항이라 여기서 임의로 하지 않는다.
       inventory: { STREAK_SHIELD: qty('STREAK_SHIELD'), HINT_TOKEN: qty('HINT_TOKEN') },
       cosmetics: {
         owned: inv.filter((i) => i.itemKey.startsWith('COSMETIC_') && i.quantity > 0).map((i) => i.itemKey),

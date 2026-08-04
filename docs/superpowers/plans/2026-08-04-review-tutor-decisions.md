@@ -90,12 +90,30 @@ LLM 호출이 나간다 — 열고 바로 닫는 경우까지 과금된다. 오�
 - 오답노트(`/notes`) 쪽 진입점 — 이번엔 세션 결과 화면에만 달았다. 오답노트 카드
   컴포넌트에 같은 버튼을 붙이는 건 기계적 작업이라 도그푸딩 반응 본 뒤에.
 
-## 남은 정리 대상 (이번 범위 밖)
+## 후속 — 응시 중 AI 힌트도 제거 (사용자 승인 후 실행)
 
-풀이 중 튜터가 폐기됐으니 **응시 중 AI 힌트**(`POST /exam-sessions/questions/:id/hint`,
-hint-quota·코인 게이팅)도 같은 방향에서 재검토 대상이다. 로드맵 #33은 이미
-"solve-time-ai-hint — 폐기"로 적어 두었다. 다만 그쪽은 코인·무료 횟수 등 경제 로직과
-얽혀 있어 제거 범위가 튜터와 다르다 — 별도 확인 후 진행하는 게 맞다.
+로드맵 #33의 "solve-time-ai-hint — 폐기"와 튜터 폐기 방향에 맞춰 제거했다.
+경제 로직이 얽혀 있어 별도 확인을 거친 뒤 진행했다.
+
+**제거**: `POST /exam-sessions/questions/:id/hint`, `revealHint`/`buildHintContext`,
+`hint-quota.ts`, `GeminiLlmService.generateHint`(+ LlmHintContext/Result), 관련 스펙 4개,
+프런트 힌트 버튼·`revealSessionHint`·`useRevealHint`·`RevealHintResult`.
+
+**상점**: `HINT_TOKEN`을 카탈로그(`SHOP_ITEMS`)에서 내렸다. 남겨 두면 **아무 기능도 없는
+아이템을 코인 받고 계속 파는** 상태가 된다. `purchase.dto`의 `@IsIn`이 카탈로그 키에서
+나오므로 신규 구매는 자동으로 400이 된다. 구매 이력은 itemKey 문자열이라 그대로 읽힌다.
+
+**이미 산 사람**: 보유 수량(`wallet.inventory.HINT_TOKEN`)은 **계속 보여준다.** 소리 없이
+감추면 "코인 주고 산 게 사라졌다"가 된다. 보상·회수는 제품 결정이라 임의로 하지 않았다.
+→ **판단 필요**: 보유자에게 코인 환불할지, 다른 아이템으로 교환할지, 그대로 둘지.
+
+**스키마 컬럼은 남겼다** (`users.hint_free_date/used`, `exam_session_questions.is_hint_used/hint_used_at`).
+배포가 `prisma db push`이고 `--accept-data-loss`를 뺀 상태라 컬럼 삭제가 곧 **배포 실패**다.
+고아 컬럼임을 schema.prisma 주석에 표시했고, 걷어내려면 전용 마이그레이션이 필요하다.
+
+**남은 것**: `questions.hint_content`(출제자 작성 힌트)는 이제 읽는 곳이 없다. 프런트에
+작성 UI가 애초에 없어서 실사용 데이터는 거의 없을 것으로 보이지만, 저장된 내용이 있을 수
+있어 컬럼과 DTO는 손대지 않았다.
 
 ---
 

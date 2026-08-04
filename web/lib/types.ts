@@ -470,8 +470,6 @@ export interface SessionQuestionItem {
   sessionQuestionId: string;
   questionId: string;
   displayOrder: number;
-  isHintUsed: boolean;
-  hintUsedAt: string | null;
   snapshot: SessionQuestionSnapshot;
   answer: SessionAnswer | null;
   /** 채점 후 복습 상태 — IN_PROGRESS에는 없음 */
@@ -501,13 +499,6 @@ export interface SubmitAnswerInput {
 export interface SubmitAnswerResult {
   sessionQuestionId: string;
   saved: true;
-}
-
-export interface RevealHintResult {
-  sessionQuestionId: string;
-  hint: string | null;
-  isHintUsed: true;
-  hintUsedAt: string;
 }
 
 export interface RewardBreakdown {
