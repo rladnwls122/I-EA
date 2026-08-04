@@ -247,8 +247,14 @@ model SubjectDetail {
 
 // ---------------------------------------------------------------------
 // 3. tags
-//   category 예: 출처 / 난이도 / 출제기법 / 출제유형 / 키워드
-//   ("유형"은 questionType·하위요소와 뜻이 겹쳐 쓰지 않는다)
+//   category는 정본 목록만 허용한다 — src/common/constants/tag.ts (TAG_CATEGORIES).
+//   출처 / 난이도 / 출제기법 / 출제유형 / 키워드
+//
+//   #24 용어 정리: '유형'은 네 가지를 가리켜 금지어다.
+//     문항형식 = questionType 컬럼 | 하위요소 = SubjectDetail 테이블
+//     출제기법 = 킬러·자료해석 등 (구 '유형') | 출제유형 = 모듈형/PSAT형/피듈형
+//   출제기법과 출제유형은 이름이 비슷할 뿐 다른 축이다. 합치지 말 것.
+//   '단원'·'과목'도 쓰지 않는다 — SubjectDetail·Subject.examCategory와 겹친다.
 // ---------------------------------------------------------------------
 model Tag {
   id       String @id @default(uuid()) @db.Char(36)

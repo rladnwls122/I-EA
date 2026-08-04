@@ -1,5 +1,6 @@
 "use client";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { KEYWORD_TAG_CATEGORY } from "@/lib/tag-categories";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Loader2, PencilLine, Plus, X } from "lucide-react";
 import Link from "next/link";
@@ -72,7 +73,7 @@ export interface CanvasCard {
 }
 
 /** 문항 #키워드용 태그 카테고리 — 과목/유형 등 큐레이션 태그와 구분. */
-const KEYWORD_TAG_CATEGORY = "키워드";
+
 
 /** AI 생성 설정(채팅창 밖 독립 패널) — null 유형은 "자동"(힌트 없음). */
 export interface AiSettings {

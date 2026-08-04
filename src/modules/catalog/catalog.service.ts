@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { UserRoleType } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
-import { KEYWORD_TAG_CATEGORY } from '@/common/constants/question';
+import { KEYWORD_TAG_CATEGORY } from '@/common/constants/tag';
 import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
 import { CreateSubjectDto, CreateTagDto } from './dto/catalog.dto';
 

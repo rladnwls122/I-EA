@@ -44,6 +44,7 @@ import type {
   PurchaseResult,
   MyPurchase,
 } from './types';
+import type { TagCategory } from "./tag-categories";
 
 // ─── 기본 설정 ──────────────────────────────────────────────────────
 
@@ -628,13 +629,16 @@ export function fetchReviewSummary() {
 }
 
 /** 태그 목록 (category로 선택 필터) */
-export function fetchTags(category?: string) {
+export function fetchTags(category?: TagCategory) {
   const qs = category ? `?category=${encodeURIComponent(category)}` : '';
   return apiFetch<Tag[]>(`/tags${qs}`);
 }
 
-/** 태그 생성 — CREATOR/ADMIN 허용. 문항 #키워드 자유 태깅에 쓴다. */
-export function createTag(name: string, category: string) {
+/**
+ * 태그 생성 — '키워드'는 모든 유저, 그 외 카테고리는 CREATOR/ADMIN.
+ * 정본 밖 카테고리는 백엔드가 400으로 거절한다 — 타입으로 미리 막는다.
+ */
+export function createTag(name: string, category: TagCategory) {
   return apiFetch<Tag>('/tags', {
     method: 'POST',
     body: JSON.stringify({ name, category }),

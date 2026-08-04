@@ -10,7 +10,7 @@ import type { Response } from 'express';
 import Redis from 'ioredis';
 import { PrismaService } from '@/prisma/prisma.service';
 import { REDIS_CLIENT } from '@/redis/redis.module';
-import { KEYWORD_TAG_CATEGORY } from '@/common/constants/question';
+import { KEYWORD_TAG_CATEGORY } from '@/common/constants/tag';
 import { GeminiLlmService } from './llm/gemini-llm.service';
 import type { TutorTurn } from './llm/llm.types';
 import { AuthoringChatDto } from './dto/authoring-chat.dto';
