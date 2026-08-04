@@ -62,7 +62,8 @@ export async function streamReviewTutorChat(
       const { handleUnauthorized } = await import('./api');
       handleUnauthorized();
     }
-    // 인가 실패(403)는 서버가 사유를 준다 — "응시 중이라 안 된다" 같은 건 그대로 보여준다.
+    // 서버가 사유를 주는 실패는 그대로 보여준다 — 403("응시 중이라 안 된다"),
+    // 402("오늘 무료분을 다 썼고 AI 크레딧도 없다"). 문구를 여기서 다시 짓지 않는다.
     const detail = await res
       .json()
       .then((b: { message?: string }) => b?.message)

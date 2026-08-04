@@ -111,10 +111,13 @@ model User {
   coins             Int       @default(0)
   equippedTitle     String?   @map("equipped_title") @db.VarChar(60)
   nameColor         String?   @map("name_color") @db.VarChar(20)
-  // 힌트 하루 무료 소진 카운트(날짜 바뀌면 리셋). D-3 게이팅용.
-  hintFreeDate      DateTime? @map("hint_free_date") @db.Date
-  hintFreeUsed      Int       @default(0) @map("hint_free_used")
-  // 저자 발행 보상 하루 캡(날짜 바뀌면 리셋). hintFreeDate/hintFreeUsed와 동일 패턴.
+  // AI 크레딧 하루 무료 소진 카운트(날짜 바뀌면 리셋). 복습 튜터 턴 게이팅용.
+  // 원래 hint_free_date/hint_free_used였다 — 응시 중 AI 힌트를 폐기(2026-08-04)하면서
+  // 잠시 아무도 안 읽는 상태였는데, "하루 무료 할당량"이라는 모양이 그대로 필요해
+  // 지우지 않고 이름만 바꿔 재사용한다.
+  aiFreeDate        DateTime? @map("ai_free_date") @db.Date
+  aiFreeUsed        Int       @default(0) @map("ai_free_used")
+  // 저자 발행 보상 하루 캡(날짜 바뀌면 리셋). aiFreeDate/aiFreeUsed와 동일 패턴.
   authorRewardDate  DateTime? @map("author_reward_date") @db.Date
   authorRewardCount Int       @default(0) @map("author_reward_count")
   createdAt         DateTime  @default(now()) @map("created_at")
@@ -479,8 +482,11 @@ model ExamSessionQuestion {
   questionId    String    @map("question_id") @db.Char(36)
   displayOrder  Int       @map("display_order")
   snapshot      Json
-  // 힌트 트래킹: 힌트 열람 여부 + 최초 열람 시각
-  // [고아 컬럼] 위 users.hint_free_* 와 같은 사유 — 응시 중 AI 힌트 폐기(2026-08-04).
+  // 힌트 트래킹: 힌트 열람 여부 + 최초 열람 시각.
+  // [휴면] 응시 중 AI 힌트를 폐기(2026-08-04)해서 지금은 읽고 쓰는 코드가 없다.
+  // 남겨 두는 비용은 사실상 0이고(nullable/default, 인덱스 없음, 어떤 쿼리도 안 건드림),
+  // 응시 중 AI 보조가 다시 생기면 그때 이 자리가 필요하다. 지우지 않는다.
+  // 후속 복습 튜터는 (세션, 문항)이 아니라 제출 후 (사용자, 문항) 단위라 이 행을 쓰지 않는다.
   isHintUsed    Boolean   @default(false) @map("is_hint_used")
   hintUsedAt    DateTime? @map("hint_used_at")
 

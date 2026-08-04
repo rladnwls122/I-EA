@@ -45,7 +45,15 @@ export function rollCoins(tier: BoxTier, rng: () => number = Math.random): numbe
 export type ShopItemKind = 'BOOST' | 'CONSUMABLE' | 'COSMETIC' | 'PHYSICAL';
 
 type BoostEffect = { type: 'BOOST'; hours: number };
-type ConsumableEffect = { type: 'CONSUMABLE'; inventoryKey: 'STREAK_SHIELD' };
+/**
+ * 소모품. `quantity`는 1회 구매로 들어오는 개수(생략 시 1).
+ * 크레딧처럼 낱개 단가가 낮은 아이템은 묶음으로 팔아야 구매가 성립한다.
+ */
+type ConsumableEffect = {
+  type: 'CONSUMABLE';
+  inventoryKey: 'STREAK_SHIELD' | 'AI_CREDIT';
+  quantity?: number;
+};
 type CosmeticEffect = { type: 'COSMETIC'; field: 'equippedTitle' | 'nameColor'; value: string };
 type PhysicalEffect = { type: 'PHYSICAL' };
 type ShopEffect = BoostEffect | ConsumableEffect | CosmeticEffect | PhysicalEffect;
@@ -61,6 +69,7 @@ export const SHOP_ITEMS = {
   XP_BOOST:        { name: 'XP 부스터',       price: 100,  kind: 'BOOST',      effect: { type: 'BOOST', hours: 24 } },
   XP_BOOST_LARGE:  { name: '대형 XP 부스터',  price: 300,  kind: 'BOOST',      effect: { type: 'BOOST', hours: 72 } },
   STREAK_SHIELD:   { name: '연속학습 보호권', price: 250,  kind: 'CONSUMABLE', effect: { type: 'CONSUMABLE', inventoryKey: 'STREAK_SHIELD' } },
+  AI_CREDIT_PACK:  { name: 'AI 크레딧 10개',  price: 400,  kind: 'CONSUMABLE', effect: { type: 'CONSUMABLE', inventoryKey: 'AI_CREDIT', quantity: 10 } },
   COSMETIC_TITLE_MASTER:    { name: '칭호: 문제의 지배자', price: 150, kind: 'COSMETIC', effect: { type: 'COSMETIC', field: 'equippedTitle', value: '문제의 지배자' } },
   COSMETIC_NAMECOLOR_GOLD:  { name: '닉네임 색: 골드',     price: 200, kind: 'COSMETIC', effect: { type: 'COSMETIC', field: 'nameColor', value: '#E9B949' } },
   RICEBALL_COUPON: { name: '배불리주먹밥 쿠폰(실물)', price: 7777, kind: 'PHYSICAL', effect: { type: 'PHYSICAL' } },
@@ -75,6 +84,65 @@ export function getShopItem(key: ShopItemKey): ShopItem | undefined {
 /** 대형 부스터용 시간 단위 만료(기존 boostExpiry는 날짜 단위). */
 export function boostExpiryHours(now: Date, hours: number): Date {
   return new Date(now.getTime() + hours * 3_600_000);
+}
+
+// ─── AI 크레딧 ───
+//
+// 폐기된 HINT_TOKEN의 자리를 잇는다. 하는 일이 같다 — "이 문항에 대해 AI가 도와준다".
+// 다른 점은 소모처가 응시 중 힌트 1회가 아니라 **복습 튜터 대화 한 턴**이라는 것이다.
+//
+// 무료 5회/일: 힌트는 1회로 완결됐지만 대화는 몇 턴 오가야 하나의 이해가 된다.
+// 예전 무료 3회를 그대로 쓰면 대화가 시작도 못 하고 끊긴다.
+//
+// 묶음 400코인(개당 40): HINT_TOKEN이 1회 80코인이었다. 턴 단가는 그 절반으로 둔다 —
+// 같은 이유로, 한 턴이 힌트 한 번보다 정보량이 작기 때문이다. 제출 1회당 상자에서
+// 평균 30~60코인이 나오므로 묶음 하나는 대략 제출 8~13회에 해당한다.
+
+/** 인벤토리에서 AI 크레딧을 세는 키. 문자열을 여기저기 흩뿌리지 않는다. */
+export const AI_CREDIT_ITEM_KEY = 'AI_CREDIT';
+
+/** 하루 무료 AI 크레딧 사용 횟수. 날짜가 바뀌면 리셋된다. */
+export const AI_FREE_PER_DAY = 5;
+
+function aiDayNum(d: Date): number {
+  return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000);
+}
+
+/**
+ * AI 크레딧을 쓸 수 있는지 + 무료분/보유분 중 무엇을 소모할지.
+ *
+ * 무료분을 **먼저** 태운다. 반대로 하면 매일 리셋되는 무료분이 그냥 증발하고
+ * 사용자는 산 걸 먼저 잃는다.
+ *
+ * 순수 함수다 — 실제 차감은 호출부가 트랜잭션 안에서 다시 판정한다.
+ * 여기 결과만 믿고 차감하면 동시 요청에 초과 사용이 생긴다.
+ */
+export function resolveAiCreditQuota(
+  aiFreeDate: Date | null | undefined,
+  aiFreeUsed: number,
+  creditQty: number,
+  today: Date,
+): { allow: boolean; useCredit: boolean; newFreeUsed: number } {
+  const sameDay = !!aiFreeDate && aiDayNum(aiFreeDate) === aiDayNum(today);
+  const usedToday = sameDay ? aiFreeUsed : 0;
+  if (usedToday < AI_FREE_PER_DAY) {
+    return { allow: true, useCredit: false, newFreeUsed: usedToday + 1 };
+  }
+  if (creditQty > 0) {
+    return { allow: true, useCredit: true, newFreeUsed: AI_FREE_PER_DAY };
+  }
+  return { allow: false, useCredit: false, newFreeUsed: AI_FREE_PER_DAY };
+}
+
+/** 오늘 남은 무료 턴 수. 지갑 표시용 — 소모 판정은 resolveAiCreditQuota가 한다. */
+export function aiFreeRemainingToday(
+  aiFreeDate: Date | null | undefined,
+  aiFreeUsed: number,
+  today: Date,
+): number {
+  const sameDay = !!aiFreeDate && aiDayNum(aiFreeDate) === aiDayNum(today);
+  const usedToday = sameDay ? aiFreeUsed : 0;
+  return Math.max(0, AI_FREE_PER_DAY - usedToday);
 }
 
 // ─── 저자 리워드(출제자 보상) 규칙 ───

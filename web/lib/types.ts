@@ -653,8 +653,11 @@ export interface Wallet {
   xpBoostUntil: string | null;
   inventory: {
     STREAK_SHIELD: number;
-    HINT_TOKEN: number;
+    /** 복습 튜터 대화 한 턴에 1개. 폐기된 HINT_TOKEN의 후신. */
+    AI_CREDIT: number;
   };
+  /** 오늘 남은 무료 AI 턴. 크레딧보다 **먼저** 소모된다. */
+  aiFreeRemaining: number;
   cosmetics: {
     /** 보유 코스메틱 itemKey 목록 (COSMETIC_ 접두) */
     owned: string[];
