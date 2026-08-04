@@ -31,6 +31,16 @@ import type { Tag, Question } from "@/lib/types";
 import { questionRejectReason, type ParsedQuestion } from "@/lib/authoring-chat";
 import { AuthoringChatPanel } from "./AuthoringChatPanel";
 import { AuthoringCanvasCard } from "./AuthoringCanvasCard";
+import {
+  buildQuestionPayload,
+  isPersistedCard,
+  isSavableCard,
+  newLocalCardId,
+  normalizeKeywords,
+  passageKey,
+  uniquePassages,
+  validateSave,
+} from "./authoring-save";
 
 /** 선지 하나 — 본문 + 선지별 해설(공개 여부 토글 가능). */
 export interface CanvasChoice {
@@ -118,13 +128,6 @@ function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
   };
 }
 
-/** 지문 공유 판정 키 — 평문 완전일치(공백 정리 후). 빈 지문은 그룹으로 안 묶는다. */
-function passageKey(card: CanvasCard): string | null {
-  if (!card.passage) return null;
-  const text = extractPlainText(card.passage).trim();
-  return text ? text : null;
-}
-
 /**
  * 저장된 rich 값(doc 노드 또는 블록 노드 배열) → 평문.
  * choices[].content/stem은 doc, explanation은 buildRichBlocks가 만든 블록 배열이라
@@ -134,11 +137,6 @@ function richToText(v: any): string {
   if (!v) return "";
   const doc = Array.isArray(v) ? { type: "doc", content: v } : v;
   return extractPlainText(doc);
-}
-
-/** 새 카드(local-)와 기존 문항 카드(실제 question id)를 구분. */
-function isPersistedCard(id: string): boolean {
-  return !id.startsWith("local-");
 }
 
 /**
@@ -380,7 +378,7 @@ export function AuthoringCanvas({
           return copy;
         }
       }
-      return [...prev, { ...probe, id: `local-${Date.now()}-${prev.length}` }];
+      return [...prev, { ...probe, id: newLocalCardId(prev.length) }];
     });
     return null;
   }, []);
@@ -440,7 +438,7 @@ export function AuthoringCanvas({
     setCards((prev) => [
       ...prev,
       {
-        id: `local-${Date.now()}-${prev.length}`,
+        id: newLocalCardId(prev.length),
         type: "객관식",
         stem: buildRichDoc(""),
         passage: null,
@@ -459,28 +457,23 @@ export function AuthoringCanvas({
   }, []);
 
   const handleSave = async () => {
-    if (cards.length === 0) {
-      toast.error("저장할 문항이 없습니다.");
-      return;
-    }
-    if (!subjectId) {
-      toast.error("과목 정보가 없습니다. 채팅에서 과목을 확인해주세요.");
-      return;
-    }
-    // 문제집 자체를 못 불러왔으면(삭제됐거나 남의 것) 담기는 100% 실패한다 — 미리 막는다.
-    if (workbookError || !workbook) {
-      toast.error("문제집을 불러오지 못했어요. 문제집 만들기에서 다시 시작해주세요.");
+    // 사전검증은 순수 규칙이라 authoring-save로 뺐다(테스트 대상).
+    const blocked = validateSave({
+      cardCount: cards.length,
+      subjectId,
+      workbookLoaded: !workbookError && !!workbook,
+    });
+    if (blocked) {
+      toast.error(blocked);
       return;
     }
     setSaving(true);
     try {
       // 1) 지문 영속화 — 같은 지문(평문 일치)은 한 번만 생성해 passageId를 공유한다.
       const passageIdByKey = new Map<string, string>();
-      for (const c of cards) {
-        const key = passageKey(c);
-        if (!key || passageIdByKey.has(key)) continue;
+      for (const { key, passage } of uniquePassages(cards)) {
         try {
-          const p = await createPassage(c.passage);
+          const p = await createPassage(passage);
           await publishPassage(p.id).catch(() => null); // 발행 실패는 담기에 치명적이지 않음
           passageIdByKey.set(key, p.id);
         } catch (e) {
@@ -496,9 +489,8 @@ export function AuthoringCanvas({
       );
       const resolveTagIds = async (keywords: string[]): Promise<string[]> => {
         const ids: string[] = [];
-        for (const raw of keywords) {
-          const name = raw.trim();
-          if (!name) continue;
+        // 공백·중복 정리는 순수 규칙 — 여기서 걸러야 같은 태그를 두 번 만들지 않는다.
+        for (const name of normalizeKeywords(keywords)) {
           const key = name.toLowerCase();
           let id = tagIdByName.get(key);
           if (!id) {
@@ -522,38 +514,10 @@ export function AuthoringCanvas({
       //    돌려줘 원인이 가려진다 — 단계별로 실패를 구분해 서버 메시지를 그대로 보여준다.
       const buildContentPayload = (c: CanvasCard, tagIds: string[]) => {
         const key = passageKey(c);
-        return {
-          questionType: c.type,
-          points: c.points,
-          ...(tagIds.length ? { tagIds } : {}),
-          ...(key && passageIdByKey.has(key) ? { passageId: passageIdByKey.get(key) } : {}),
-          stem: c.stem,
-          choices:
-            c.type === "객관식"
-              ? c.choices.map((ch, i) => ({
-                  id: `c${i + 1}`,
-                  // 텍스트를 안 고쳤으면 불러온 원본 노드를 그대로 돌려보낸다 —
-                  // 평문으로 다시 지으면 다른 편집기에서 넣은 서식이 사라진다.
-                  content: keepIfUnchanged(ch.sourceContent, ch.text) ?? buildRichDoc(ch.text),
-                  isCorrect: i === c.correct,
-                  // 선지별 해설 — 공개 여부(showExplanation)까지 choices Json에 함께 보존.
-                  ...(ch.explanation.trim()
-                    ? {
-                        explanation:
-                          keepIfUnchanged(ch.sourceExplanation, ch.explanation) ??
-                          buildRichBlocks(ch.explanation),
-                        explanationVisible: ch.showExplanation,
-                      }
-                    : {}),
-                }))
-              : undefined,
-          correctAnswerText:
-            c.type === "주관식" && c.answerText.trim() ? c.answerText.trim() : undefined,
-          // 에디터 JSON을 그대로 보낸다 — doc 래퍼만 벗겨 블록 배열로.
-          // 예전엔 extractPlainText → buildRichBlocks 왕복이라 굵게·목록·제목이
-          // 저장 한 번에 증발했다. 평문을 다시 끼워 넣지 마라(#41 Phase 1).
-          explanation: isRichEmpty(c.explanation) ? undefined : docToBlocks(c.explanation),
-        };
+        return buildQuestionPayload(c, {
+          tagIds,
+          passageId: key ? passageIdByKey.get(key) : undefined,
+        });
       };
 
       let failed = 0;
@@ -564,7 +528,7 @@ export function AuthoringCanvas({
       for (const c of cards) {
         // 텍스트가 아니라 내용 유무로 판정한다 — 이미지만 있는 발문(Phase 2)을
         // 빈 카드로 보고 조용히 건너뛰지 않게.
-        if (isRichEmpty(c.stem)) continue;
+        if (!isSavableCard(c)) continue;
         try {
           const tagIds = await resolveTagIds(c.keywords);
           const payload = buildContentPayload(c, tagIds);
