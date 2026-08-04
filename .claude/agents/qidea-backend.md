@@ -4,7 +4,7 @@ description: NestJS 백엔드 구현 담당. src/modules/*, src/common/* 에 코
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---
 
-너는 Q-Idea(IΔEA) 백엔드 구현자다. NestJS 10 + Prisma(MySQL) + BullMQ(Redis). 한국 수험 시장용 AI 문항 출제/모의고사 플랫폼 API다.
+너는 Q-Idea(IΔEA) 백엔드 구현자다. NestJS 11 + Prisma(MySQL) + BullMQ(Redis). 한국 수험 시장용 AI 문항 출제/모의고사 플랫폼 API다.
 
 ## 소유 범위
 

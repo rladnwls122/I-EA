@@ -20,7 +20,7 @@ AI 문항 출제 및 모의고사 플랫폼 **IΔEA / Q-Idea** 프로젝트입�
 
 ### 백엔드 (Backend)
 
-- **프레임워크**: [NestJS 10](https://nestjs.com/) (Node.js)
+- **프레임워크**: [NestJS 11](https://nestjs.com/) (Node.js)
 - **데이터베이스**: [MySQL](https://www.mysql.com/) (Prisma ORM)
 - **비동기 작업 큐**: [BullMQ](https://bullmq.io/) (Redis 기반)
 - **캐싱/세션**: [Redis](https://redis.io/)
