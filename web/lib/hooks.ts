@@ -51,10 +51,7 @@ import {
 } from './api';
 import type {
   Subject,
-  Question,
   QuestionStatus,
-  Workbook,
-  AiGeneration,
   SubmitAnswerInput,
 } from './types';
 

@@ -6,12 +6,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
   buildRichDoc,
-  buildRichBlocks,
   extractPlainText,
   blocksToDoc,
-  docToBlocks,
-  isRichEmpty,
-  keepIfUnchanged,
 } from "@/lib/prosemirror";
 import {
   createQuestion,

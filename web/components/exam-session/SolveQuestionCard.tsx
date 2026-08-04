@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Check, Loader2 } from "lucide-react";
+import { Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useDebounce, useSubmitAnswer } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";

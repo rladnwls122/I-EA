@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useSubjects, useQuestions } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
 import { QuestionPreview } from "@/components/questions/QuestionPreview";
