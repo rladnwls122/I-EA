@@ -41,6 +41,12 @@ export interface FormatTemplate {
     passageCount: number;
     /** 지문 세트에 묶는 문항 수 권장 범위(프롬프트 힌트로만 쓴다 — questionCount는 요청값 우선). */
     questionsPerPassage?: [number, number];
+    /**
+     * 다중지문 세트에서 각 지문을 부르는 이름(#43). passageCount와 길이가 같아야 한다.
+     * 시험마다 관행이 다르다 — 수능은 "(가)(나)", 토익은 "지문 1/2".
+     * 생략하면 `지문 N`으로 매긴다.
+     */
+    passageLabels?: readonly string[];
     /** 객관식 선지 개수 기본값. 요청이 choiceCount를 명시하면 그쪽이 우선. */
     choiceCount?: number;
     answerMode: AnswerMode;
@@ -100,6 +106,7 @@ const FORMAT_TEMPLATES: readonly FormatTemplate[] = [
     structure: {
       passageCount: 2,
       questionsPerPassage: [4, 6],
+      passageLabels: ['(가)', '(나)'],
       choiceCount: 5,
       answerMode: 'single',
       questionType: '객관식',
@@ -329,6 +336,7 @@ const FORMAT_TEMPLATES: readonly FormatTemplate[] = [
     structure: {
       passageCount: 2,
       questionsPerPassage: [5, 5],
+      passageLabels: ['Passage 1', 'Passage 2'],
       choiceCount: 4,
       answerMode: 'single',
       language: 'en',
@@ -357,6 +365,7 @@ const FORMAT_TEMPLATES: readonly FormatTemplate[] = [
     structure: {
       passageCount: 3,
       questionsPerPassage: [5, 5],
+      passageLabels: ['Passage 1', 'Passage 2', 'Passage 3'],
       choiceCount: 4,
       answerMode: 'single',
       language: 'en',
@@ -411,6 +420,11 @@ export interface ResolvedGenerationFormat {
    * 다중지문 템플릿이면 2~3 — LLM 계약이 passages[] + passageIndex로 바뀐다(gap 3).
    */
   passageCount: number;
+  /**
+   * 다중지문 세트에서 각 지문의 표시 이름(#43). passageCount가 2 미만이면 빈 배열.
+   * 세트로 저장할 때 Passage.label로 들어가 풀이 화면이 "(가)/(나)"로 구분해 보여준다.
+   */
+  passageLabels: string[];
   questionType?: QuestionKind;
   answerMode: AnswerMode;
   promptHints: string[];
@@ -451,6 +465,15 @@ export function resolveTemplateFormat(
     language: explicit.language ?? s?.language,
     includePassage,
     passageCount,
+    // 세트가 아닐 때(0~1개)는 라벨이 의미 없다 — 빈 배열로 두어 호출부가 분기하지 않게 한다.
+    // 템플릿이 라벨을 안 줬거나 개수가 어긋나면 `지문 N`으로 채운다.
+    passageLabels:
+      passageCount >= 2
+        ? Array.from(
+            { length: passageCount },
+            (_, i) => s?.passageLabels?.[i] ?? `지문 ${i + 1}`,
+          )
+        : [],
     questionType,
     answerMode: s?.answerMode ?? 'single',
     promptHints,

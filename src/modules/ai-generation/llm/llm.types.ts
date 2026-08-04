@@ -92,6 +92,11 @@ export interface LlmGenerationContext {
    * 생략 시 includePassage로 0/1을 따른다(종전 동작).
    */
   passageCount?: number;
+  /**
+   * 다중지문 세트의 지문 표시 이름(#43). 프롬프트에는 쓰지 않고 저장 시 Passage.label로 간다 —
+   * LLM은 순서(passages 배열 인덱스)만 알면 되고 라벨은 우리 표기 관행이다.
+   */
+  passageLabels?: string[];
   questionType?: QuestionKind;
   /** OX(참/거짓) 2지선다 스타일 힌트. questionType 저장값은 그대로 객관식 — 별도 타입을 만들지 않는다. */
   ox?: boolean;

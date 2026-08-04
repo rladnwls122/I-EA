@@ -93,7 +93,10 @@ export class QuestionsService {
         data: { viewCount: { increment: 1 } },
         include: {
           subject: { select: { id: true, name: true, examCategory: true, examType: true } },
-          passage: { select: { id: true, status: true, content: true } },
+          // setId가 있으면 이 문항은 함께 읽어야 하는 지문 묶음의 일부다(#43).
+          passage: {
+            select: { id: true, status: true, content: true, setId: true, label: true },
+          },
           questionTags: { include: { tag: { select: { id: true, name: true, category: true } } } },
           mediaAssets: { select: { id: true, assetType: true, storageUrl: true } },
           _count: { select: { reviews: true, comments: true } },
@@ -126,8 +129,22 @@ export class QuestionsService {
     const inActiveSession =
       question.creatorId !== userId && (await this.hasActiveSessionFor(id, userId));
 
+    // 지문 세트 전체(#43). 수능 (가)(나)·토익 Part 7 double은 문항이 두세 지문을
+    // 교차 참조해야 풀리는데, Question.passageId는 근거 지문 하나만 문다.
+    // 상세 화면에서 나머지 지문이 안 보이면 문항을 읽을 수 없다.
+    const passages = question.passage?.setId
+      ? await this.prisma.passage.findMany({
+          where: { setId: question.passage.setId },
+          select: { id: true, status: true, content: true, label: true },
+          orderBy: { setOrder: 'asc' },
+        })
+      : question.passage
+        ? [{ ...question.passage, label: question.passage.label }]
+        : [];
+
     const payload = {
       ...question,
+      passages,
       tags: question.questionTags.map((qt) => qt.tag),
       correctRatePercent: correctRate,
       solvedByMe: solvedCount > 0,

@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useDebounce, useSubmitAnswer } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
+import { sessionPassages } from "@/lib/session-passages";
 import type { SessionQuestionItem } from "@/lib/types";
 
 export function SolveQuestionCard({
@@ -59,11 +60,18 @@ export function SolveQuestionCard({
         </Badge>
       </div>
 
-      {item.snapshot.passage && (
-        <div className="mb-4 rounded-lg bg-surface-raised px-3 py-2.5 text-sm leading-relaxed text-foreground">
-          <p className="whitespace-pre-wrap">{extractPlainText(item.snapshot.passage)}</p>
+      {/* 세트 지문은 전부 보여준다(#43). (가)(나)·토익 double은 나머지 지문 없이 풀 수 없다. */}
+      {sessionPassages(item.snapshot).map((p, i) => (
+        <div
+          key={i}
+          className="mb-4 rounded-lg bg-surface-raised px-3 py-2.5 text-sm leading-relaxed text-foreground"
+        >
+          {p.label && (
+            <p className="mb-1.5 text-xs font-semibold text-muted-foreground">{p.label}</p>
+          )}
+          <p className="whitespace-pre-wrap">{extractPlainText(p.content)}</p>
         </div>
-      )}
+      ))}
 
       <p className="mb-4 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
         {extractPlainText(item.snapshot.stem)}
