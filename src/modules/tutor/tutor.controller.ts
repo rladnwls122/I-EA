@@ -4,7 +4,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
 import { TutorService } from './tutor.service';
-import { TutorChatDto, TutorHistoryQueryDto } from './dto/tutor-chat.dto';
+import { ReviewTutorChatDto, ReviewTutorHistoryQueryDto } from './dto/tutor-chat.dto';
 
 @ApiTags('tutor')
 @ApiBearerAuth()
@@ -13,25 +13,32 @@ export class TutorController {
   constructor(private readonly service: TutorService) {}
 
   /**
-   * 문제 풀이 중 AI 튜터 채팅 → text/event-stream.
+   * 오답 복습 코치 채팅 (#40) → text/event-stream.
    *
-   * @Sse()는 GET 전용이라 body를 못 받으므로 @Post + @Res()로 응답을 직접 잡는다.
-   * @Res()를 쓰면 Nest 자동 직렬화가 꺼지므로 서비스가 스트림을 직접 닫는다.
-   * 인가/레이트 리밋 실패는 헤더 전송 전에 예외로 던져지고 Nest 필터가 상태 코드를 준다.
+   * 채점이 끝난 뒤에만 열린다. 풀이 중 튜터는 계획이 무효화돼 제거됐고(2026-08-04),
+   * 이 모듈에 남은 유일한 대화 기능이다.
    */
-  @Post('chat')
-  @ApiOperation({ summary: 'AI 튜터 채팅 (SSE 스트리밍, 정답 비노출)' })
-  chat(
+  @Post('review-chat')
+  @ApiOperation({
+    summary: '오답 복습 AI 코치 채팅 (SSE 스트리밍, 정답 설명 허용)',
+    description:
+      '본인이 제출한 시험에서 직접 푼 문항만 가능하다. 그 문항이 포함된 시험을 지금 ' +
+      '응시 중이면 거절한다(응시 중 정답 마스킹 우회 차단). 레이트리밋 (사용자,문항)당 시간당 30회.',
+  })
+  reviewChat(
     @CurrentUser() user: CurrentUserPayload,
-    @Body() dto: TutorChatDto,
+    @Body() dto: ReviewTutorChatDto,
     @Res() res: Response,
   ): Promise<void> {
-    return this.service.chat(user.id, dto, res);
+    return this.service.reviewChat(user.id, dto, res);
   }
 
-  @Get('history')
-  @ApiOperation({ summary: 'AI 튜터 대화 히스토리 조회' })
-  history(@CurrentUser() user: CurrentUserPayload, @Query() query: TutorHistoryQueryDto) {
-    return this.service.getHistory(user.id, query);
+  @Get('review-history')
+  @ApiOperation({ summary: '오답 복습 코치 대화 히스토리 조회' })
+  reviewHistory(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query() query: ReviewTutorHistoryQueryDto,
+  ) {
+    return this.service.getReviewHistory(user.id, query);
   }
 }

@@ -1,6 +1,8 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Check, Loader2, X } from "lucide-react";
+import { ArrowUpRight, Check, Loader2, Sparkles, X } from "lucide-react";
+import { ReviewTutorPanel } from "@/components/tutor/ReviewTutorPanel";
 import { Badge } from "@/components/ui/badge";
 import { useSelfGrade } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
@@ -20,6 +22,7 @@ export function ResultQuestionCard({
   isReview?: boolean;
 }) {
   const selfGrade = useSelfGrade();
+  const [tutorOpen, setTutorOpen] = useState(false);
   const isObjective = item.snapshot.questionType === "객관식";
   const choices = item.snapshot.choices ?? [];
   const selectedIds = new Set(item.answer?.selectedChoiceIds ?? []);
@@ -160,19 +163,34 @@ export function ResultQuestionCard({
         </p>
       )}
 
-      <div className="mt-3 flex items-center justify-between">
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1">
         <Link
           href={`/questions/${item.questionId}?reveal=1`}
           className="inline-flex h-10 items-center gap-1 rounded-md text-xs font-medium text-primary transition-colors duration-150 ease-swift hover:text-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           문항 상세 보기 <ArrowUpRight size={12} />
         </Link>
+        {/* 오답 복습 코치(#40) — 채점이 끝난 화면이라 정답을 설명해도 되는 단계다.
+            서버가 "본인이 제출한 세션에서 푼 문항"인지 다시 검사한다. */}
+        <button
+          type="button"
+          onClick={() => setTutorOpen(true)}
+          className="inline-flex h-10 items-center gap-1 rounded-md px-2 text-xs font-medium text-purple transition-colors hover:text-purple/80"
+        >
+          <Sparkles size={12} /> AI 코치
+        </button>
+        </div>
         {accuracyPercent !== null && (
           <span className="font-mono text-xs tabular-nums text-muted-foreground">
             (정답률: {accuracyPercent}%)
           </span>
         )}
       </div>
+
+      {tutorOpen && (
+        <ReviewTutorPanel questionId={item.questionId} onClose={() => setTutorOpen(false)} />
+      )}
     </article>
   );
 }
