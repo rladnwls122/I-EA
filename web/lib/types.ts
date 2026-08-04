@@ -46,6 +46,11 @@ export interface Question {
   passageId?: string | null;
   /** 연결 지문 — getById가 함께 내려준다(id/status/content). 없으면 null. */
   passage?: { id: string; status: string; content: any } | null;
+  /**
+   * 함께 읽어야 하는 지문 전체(#43). getById 전용 — 수능 (가)(나)·토익 Part 7 double은
+   * 문항이 두세 지문을 교차 참조해야 풀린다. 세트가 아니면 길이 0~1.
+   */
+  passages?: { id: string; status?: string; content: any; label?: string | null }[];
   questionType: QuestionType;
   /** 문제 본문 — ProseMirror JSON */
   stem: any;
@@ -443,7 +448,12 @@ export interface SessionQuestionSnapshot {
   questionType: QuestionType;
   /** ProseMirror JSON */
   stem: any;
-  /** 연결 지문(있으면) — ProseMirror JSON */
+  /**
+   * 함께 읽어야 하는 지문 전체(#43). 수능 (가)(나)·토익 Part 7 double/triple은
+   * 문항이 두세 지문을 교차 참조해야 풀린다. 단일 지문이면 길이 1.
+   */
+  passages?: { content: any; label?: string }[];
+  /** @deprecated 단일 지문 시절 형태. 구세션 스냅샷에만 있다 — `sessionPassages()`로 읽을 것. */
   passage?: any;
   choices?: SessionChoice[];
   /** ProseMirror JSON. IN_PROGRESS에는 없음 */

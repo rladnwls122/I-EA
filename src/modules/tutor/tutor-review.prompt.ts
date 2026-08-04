@@ -14,7 +14,7 @@
  * 잡담·전 과목 과외로 넓히지 않는다 — 비용과 품질을 통제할 수 없다.
  */
 import { extractPlainText, PMNode } from '@/common/prosemirror/prosemirror.util';
-import { QuestionSnapshot } from '@/modules/exam-sessions/grading.util';
+import { QuestionSnapshot, snapshotPassages } from '@/modules/exam-sessions/grading.util';
 
 const REVIEW_SYSTEM_INSTRUCTION = [
   '너는 한국 수험생의 오답을 함께 복습하는 AI 코치다. 학생은 이 문제를 이미 풀었고 채점도 끝났다.',
@@ -105,7 +105,14 @@ export function buildReviewTutorSystemPrompt(
   attempt: ReviewAttempt,
 ): string {
   const stem = extractPlainText(snapshot.stem);
-  const passage = snapshot.passage ? extractPlainText(snapshot.passage) : '';
+  // 세트 지문은 전부 싣는다(#43). (가)(나) 통합 추론 문항은 한쪽만 주면
+  // 튜터가 "지문에 없는 내용"이라고 잘못 말하게 된다.
+  const passageBlocks = snapshotPassages(snapshot).map((p, i, all) => {
+    const body = extractPlainText(p.content);
+    if (all.length === 1) return `[지문]\n${body}`;
+    return `[지문 ${p.label ?? i + 1}]\n${body}`;
+  });
+  const passage = passageBlocks.join('\n\n');
   const explanation = snapshot.explanation
     ? extractPlainText(snapshot.explanation as PMNode | PMNode[])
     : '';

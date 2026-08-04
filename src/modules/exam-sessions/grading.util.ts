@@ -1,12 +1,31 @@
 import { PMNode } from '@/common/prosemirror/prosemirror.util';
 import { QuestionKind } from '@/common/constants/question';
 
+/** 스냅샷에 실리는 지문 하나. */
+export interface SnapshotPassage {
+  content: PMNode;
+  /** 세트에서 이 지문을 부르는 이름 — 수능 "(가)", 토익 "Passage 1". 단일 지문이면 없다. */
+  label?: string;
+}
+
 /** exam_session_questions.snapshot에 보존하는 문항 스냅샷 형태. */
 export interface QuestionSnapshot {
   questionType: QuestionKind; // "객관식" | "주관식"
   stem: PMNode;
-  // 연결 지문(있으면) — ProseMirror JSON. 세트 문항이 지문을 공유해도 스냅샷엔
-  // 각자 통째로 복사해 둔다(원본이 바뀌어도 이미 시작한 세션엔 영향 없게).
+  /**
+   * 함께 읽어야 하는 지문 전체(#43). 세트 문항이 지문을 공유해도 스냅샷엔
+   * 각자 통째로 복사해 둔다(원본이 바뀌어도 이미 시작한 세션엔 영향 없게).
+   *
+   * 수능 (가)(나)·토익 Part 7 double/triple은 문항이 두세 지문을 **교차 참조**해야
+   * 풀린다. 예전엔 `passage` 하나만 실어서 근거 지문 외의 나머지가 응시자에게
+   * 안 보였고, 통합 추론 문항은 사실상 풀 수 없었다.
+   */
+  passages?: SnapshotPassage[];
+  /**
+   * @deprecated 단일 지문 시절 형태. 새로 쓰지 않는다 — 읽기만 지원한다.
+   * 이 필드가 박힌 스냅샷이 이미 DB에 있고, 스냅샷은 정의상 소급 수정하지 않는다.
+   * 읽을 때는 `snapshotPassages()`를 써서 두 형태를 한 번에 처리할 것.
+   */
   passage?: PMNode;
   choices?: Array<{ id: string; isCorrect?: boolean; content?: unknown; explanation?: unknown }>;
   explanation?: unknown;
@@ -17,6 +36,18 @@ export interface QuestionSnapshot {
   // 조립 시점의 풀이 통계 — 결과 화면 정답률 배지용(선택). 스냅샷 원칙대로 이후 변동과 무관.
   totalSolvedCount?: number;
   correctSolvedCount?: number;
+}
+
+/**
+ * 스냅샷에서 지문 목록을 꺼낸다 — 신형(`passages`)과 구형(`passage`)을 모두 받는다.
+ *
+ * 스냅샷은 소급 수정하지 않는 기록이라 두 형태가 영원히 공존한다. 소비처마다
+ * `?? []`와 삼항으로 분기하면 한 곳을 빼먹는 순간 그 화면만 지문이 사라진다.
+ * 읽는 입구를 여기 하나로 모은다.
+ */
+export function snapshotPassages(snapshot: QuestionSnapshot): SnapshotPassage[] {
+  if (snapshot.passages?.length) return snapshot.passages;
+  return snapshot.passage ? [{ content: snapshot.passage }] : [];
 }
 
 export interface AnswerPayload {

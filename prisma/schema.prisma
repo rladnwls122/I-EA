@@ -310,8 +310,27 @@ model Passage {
   generationId String?       @map("generation_id") @db.Char(36)
   content      Json
   status       PassageStatus @default(DRAFT)
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  // --- 지문 세트(#43) ---
+  //
+  // 수능 (가)(나) 주제통합, 토익 Part 7 double/triple은 **함께 읽어야 풀리는** 형식이다.
+  // Question.passageId는 단수라 문항이 근거 지문 하나만 물 수 있는데, 통합 추론 문항은
+  // 나머지 지문 없이 풀 수 없다. 그래서 "같이 읽는 지문 묶음"을 명시 핸들로 둔다.
+  //
+  // Question↔Passage 다대다로 가지 않은 이유: 실제 형식은 임의 조합이 아니라
+  // "문항 → 지문 **세트**"다. 다대다는 표현할 수 없는 걸 표현하게 만들고
+  // (문항마다 다른 지문 부분집합) 조인 테이블 값이 그만큼의 뜻을 못 가진다.
+  //
+  // generationId로 묶지 않은 이유: 한 생성이 독립 세트를 여럿 낼 수 있고,
+  // 손으로 만든 지문에는 generationId가 아예 없다.
+  setId    String? @map("set_id") @db.Char(36)
+  /// 세트 내 표시 순서. 세트가 없으면 0.
+  setOrder Int     @default(0) @map("set_order")
+  /// 세트 내 표시 이름 — 수능 "(가)", 토익 "지문 1". 시험 관행이라 템플릿에서 온다.
+  label    String? @db.VarChar(20)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   creator     User          @relation(fields: [creatorId], references: [id])
   generation  AiGeneration? @relation(fields: [generationId], references: [id], onDelete: SetNull)
@@ -320,6 +339,7 @@ model Passage {
 
   @@index([creatorId])
   @@index([generationId])
+  @@index([setId])
   @@map("passages")
 }
 

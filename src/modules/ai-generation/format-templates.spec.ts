@@ -66,6 +66,8 @@ describe('format-templates', () => {
         language: undefined,
         includePassage: false,
         passageCount: 0,
+        // 세트가 아니면 라벨도 없다(#43) — 호출부가 길이만 보고 분기할 수 있게 항상 배열.
+        passageLabels: [],
         questionType: undefined,
         answerMode: 'single',
         promptHints: [],

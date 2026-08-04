@@ -1,6 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 
@@ -75,6 +76,7 @@ export class AiGenerationProcessor extends WorkerHost {
       includePassage: format.includePassage,
       // 지문 수(0~3). 2 이상이면 다중지문 세트 모드(gap 3) — LLM 계약이 passages[]로 바뀐다.
       passageCount: format.passageCount,
+      passageLabels: format.passageLabels,
       questionType: format.questionType,
       ox: Boolean(params.ox ?? false),
       // 템플릿·요청 어느 쪽에도 없으면 undefined — 시험별 관행은 프롬프트 지시로만 유도하고
@@ -103,13 +105,20 @@ export class AiGenerationProcessor extends WorkerHost {
         let singlePassageId: string | null = null;
 
         if ((ctx.passageCount ?? 0) >= 2 && result.passages?.length) {
-          for (const bodyText of result.passages) {
+          // 세트 핸들(#43). 이 지문들은 **함께 읽어야** 풀리므로 묶어 둔다 —
+          // 문항이 무는 건 근거 지문 하나지만, 풀이 화면은 세트 전체를 보여준다.
+          const setId = randomUUID();
+          const labels = ctx.passageLabels ?? [];
+          for (const [index, bodyText] of result.passages.entries()) {
             const passage = await tx.passage.create({
               data: {
                 creatorId: generation.creatorId,
                 generationId: generation.id,
                 content: buildRichDoc(bodyText) as JsonWritable,
                 status: 'DRAFT',
+                setId,
+                setOrder: index,
+                label: labels[index] ?? `지문 ${index + 1}`,
               },
               select: { id: true },
             });

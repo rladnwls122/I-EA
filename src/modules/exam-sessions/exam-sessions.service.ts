@@ -25,7 +25,14 @@ import {
 } from '@/common/constants/xp';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
-import { grade, isSelfGradable, maskSnapshot, QuestionSnapshot } from './grading.util';
+import {
+  grade,
+  isSelfGradable,
+  maskSnapshot,
+  QuestionSnapshot,
+  SnapshotPassage,
+} from './grading.util';
+import { PMNode } from '@/common/prosemirror/prosemirror.util';
 import { transitionReviewState } from './review-state.util';
 
 // Json 컬럼 쓰기용 국소 캐스팅(생성 클라이언트가 InputJsonValue를 표면화하지 않음).
@@ -118,11 +125,31 @@ export class ExamSessionsService {
         totalSolvedCount: true,
         correctSolvedCount: true,
         // 연결 지문 — 있으면 본문을 스냅샷에 통째로 복사(풀이 화면 표시용).
-        passage: { select: { content: true } },
+        // setId가 있으면 이 문항은 **함께 읽어야 하는 지문 묶음**의 일부다(#43).
+        passage: { select: { content: true, setId: true, setOrder: true, label: true } },
       },
     });
     // picked 순서를 유지해 displayOrder를 안정적으로 부여한다.
     const byId = new Map(full.map((q) => [q.id, q]));
+
+    // 세트 지문 일괄 조회. 문항이 무는 건 근거 지문 하나지만 (가)(나)·토익 double은
+    // 나머지 지문 없이 풀 수 없어서, 스냅샷에 세트 전체를 싣는다.
+    // 문항 수만큼 쿼리하지 않도록 등장한 setId를 모아 한 번에 가져온다.
+    const setIds = [...new Set(full.map((q) => q.passage?.setId).filter((s): s is string => !!s))];
+    const passagesBySet = new Map<string, SnapshotPassage[]>();
+    if (setIds.length) {
+      const members = await this.prisma.passage.findMany({
+        where: { setId: { in: setIds } },
+        select: { setId: true, setOrder: true, label: true, content: true },
+        orderBy: { setOrder: 'asc' },
+      });
+      for (const m of members) {
+        if (!m.setId) continue;
+        const list = passagesBySet.get(m.setId) ?? [];
+        list.push({ content: m.content as PMNode, ...(m.label ? { label: m.label } : {}) });
+        passagesBySet.set(m.setId, list);
+      }
+    }
 
     const session = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const created = await tx.examSession.create({
@@ -155,7 +182,15 @@ export class ExamSessionsService {
               difficulty: q.difficulty,
               totalSolvedCount: q.totalSolvedCount,
               correctSolvedCount: q.correctSolvedCount,
-              ...(q.passage ? { passage: q.passage.content as JsonWritable } : {}),
+              // 세트면 묶음 전체를, 아니면 단일 지문 하나를 배열로 싣는다.
+              // 구형 단수 `passage`는 새로 쓰지 않는다 — 읽기만 하위호환(snapshotPassages).
+              ...(q.passage
+                ? {
+                    passages: (q.passage.setId && passagesBySet.get(q.passage.setId)) || [
+                      { content: q.passage.content as PMNode },
+                    ],
+                  }
+                : {}),
             };
             return {
               examSessionId: created.id,

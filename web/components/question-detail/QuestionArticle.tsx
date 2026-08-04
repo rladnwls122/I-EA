@@ -34,11 +34,23 @@ export function QuestionArticle({
         </span>
       </div>
 
-      {question.passage?.content && (
-        <div className="mb-5 rounded-lg bg-surface-raised px-4 py-3 text-sm leading-relaxed text-foreground">
-          <p className="whitespace-pre-wrap">{extractPlainText(question.passage.content)}</p>
+      {/* 세트 지문은 전부 보여준다(#43). 구형 응답 대비로 단수 passage도 받는다. */}
+      {(question.passages?.length
+        ? question.passages
+        : question.passage
+          ? [question.passage]
+          : []
+      ).map((p, i) => (
+        <div
+          key={p.id ?? i}
+          className="mb-5 rounded-lg bg-surface-raised px-4 py-3 text-sm leading-relaxed text-foreground"
+        >
+          {"label" in p && p.label && (
+            <p className="mb-1.5 text-xs font-semibold text-muted-foreground">{p.label}</p>
+          )}
+          <p className="whitespace-pre-wrap">{extractPlainText(p.content)}</p>
         </div>
-      )}
+      ))}
 
       <p className="mb-5 whitespace-pre-wrap text-[15px] font-medium leading-relaxed text-foreground">
         {extractPlainText(question.stem)}
