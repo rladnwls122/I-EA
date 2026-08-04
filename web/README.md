@@ -24,10 +24,17 @@ npx tsc --noEmit # 타입 검사 (CI가 도는 것과 동일)
 | 변수 | 용도 |
 |---|---|
 | `NEXT_PUBLIC_API_URL` | 백엔드 API 베이스 URL. 미설정 시 `http://localhost:3000/api` |
+| `NEXT_PUBLIC_S3_UPLOAD_ORIGIN` | 이미지 업로드용 S3 오리진. 미설정 시 업로드만 CSP에 막힘 |
 
-`NEXT_PUBLIC_API_URL`은 런타임 호출뿐 아니라 **`next.config.mjs`의 CSP `connect-src`를
-빌드 시점에 구성**하는 데도 쓰입니다. API 오리진을 바꿀 때 이 값을 빌드 환경에
-넣지 않으면 브라우저가 API 요청을 CSP로 차단합니다.
+두 값 모두 런타임 호출뿐 아니라 **`next.config.mjs`의 CSP `connect-src`를 빌드 시점에
+구성**하는 데 쓰입니다. 빌드 환경에 넣지 않으면 브라우저가 해당 요청을 CSP로 차단합니다.
+
+`NEXT_PUBLIC_S3_UPLOAD_ORIGIN`은 이미지 업로드가 우리 API가 아니라 **S3로 직접**
+multipart POST 하기 때문에 따로 필요합니다. presign 응답의 `url` 오리진과 같은 값이어야
+하고(예: `https://<버킷>.s3.<리전>.amazonaws.com`), 이미지 표시용 공개 URL
+(`AWS_S3_PUBLIC_BASE_URL`, CloudFront일 수 있음)과는 보통 다릅니다.
+`img-src`는 `https:` 전체를 허용하므로 **표시는 되는데 업로드만 막히는** 모양으로
+증상이 나타납니다.
 
 프론트가 쓰는 포트는 백엔드의 `ALLOWED_ORIGINS`에도 들어가 있어야 CORS가 통과합니다.
 

@@ -69,6 +69,50 @@ describe('#41 Phase 1 — 저장 왕복에서 서식 보존', () => {
     expect(sanitizeProseMirrorNode(stem, 'stem')).toEqual(stem);
   });
 
+  // #41 Phase 2 — 이미지 삽입
+  describe('이미지 노드', () => {
+    const S3_URL = 'https://qidea-bucket.s3.ap-northeast-2.amazonaws.com/questions/uuid.png';
+    const imageBlock = (attrs: Record<string, unknown>) => [{ type: 'image', attrs }];
+
+    it('업로드된 이미지가 해설에 그대로 저장된다', () => {
+      const blocks = imageBlock({ src: S3_URL, alt: '그래프.png' });
+      expect(sanitizeProseMirrorBlocks(blocks, 'explanation')).toEqual(blocks);
+    });
+
+    it('발문 안에서도 텍스트와 섞여 보존된다', () => {
+      const stem = {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: '다음 그래프를 보고 답하시오.' }] },
+          { type: 'image', attrs: { src: S3_URL, alt: '', width: 640 } },
+        ],
+      };
+      expect(sanitizeProseMirrorNode(stem, 'stem')).toEqual(stem);
+    });
+
+    it('javascript: src는 거부한다(에디터를 우회해 직접 POST해도)', () => {
+      expect(() =>
+        // eslint-disable-next-line no-script-url
+        sanitizeProseMirrorBlocks(imageBlock({ src: 'javascript:alert(1)' }), 'explanation'),
+      ).toThrow(/허용되지 않은 URL 스킴/);
+    });
+
+    it('상대 경로 src는 거부한다(스킴 판정 불가)', () => {
+      expect(() =>
+        sanitizeProseMirrorBlocks(imageBlock({ src: '/uploads/x.png' }), 'explanation'),
+      ).toThrow(/절대 URL/);
+    });
+
+    it('허용 목록 밖 attr(onerror)은 거부한다', () => {
+      expect(() =>
+        sanitizeProseMirrorBlocks(
+          imageBlock({ src: S3_URL, onerror: 'alert(1)' }),
+          'explanation',
+        ),
+      ).toThrow(/허용되지 않은 속성/);
+    });
+  });
+
   it('sanitize는 입력 객체를 변형하지 않는다(캔버스 state 오염 방지)', () => {
     const before = JSON.stringify(EDITED_EXPLANATION_BLOCKS);
     sanitizeProseMirrorBlocks(EDITED_EXPLANATION_BLOCKS, 'explanation');

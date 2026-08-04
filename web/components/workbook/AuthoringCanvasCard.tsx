@@ -297,6 +297,7 @@ export function AuthoringCanvasCard({
             value={card.passage}
             onChange={(json) => onChange({ passage: json })}
             placeholder="지문(본문)을 입력하세요."
+            allowImages
           />
         </div>
       ) : (
@@ -316,6 +317,7 @@ export function AuthoringCanvasCard({
           value={card.stem}
           onChange={(json) => onChange({ stem: json })}
           placeholder="문항의 발문을 입력하세요."
+          allowImages
         />
       </div>
 
@@ -438,6 +440,7 @@ export function AuthoringCanvasCard({
         value={card.explanation}
         onChange={(json) => onChange({ explanation: json })}
         placeholder="해설을 입력하세요 (선택)."
+        allowImages
       />
 
       {/* #키워드 — 자유 태깅. 저장 시 태그로 자동 등록/연결된다. */}

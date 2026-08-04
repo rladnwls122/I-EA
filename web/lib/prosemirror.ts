@@ -140,14 +140,36 @@ function visitTextNodes(
   // 읽혀 화면에서 "선지·해설이 깨져" 보인다.
   const root = Array.isArray(doc) ? { content: doc } : doc;
   if (!root || !root.content || !Array.isArray(root.content)) return;
-  root.content.forEach((node: any, i: number) => {
-    if (i > 0) visitor.blockGap();
-    if (node.content && Array.isArray(node.content)) {
-      for (const child of node.content) {
-        if (child.text) visitor.text(child.text);
+
+  /**
+   * 깊이 순회한다. 예전에는 두 단계(root.content[].content[].text)만 봐서
+   * 목록·인용처럼 한 겹 더 들어간 내용이 통째로 빈 문자열이 됐다
+   * (bulletList → listItem → paragraph → text 는 네 단계다).
+   *
+   * #41 Phase 1 이전에는 저장 경로가 모든 걸 paragraph+text로 납작하게 만들어서
+   * 이 한계가 드러나지 않았다. 이제 중첩 구조가 실제로 저장되므로 순회도 따라가야 한다.
+   *
+   * **오프셋 호환**: 평평한 문서(= 기존에 저장된 모든 문서)에서는 결과가 예전과
+   * 완전히 같다. 달라지는 건 예전에 `''`를 내놓던 중첩 문서뿐이라, 그 위에 찍힌
+   * 주석 앵커는 애초에 존재할 수 없었다. 그래서 이 변경은 기존 주석을 어긋내지 않는다.
+   *
+   * 블록 경계('\n')는 **텍스트가 아닌 형제** 앞에만 넣는다. 한 문단 안의 인라인
+   * 텍스트 조각들(굵게/기울임으로 쪼개진 것)은 붙여야 하기 때문이다.
+   */
+  const walk = (nodes: any[]): void => {
+    nodes.forEach((node: any, i: number) => {
+      if (!node) return;
+      const isTextLeaf = typeof node.text === 'string';
+      if (i > 0 && !isTextLeaf) visitor.blockGap();
+      if (isTextLeaf) {
+        if (node.text) visitor.text(node.text);
+        return;
       }
-    }
-  });
+      if (Array.isArray(node.content)) walk(node.content);
+    });
+  };
+
+  walk(root.content);
 }
 
 /**

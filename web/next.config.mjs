@@ -20,6 +20,26 @@ const apiOrigin = (() => {
   }
 })();
 
+/**
+ * 이미지 업로드는 우리 API가 아니라 **S3로 직접** multipart POST 한다(presigned POST).
+ * 그래서 그 오리진이 connect-src에 없으면 CSP가 업로드를 막는다 — 콘솔에만 찍히고
+ * 화면에는 원인 없는 실패로 보인다. img-src는 `https:` 전체를 허용하므로 표시는 되고
+ * 업로드만 막히는, 특히 헷갈리는 실패 모양이 된다.
+ *
+ * 값은 presign 응답의 `url` 오리진과 같아야 한다
+ * (예: https://<버킷>.s3.<리전>.amazonaws.com — CloudFront 공개 URL과는 보통 다르다).
+ * 비워두면 업로드 기능만 못 쓰고 나머지는 정상 동작한다.
+ */
+const s3UploadOrigin = (() => {
+  const raw = process.env.NEXT_PUBLIC_S3_UPLOAD_ORIGIN;
+  if (!raw) return '';
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return '';
+  }
+})();
+
 const isDev = process.env.NODE_ENV !== 'production';
 
 const csp = [
@@ -30,7 +50,7 @@ const csp = [
   // S3/CloudFront 업로드 이미지가 임의 호스트일 수 있어 https 전체를 허용한다.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `connect-src 'self'${apiOrigin ? ` ${apiOrigin}` : ''}${isDev ? ' ws: http://localhost:*' : ''}`,
+  `connect-src 'self'${apiOrigin ? ` ${apiOrigin}` : ''}${s3UploadOrigin ? ` ${s3UploadOrigin}` : ''}${isDev ? ' ws: http://localhost:*' : ''}`,
   "frame-ancestors 'none'", // 클릭재킹 차단
   "base-uri 'self'",
   "form-action 'self'",
