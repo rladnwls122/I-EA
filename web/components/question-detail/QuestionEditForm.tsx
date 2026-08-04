@@ -6,7 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useUpdateQuestion } from "@/lib/hooks";
-import { buildRichDoc, buildRichBlocks, extractPlainText } from "@/lib/prosemirror";
+import {
+  buildRichDoc,
+  buildRichBlocks,
+  extractPlainText,
+  keepIfUnchanged,
+} from "@/lib/prosemirror";
 import type { Question } from "@/lib/types";
 
 /**
@@ -14,6 +19,13 @@ import type { Question } from "@/lib/types";
  * 발문·선지·정답·해설·난이도를 평문으로 편집하고, 저장 시 ProseMirror JSON으로
  * 변환해 PATCH한다(백엔드 create 경로와 동일한 형상: choices=[{content,isCorrect}]).
  * 문제 유형 변경은 지원하지 않는다(선지↔주관식 전환은 재작성에 가깝다).
+ *
+ * **서식 보존**: 이 폼은 평문 편집기라서, 저장할 때 무조건 `buildRichDoc(평문)`으로
+ * 다시 지으면 캔버스에서 넣은 굵게·목록·제목이 여기 한 번 들렀다 저장하는 것만으로
+ * 사라진다(#41 Phase 1에서 캔버스를 고쳐 놓고 이 경로로 도로 뭉개지는 구멍).
+ * 그래서 **사용자가 그 필드의 텍스트를 실제로 고쳤을 때만** 새로 짓고,
+ * 안 고쳤으면 원본 노드를 그대로 돌려보낸다.
+ * 이 폼 자체를 rich 편집으로 올리는 건 편집기 일원화(#41 Phase 3) 몫이다.
  */
 export function QuestionEditForm({
   question,
@@ -23,9 +35,11 @@ export function QuestionEditForm({
   onDone: () => void;
 }) {
   const isObjective = question.questionType === "객관식";
-  const initialChoices = (
-    (question.choices as Array<{ content?: unknown; isCorrect?: boolean }> | undefined) ?? []
-  ).map((c) => extractPlainText(c.content));
+  const rawChoices =
+    (question.choices as Array<{ content?: unknown; isCorrect?: boolean }> | undefined) ?? [];
+  const initialChoices = rawChoices.map((c) => extractPlainText(c.content));
+  /** i번 선지의 원본 content 노드 — 텍스트를 안 고쳤으면 저장 시 그대로 돌려보낸다. */
+  const originalChoiceContent = (i: number) => rawChoices[i]?.content;
 
   const [stem, setStem] = useState(() => extractPlainText(question.stem));
   const [choices, setChoices] = useState<string[]>(
@@ -61,20 +75,22 @@ export function QuestionEditForm({
       {
         id: question.id,
         data: {
-          stem: buildRichDoc(stem),
+          stem: keepIfUnchanged(question.stem, stem) ?? buildRichDoc(stem),
           difficulty,
           ...(isObjective
             ? {
                 choices: choices.map((text, i) => ({
                   id: `c${i + 1}`,
-                  content: buildRichDoc(text),
+                  content: keepIfUnchanged(originalChoiceContent(i), text) ?? buildRichDoc(text),
                   isCorrect: i === correct,
                 })),
               }
             : {
                 correctAnswerText: answerText.trim() || undefined,
               }),
-          explanation: explanation.trim() ? buildRichBlocks(explanation) : undefined,
+          explanation: explanation.trim()
+            ? keepIfUnchanged(question.explanation, explanation) ?? buildRichBlocks(explanation)
+            : undefined,
         },
       },
       {

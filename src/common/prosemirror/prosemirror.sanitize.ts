@@ -38,8 +38,9 @@ const ALLOWED_MARKS: Record<string, readonly string[]> = {
   code: [],
   subscript: [],
   superscript: [],
-  // Tiptap v3 StarterKit의 Link는 href/target/rel/class를 노드 attrs로 갖는다.
-  link: ['href', 'target', 'rel', 'class'],
+  // Tiptap v3 StarterKit의 Link attrs 전체(href/target/rel/class/title).
+  // 하나라도 빠지면 그 attr을 쓴 문서는 저장이 통째로 400이 된다 — 스키마와 맞춰라.
+  link: ['href', 'target', 'rel', 'class', 'title'],
 };
 
 /** URL을 실을 수 있는 자리에서 허용하는 스킴. `javascript:`·`data:` 차단이 핵심. */

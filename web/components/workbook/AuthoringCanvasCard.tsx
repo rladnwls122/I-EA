@@ -15,7 +15,8 @@ import {
   X,
 } from "lucide-react";
 import { TiptapEditor } from "@/components/editor/TiptapEditor";
-import { buildRichDoc, extractPlainText } from "@/lib/prosemirror";
+import { buildRichDoc, isRichEmpty } from "@/lib/prosemirror";
+import { RichContent } from "@/components/editor/RichContent";
 import type { CanvasCard, CanvasChoice } from "./AuthoringCanvas";
 
 /** 유형 전환 시 선지/정답 필드를 유실 없이 맞춰주는 기본값. */
@@ -66,7 +67,8 @@ export function AuthoringCanvasCard({
   const removeKeyword = (name: string) =>
     onChange({ keywords: card.keywords.filter((k) => k !== name) });
 
-  const explanationText = extractPlainText(card.explanation).trim();
+  // 텍스트 유무가 아니라 내용 유무로 본다 — 이미지만 있는 해설(Phase 2)도 "있음"이다.
+  const hasExplanation = !isRichEmpty(card.explanation);
 
   /* ── 공유 배지 — 읽기/편집 공통 ── */
   const shareBadge =
@@ -134,12 +136,12 @@ export function AuthoringCanvasCard({
               <span className="font-medium text-foreground/70">지문</span>
               {shareBadge}
             </div>
-            <p className="whitespace-pre-wrap leading-relaxed">{extractPlainText(card.passage)}</p>
+            <RichContent value={card.passage} className="leading-relaxed" />
           </div>
         )}
 
         {/* 발문 */}
-        <p className="text-sm leading-relaxed text-foreground">{extractPlainText(card.stem)}</p>
+        <RichContent value={card.stem} className="text-sm leading-relaxed text-foreground" />
 
         {/* 선지 — 공개 설정된 선지별 해설도 함께 표시 */}
         {card.type === "객관식" && (
@@ -171,7 +173,7 @@ export function AuthoringCanvasCard({
         )}
 
         {/* 정답 및 해설 — 접이식 */}
-        {(card.type === "주관식" || explanationText) && (
+        {(card.type === "주관식" || hasExplanation) && (
           <div className="mt-3 border-t border-border pt-2.5">
             <button
               type="button"
@@ -189,7 +191,7 @@ export function AuthoringCanvasCard({
                     {card.answerText.trim() || "서술형 (자기채점)"}
                   </p>
                 )}
-                {explanationText && <p className="whitespace-pre-wrap leading-relaxed">{explanationText}</p>}
+                {hasExplanation && <RichContent value={card.explanation} className="leading-relaxed" />}
               </div>
             )}
           </div>

@@ -4,7 +4,15 @@ import { toast } from "sonner";
 import { ArrowLeft, Check, Loader2, PencilLine, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { buildRichDoc, buildRichBlocks, extractPlainText } from "@/lib/prosemirror";
+import {
+  buildRichDoc,
+  buildRichBlocks,
+  extractPlainText,
+  blocksToDoc,
+  docToBlocks,
+  isRichEmpty,
+  keepIfUnchanged,
+} from "@/lib/prosemirror";
 import {
   createQuestion,
   updateQuestion,
@@ -30,6 +38,15 @@ export interface CanvasChoice {
   explanation: string;
   /** 선지별 해설 공개 여부 — 저장 시 choices Json에 함께 실린다. */
   showExplanation: boolean;
+  /**
+   * 불러온 선지의 원본 노드(rich). 카드 UI는 선지를 아직 평문 `<input>`으로 편집하지만,
+   * 다른 경로(/studio/editor 등)에서 서식이 들어간 선지를 캔버스에서 열었다가 저장하면
+   * `buildRichDoc(평문)`으로 덮여 서식이 사라진다. 사용자가 그 선지의 텍스트를 실제로
+   * 고치지 않았다면 원본을 그대로 돌려보내 파괴를 막는다(#41 Phase 1).
+   * 선지 자체를 rich 편집으로 바꾸는 건 Phase 2 이후 과제다.
+   */
+  sourceContent?: any;
+  sourceExplanation?: any;
 }
 
 /** 좌측 캔버스 카드(경량 Draft — QuestionEditor의 Draft에서 편집에 쓰는 필드만). */
@@ -137,6 +154,9 @@ function questionToCard(q: Question): CanvasCard {
     explanation: richToText(c?.explanation),
     // 저장 때 실린 선지별 해설 공개 여부를 그대로 복원.
     showExplanation: !!c?.explanationVisible,
+    // 원본 노드 보존 — 편집하지 않은 선지는 저장 시 이걸 그대로 돌려보낸다.
+    sourceContent: c?.content,
+    sourceExplanation: c?.explanation,
   }));
   const correct = rawChoices.findIndex((c) => c?.isCorrect === true);
   const keywords = (q.tags ?? [])
@@ -151,7 +171,8 @@ function questionToCard(q: Question): CanvasCard {
     correct: isObjective ? (correct >= 0 ? correct : 0) : -1,
     answerText: q.correctAnswerText ?? "",
     // explanation은 블록 배열로 저장되므로 doc으로 다시 세운다(카드 에디터는 doc을 받는다).
-    explanation: buildRichDoc(richToText(q.explanation)),
+    // 감싸기만 한다 — 평문을 거치면 저장돼 있던 서식이 열 때마다 사라진다.
+    explanation: blocksToDoc(q.explanation),
     points: Number(q.points) || 1,
     keywords,
   };
@@ -511,12 +532,16 @@ export function AuthoringCanvas({
             c.type === "객관식"
               ? c.choices.map((ch, i) => ({
                   id: `c${i + 1}`,
-                  content: buildRichDoc(ch.text),
+                  // 텍스트를 안 고쳤으면 불러온 원본 노드를 그대로 돌려보낸다 —
+                  // 평문으로 다시 지으면 다른 편집기에서 넣은 서식이 사라진다.
+                  content: keepIfUnchanged(ch.sourceContent, ch.text) ?? buildRichDoc(ch.text),
                   isCorrect: i === c.correct,
                   // 선지별 해설 — 공개 여부(showExplanation)까지 choices Json에 함께 보존.
                   ...(ch.explanation.trim()
                     ? {
-                        explanation: buildRichBlocks(ch.explanation),
+                        explanation:
+                          keepIfUnchanged(ch.sourceExplanation, ch.explanation) ??
+                          buildRichBlocks(ch.explanation),
                         explanationVisible: ch.showExplanation,
                       }
                     : {}),
@@ -524,9 +549,10 @@ export function AuthoringCanvas({
               : undefined,
           correctAnswerText:
             c.type === "주관식" && c.answerText.trim() ? c.answerText.trim() : undefined,
-          explanation: extractPlainText(c.explanation).trim()
-            ? buildRichBlocks(extractPlainText(c.explanation))
-            : undefined,
+          // 에디터 JSON을 그대로 보낸다 — doc 래퍼만 벗겨 블록 배열로.
+          // 예전엔 extractPlainText → buildRichBlocks 왕복이라 굵게·목록·제목이
+          // 저장 한 번에 증발했다. 평문을 다시 끼워 넣지 마라(#41 Phase 1).
+          explanation: isRichEmpty(c.explanation) ? undefined : docToBlocks(c.explanation),
         };
       };
 
@@ -536,7 +562,9 @@ export function AuthoringCanvas({
       // 같은 세션에서 다시 저장해도 중복 생성되지 않게 한다.
       const newIdByCardId = new Map<string, string>();
       for (const c of cards) {
-        if (!extractPlainText(c.stem).trim()) continue;
+        // 텍스트가 아니라 내용 유무로 판정한다 — 이미지만 있는 발문(Phase 2)을
+        // 빈 카드로 보고 조용히 건너뛰지 않게.
+        if (isRichEmpty(c.stem)) continue;
         try {
           const tagIds = await resolveTagIds(c.keywords);
           const payload = buildContentPayload(c, tagIds);
