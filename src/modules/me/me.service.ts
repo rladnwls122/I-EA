@@ -1,10 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
-import {
-  KEYWORD_TAG_CATEGORY,
-  REASON_LABELS,
-  ReasonCode,
-} from '@/common/constants/question';
+import { REASON_LABELS, ReasonCode } from '@/common/constants/question';
+import { KEYWORD_TAG_CATEGORY } from '@/common/constants/tag';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import {
   MILESTONES,

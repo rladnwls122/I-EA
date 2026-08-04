@@ -236,7 +236,20 @@ export SUBJECT_ID="받은_subject_id"
 
 ### 4.2 태그 생성
 
-`category`는 필수입니다(`description`이라는 필드는 없습니다).
+`category`는 필수이고 **정본 5종만 허용**합니다(`description`이라는 필드는 없습니다).
+
+| category | 뜻 | 생성 권한 |
+|---|---|---|
+| `출처` | 기출·평가원·EBS … | ADMIN/CREATOR |
+| `난이도` | 최고난도·고난도·기본 … | ADMIN/CREATOR |
+| `출제기법` | 킬러·계산·그래프·빈칸 … | ADMIN/CREATOR |
+| `출제유형` | 모듈형·PSAT형·피듈형(NCS 출제방식) | ADMIN/CREATOR |
+| `키워드` | 개념 자유 태깅 | 모든 유저 |
+
+`출제기법`과 `출제유형`은 이름만 비슷할 뿐 다른 축입니다 — 전자는 문항을 만드는 기법,
+후자는 시험의 출제 방식입니다. `유형`·`단원`·`과목`은 다른 축과 뜻이 겹쳐 **금지어**입니다
+(각각 questionType·SubjectDetail·examCategory가 이미 담당). 정본은
+`src/common/constants/tag.ts`가 단일 출처입니다.
 
 ```bash
 curl -X POST http://localhost:3000/api/tags \
@@ -244,8 +257,17 @@ curl -X POST http://localhost:3000/api/tags \
   -H "Content-Type: application/json" \
   -d '{
     "name": "함수",
-    "category": "개념"
+    "category": "키워드"
   }'
+```
+
+정본 밖 값을 보내면 400과 함께 허용 목록이 돌아옵니다.
+
+```bash
+# 실패 예시 — category는 다음 중 하나여야 합니다: 출처, 난이도, 출제기법, 출제유형, 키워드
+curl -X POST http://localhost:3000/api/tags \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{ "name": "함수", "category": "개념" }'
 ```
 
 ---

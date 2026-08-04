@@ -5,6 +5,7 @@
  *     로컬/개발 DB 전용 — 운영 DB에 절대 실행하지 말 것.
  *   - Faker 미사용(무의존): 아래 순수 랜덤 헬퍼로 데이터를 만든다.
  */
+import type { TagCategory } from '../src/common/constants/tag';
 import {
   PrismaClient,
   UserRoleType,
@@ -461,11 +462,17 @@ async function main() {
   }
   await chunkCreate(prisma.subject, subjectRows);
 
-  // --- 4. Tags (출처/난이도/출제기법/단원/과목, 대폭 확장) ------------------
-  // '유형'은 questionType(객관식/주관식)·하위요소(SubjectDetail)와 뜻이 겹쳐
-  // 쓰지 않는다. 풀이 스킬·문두 형식 축은 '출제기법'으로 부른다.
+  // --- 4. Tags — 정본 카테고리만(src/common/constants/tag.ts) --------------
+  // #24 용어 정리: '유형'은 네 가지를 가리켜 금지어다. 풀이 스킬·문두 형식 축은
+  // '출제기법', NCS 출제방식(모듈형/PSAT형/피듈형)은 '출제유형'으로 따로 부른다.
+  //
+  // '단원'·'과목'을 뺐다 — 각각 SubjectDetail(하위요소)·Subject.examCategory와 뜻이
+  // 겹친다. 같은 개념이 태그축과 분류축에 둘 다 있으면 어느 쪽으로 걸러도 결과가
+  // 반쪽이 되고, 그게 조용해서 더 나쁘다. 그 축들은 태그가 아니라 1급 컬럼으로 다룬다.
   console.log('🏷️  tags...');
-  const TAG_CATS: Record<string, string[]> = {
+  // 정본 카테고리에 묶는다 — 여기 '유형:'을 쓰면 컴파일이 깨진다.
+  // (키워드는 사용자가 만드는 자유 태그라 시드하지 않으므로 Partial)
+  const TAG_CATS: Partial<Record<TagCategory, string[]>> = {
     출처: ['기출', '평가원', '교육청', 'EBS', '사설', 'N제', '수능특강', '수능완성', 'LEET', '모의고사', '교과서'],
     난이도: ['최고난도', '고난도', '중상', '중간', '기본', '심화', '개념'],
     출제기법: [
@@ -486,25 +493,7 @@ async function main() {
       '주제파악',
       '세부내용',
     ],
-    단원: [
-      '문학',
-      '독서',
-      '화법과작문',
-      '언어와매체',
-      '미적분',
-      '확률과통계',
-      '기하',
-      '수학I',
-      '수학II',
-      '역학',
-      '전자기',
-      '유전',
-      '생태',
-      '지구시스템',
-      '사료',
-      '도표',
-    ],
-    과목: ['국어', '수학', '영어', '한국사', '사회', '과학', '행정법', '행정학'],
+    출제유형: ['모듈형', 'PSAT형', '피듈형'],
   };
   const tags: { id: string; name: string }[] = [];
   const tagRows: any[] = [];

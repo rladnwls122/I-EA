@@ -16,6 +16,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:seed": "ts-node prisma/seed.ts",
+    "seed:master": "ts-node prisma/seed-master.ts",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "test": "jest",
     "postinstall": "prisma generate",

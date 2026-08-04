@@ -35,8 +35,4 @@ export type WorkbookVisibility = (typeof WORKBOOK_VISIBILITIES)[number];
  */
 export const STATS_MIN_SAMPLE = 10;
 
-/**
- * 문항/문제집 #키워드 태그 카테고리 — 과목·난이도 등 큐레이션 태그(ADMIN/CREATOR 전용)와
- * 구분되는 자유 태깅. 이 카테고리만 일반 유저도 생성할 수 있다(catalog.service 참고).
- */
-export const KEYWORD_TAG_CATEGORY = '키워드';
+// 태그 카테고리는 tag.ts로 옮겼다 — 정본 목록과 한곳에 있어야 드리프트를 막는다.

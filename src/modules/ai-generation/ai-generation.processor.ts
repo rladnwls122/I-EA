@@ -10,7 +10,8 @@ import { PrismaService } from '@/prisma/prisma.service';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JsonWritable = any;
 import { buildRichBlocks, buildRichDoc, extractPlainText } from '@/common/prosemirror/prosemirror.util';
-import { KEYWORD_TAG_CATEGORY, QuestionKind } from '@/common/constants/question';
+import { QuestionKind } from '@/common/constants/question';
+import { KEYWORD_TAG_CATEGORY } from '@/common/constants/tag';
 import { GeminiLlmService } from './llm/gemini-llm.service';
 import { LlmGenerationContext, LlmQuestion } from './llm/llm.types';
 import { OutputLanguage, resolveOutputLanguage } from './exam-format';
