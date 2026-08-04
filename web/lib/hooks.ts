@@ -32,7 +32,6 @@ import {
   deleteAnnotation,
   fetchSession,
   submitSessionAnswer,
-  revealSessionHint,
   submitSession,
   selfGradeSessionQuestion,
   fetchReviews,
@@ -485,13 +484,6 @@ export function useSubmitAnswer(sessionQuestionId: string) {
   });
 }
 
-/** 힌트 열람. 힌트 없는 문항이면 apiFetch가 Error를 throw(404) */
-export function useRevealHint() {
-  return useMutation({
-    mutationFn: (sessionQuestionId: string) =>
-      revealSessionHint(sessionQuestionId),
-  });
-}
 
 /**
  * 세션 최종 제출. 성공 시:

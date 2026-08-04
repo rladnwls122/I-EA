@@ -349,6 +349,8 @@ export interface MyNotesResponse {
     correct: number;
     scorePercent: number;
     bySubject: WrongStat[];
+    /** 하위요소(4단계)별 — 약점 진단(#37)의 분류축 */
+    bySubjectDetail?: WrongStat[];
     byType: WrongStat[];
     byReason: ReasonStat[];
     /** 개념별(#키워드) 오답 — 틀린 횟수 많은 순. key=태그 id, label=키워드명. */
@@ -360,10 +362,34 @@ export interface MyNotesResponse {
     };
     /** 자기채점을 기다리는 서술형 답안 수(1차 응시 기준, 범위 필터 적용). 0이면 숨김 */
     ungradedCount?: number;
+    /** 약점 진단(#37) — 서버가 표본 하한·점수식을 적용해 계산해 내려준다. */
+    weakness?: WeaknessReport;
   };
   wrongQuestions: WrongQuestionItem[];
   /** 채점 이력이 서버 조회 상한(500)에 걸려 잘렸는지 */
   truncated?: boolean;
+}
+
+/**
+ * 약점 진단(#37) — 계산은 서버(weakness.util)가 한다.
+ * 표본 하한·점수식 같은 진단 규칙을 화면에서 다시 구현하지 마라(화면마다 다른 진단이 된다).
+ */
+export interface Weakness {
+  key: string;
+  label: string;
+  total: number;
+  wrong: number;
+  accuracyPercent: number;
+  score: number;
+  /** CONCEPT=개념 약점(다시 배우기) / DRILL=훈련 부족(알지만 실수) — 처방이 다르다 */
+  kind: 'CONCEPT' | 'DRILL';
+  dominantReason: { code: string; label: string; count: number } | null;
+}
+
+export interface WeaknessReport {
+  weaknesses: Weakness[];
+  /** 표본이 부족해 판정을 보류한 축 — "더 풀어보세요" 안내용 */
+  needsMoreData: { key: string; label: string; total: number }[];
 }
 
 /** GET /me/review-summary 응답 — 전역 내비 due 배지용 경량 카운트 */
@@ -444,8 +470,6 @@ export interface SessionQuestionItem {
   sessionQuestionId: string;
   questionId: string;
   displayOrder: number;
-  isHintUsed: boolean;
-  hintUsedAt: string | null;
   snapshot: SessionQuestionSnapshot;
   answer: SessionAnswer | null;
   /** 채점 후 복습 상태 — IN_PROGRESS에는 없음 */
@@ -475,13 +499,6 @@ export interface SubmitAnswerInput {
 export interface SubmitAnswerResult {
   sessionQuestionId: string;
   saved: true;
-}
-
-export interface RevealHintResult {
-  sessionQuestionId: string;
-  hint: string | null;
-  isHintUsed: true;
-  hintUsedAt: string;
 }
 
 export interface RewardBreakdown {
@@ -567,6 +584,8 @@ export interface CreateSessionInput {
   questionIds?: string[];
   isReview?: boolean;
   subjectId?: string;
+  /** 하위요소(4단계) 필터 — 약점 공략 세트 조립에 쓴다(#37). */
+  subjectDetailId?: string;
   workbookId?: string;
   questionCount?: number;
   filter?: {

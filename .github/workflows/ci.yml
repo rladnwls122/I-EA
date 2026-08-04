@@ -60,6 +60,9 @@ jobs:
       - run: npm ci
       - name: Typecheck
         run: npx tsc --noEmit
+      # 순수 로직 테스트(vitest). 예전엔 web에 러너가 없어 tsc·build로만 검증됐다.
+      - name: Test
+        run: npm test
       - name: Build
         run: npm run build
 

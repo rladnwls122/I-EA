@@ -52,7 +52,7 @@ diff에 `src/`가 있으면 §백엔드 기준을, `web/`가 있으면 §프론�
 
 ## 프론트엔드 검수 기준 (`web/`)
 
-권위 문서는 `docs/superpowers/specs/2026-07-09-qidea-frontend-redesign.md`다.
+권위 문서는 `web/WEB_GUIDE.md`(작업 규칙)와 `docs/superpowers/specs/2026-07-12-ui-redesign-tokens.md`(디자인 토큰)다.
 
 ### blocker — 비밀 유출 또는 거짓 데이터
 
@@ -106,7 +106,7 @@ F19. **폼 로컬 상태를 Zustand 스토어로.** 서버 상태는 TanStack Qu
 - 지역 `type JsonWritable = any` 패턴 (위 14 참조).
 - `components/ui/` 아래 shadcn 생성 보일러플레이트. 손으로 고친 부분만 본다.
 - Vega-Lite 스펙 안의 hex 리터럴 (위 F17 참조).
-- `README.md` / `web/README.md` / `LOCAL_TEST_GUIDE.md`와의 불일치. **그 문서들이 낡았다.** units, enum `QuestionType`, variants/memos 모듈, 비밀번호 없는 로그인을 아직 설명한다. `schema.prisma`와 코드가 진실이다. 문서를 근거로 코드를 지적하지 마라.
+- 문서와의 불일치만으로 코드를 지적하는 것. **`schema.prisma`와 코드가 최종 진실이다.** `README.md`·`LOCAL_TEST_GUIDE.md`는 갱신돼 있지만, 어긋난 게 보이면 코드가 아니라 문서를 고칠 일이다(그것도 이 diff의 범위일 때만).
 
 ## 백엔드 계약 현황 (2026-07-09 확인)
 

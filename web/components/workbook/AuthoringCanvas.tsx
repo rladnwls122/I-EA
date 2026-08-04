@@ -4,7 +4,15 @@ import { toast } from "sonner";
 import { ArrowLeft, Check, Loader2, PencilLine, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { buildRichDoc, buildRichBlocks, extractPlainText } from "@/lib/prosemirror";
+import {
+  buildRichDoc,
+  buildRichBlocks,
+  extractPlainText,
+  blocksToDoc,
+  docToBlocks,
+  isRichEmpty,
+  keepIfUnchanged,
+} from "@/lib/prosemirror";
 import {
   createQuestion,
   updateQuestion,
@@ -23,6 +31,16 @@ import type { Tag, Question } from "@/lib/types";
 import { questionRejectReason, type ParsedQuestion } from "@/lib/authoring-chat";
 import { AuthoringChatPanel } from "./AuthoringChatPanel";
 import { AuthoringCanvasCard } from "./AuthoringCanvasCard";
+import {
+  buildQuestionPayload,
+  isPersistedCard,
+  isSavableCard,
+  newLocalCardId,
+  normalizeKeywords,
+  passageKey,
+  uniquePassages,
+  validateSave,
+} from "./authoring-save";
 
 /** 선지 하나 — 본문 + 선지별 해설(공개 여부 토글 가능). */
 export interface CanvasChoice {
@@ -30,6 +48,15 @@ export interface CanvasChoice {
   explanation: string;
   /** 선지별 해설 공개 여부 — 저장 시 choices Json에 함께 실린다. */
   showExplanation: boolean;
+  /**
+   * 불러온 선지의 원본 노드(rich). 카드 UI는 선지를 아직 평문 `<input>`으로 편집하지만,
+   * 다른 경로(/studio/editor 등)에서 서식이 들어간 선지를 캔버스에서 열었다가 저장하면
+   * `buildRichDoc(평문)`으로 덮여 서식이 사라진다. 사용자가 그 선지의 텍스트를 실제로
+   * 고치지 않았다면 원본을 그대로 돌려보내 파괴를 막는다(#41 Phase 1).
+   * 선지 자체를 rich 편집으로 바꾸는 건 Phase 2 이후 과제다.
+   */
+  sourceContent?: any;
+  sourceExplanation?: any;
 }
 
 /** 좌측 캔버스 카드(경량 Draft — QuestionEditor의 Draft에서 편집에 쓰는 필드만). */
@@ -101,13 +128,6 @@ function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
   };
 }
 
-/** 지문 공유 판정 키 — 평문 완전일치(공백 정리 후). 빈 지문은 그룹으로 안 묶는다. */
-function passageKey(card: CanvasCard): string | null {
-  if (!card.passage) return null;
-  const text = extractPlainText(card.passage).trim();
-  return text ? text : null;
-}
-
 /**
  * 저장된 rich 값(doc 노드 또는 블록 노드 배열) → 평문.
  * choices[].content/stem은 doc, explanation은 buildRichBlocks가 만든 블록 배열이라
@@ -117,11 +137,6 @@ function richToText(v: any): string {
   if (!v) return "";
   const doc = Array.isArray(v) ? { type: "doc", content: v } : v;
   return extractPlainText(doc);
-}
-
-/** 새 카드(local-)와 기존 문항 카드(실제 question id)를 구분. */
-function isPersistedCard(id: string): boolean {
-  return !id.startsWith("local-");
 }
 
 /**
@@ -137,6 +152,9 @@ function questionToCard(q: Question): CanvasCard {
     explanation: richToText(c?.explanation),
     // 저장 때 실린 선지별 해설 공개 여부를 그대로 복원.
     showExplanation: !!c?.explanationVisible,
+    // 원본 노드 보존 — 편집하지 않은 선지는 저장 시 이걸 그대로 돌려보낸다.
+    sourceContent: c?.content,
+    sourceExplanation: c?.explanation,
   }));
   const correct = rawChoices.findIndex((c) => c?.isCorrect === true);
   const keywords = (q.tags ?? [])
@@ -151,7 +169,8 @@ function questionToCard(q: Question): CanvasCard {
     correct: isObjective ? (correct >= 0 ? correct : 0) : -1,
     answerText: q.correctAnswerText ?? "",
     // explanation은 블록 배열로 저장되므로 doc으로 다시 세운다(카드 에디터는 doc을 받는다).
-    explanation: buildRichDoc(richToText(q.explanation)),
+    // 감싸기만 한다 — 평문을 거치면 저장돼 있던 서식이 열 때마다 사라진다.
+    explanation: blocksToDoc(q.explanation),
     points: Number(q.points) || 1,
     keywords,
   };
@@ -359,7 +378,7 @@ export function AuthoringCanvas({
           return copy;
         }
       }
-      return [...prev, { ...probe, id: `local-${Date.now()}-${prev.length}` }];
+      return [...prev, { ...probe, id: newLocalCardId(prev.length) }];
     });
     return null;
   }, []);
@@ -419,7 +438,7 @@ export function AuthoringCanvas({
     setCards((prev) => [
       ...prev,
       {
-        id: `local-${Date.now()}-${prev.length}`,
+        id: newLocalCardId(prev.length),
         type: "객관식",
         stem: buildRichDoc(""),
         passage: null,
@@ -438,28 +457,23 @@ export function AuthoringCanvas({
   }, []);
 
   const handleSave = async () => {
-    if (cards.length === 0) {
-      toast.error("저장할 문항이 없습니다.");
-      return;
-    }
-    if (!subjectId) {
-      toast.error("과목 정보가 없습니다. 채팅에서 과목을 확인해주세요.");
-      return;
-    }
-    // 문제집 자체를 못 불러왔으면(삭제됐거나 남의 것) 담기는 100% 실패한다 — 미리 막는다.
-    if (workbookError || !workbook) {
-      toast.error("문제집을 불러오지 못했어요. 문제집 만들기에서 다시 시작해주세요.");
+    // 사전검증은 순수 규칙이라 authoring-save로 뺐다(테스트 대상).
+    const blocked = validateSave({
+      cardCount: cards.length,
+      subjectId,
+      workbookLoaded: !workbookError && !!workbook,
+    });
+    if (blocked) {
+      toast.error(blocked);
       return;
     }
     setSaving(true);
     try {
       // 1) 지문 영속화 — 같은 지문(평문 일치)은 한 번만 생성해 passageId를 공유한다.
       const passageIdByKey = new Map<string, string>();
-      for (const c of cards) {
-        const key = passageKey(c);
-        if (!key || passageIdByKey.has(key)) continue;
+      for (const { key, passage } of uniquePassages(cards)) {
         try {
-          const p = await createPassage(c.passage);
+          const p = await createPassage(passage);
           await publishPassage(p.id).catch(() => null); // 발행 실패는 담기에 치명적이지 않음
           passageIdByKey.set(key, p.id);
         } catch (e) {
@@ -475,9 +489,8 @@ export function AuthoringCanvas({
       );
       const resolveTagIds = async (keywords: string[]): Promise<string[]> => {
         const ids: string[] = [];
-        for (const raw of keywords) {
-          const name = raw.trim();
-          if (!name) continue;
+        // 공백·중복 정리는 순수 규칙 — 여기서 걸러야 같은 태그를 두 번 만들지 않는다.
+        for (const name of normalizeKeywords(keywords)) {
           const key = name.toLowerCase();
           let id = tagIdByName.get(key);
           if (!id) {
@@ -501,33 +514,10 @@ export function AuthoringCanvas({
       //    돌려줘 원인이 가려진다 — 단계별로 실패를 구분해 서버 메시지를 그대로 보여준다.
       const buildContentPayload = (c: CanvasCard, tagIds: string[]) => {
         const key = passageKey(c);
-        return {
-          questionType: c.type,
-          points: c.points,
-          ...(tagIds.length ? { tagIds } : {}),
-          ...(key && passageIdByKey.has(key) ? { passageId: passageIdByKey.get(key) } : {}),
-          stem: c.stem,
-          choices:
-            c.type === "객관식"
-              ? c.choices.map((ch, i) => ({
-                  id: `c${i + 1}`,
-                  content: buildRichDoc(ch.text),
-                  isCorrect: i === c.correct,
-                  // 선지별 해설 — 공개 여부(showExplanation)까지 choices Json에 함께 보존.
-                  ...(ch.explanation.trim()
-                    ? {
-                        explanation: buildRichBlocks(ch.explanation),
-                        explanationVisible: ch.showExplanation,
-                      }
-                    : {}),
-                }))
-              : undefined,
-          correctAnswerText:
-            c.type === "주관식" && c.answerText.trim() ? c.answerText.trim() : undefined,
-          explanation: extractPlainText(c.explanation).trim()
-            ? buildRichBlocks(extractPlainText(c.explanation))
-            : undefined,
-        };
+        return buildQuestionPayload(c, {
+          tagIds,
+          passageId: key ? passageIdByKey.get(key) : undefined,
+        });
       };
 
       let failed = 0;
@@ -536,7 +526,9 @@ export function AuthoringCanvas({
       // 같은 세션에서 다시 저장해도 중복 생성되지 않게 한다.
       const newIdByCardId = new Map<string, string>();
       for (const c of cards) {
-        if (!extractPlainText(c.stem).trim()) continue;
+        // 텍스트가 아니라 내용 유무로 판정한다 — 이미지만 있는 발문(Phase 2)을
+        // 빈 카드로 보고 조용히 건너뛰지 않게.
+        if (!isSavableCard(c)) continue;
         try {
           const tagIds = await resolveTagIds(c.keywords);
           const payload = buildContentPayload(c, tagIds);

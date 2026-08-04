@@ -14,6 +14,7 @@ import {
 } from '@/common/constants/xp';
 import { getShopItem, ShopItemKey } from '@/common/constants/shop';
 import { REVIEW_STATUS } from '@/modules/exam-sessions/review-state.util';
+import { rankWeaknesses } from './weakness.util';
 
 export interface WrongStat {
   key: string;
@@ -226,6 +227,8 @@ export class MeService {
     // 개념별(#키워드) 오답 통계 — 태그 id로 집계하고 라벨은 태그명을 쓴다.
     const keywordMap = new Map<string, WrongStat>();
     const sessionIds = new Set<string>();
+    /** 문항 → 하위요소 축 key. 아래에서 주석의 reasonCode를 축별로 접는 데 쓴다(#37). */
+    const detailKeyByQuestion = new Map<string, string>();
     const wrongList: {
       questionId: string;
       subjectId: string;
@@ -256,11 +259,15 @@ export class MeService {
       bump(subjectMap, q.subjectId, q.subject.name, isWrong);
       bump(typeMap, q.questionType, q.questionType, isWrong);
       // 하위요소 미지정(기존 문항 전부 null)은 미분류 버킷에 쌓아 표본이 새지 않게 한다.
+      const detailKey = q.subjectDetailId && q.detail ? q.subjectDetailId : UNCLASSIFIED_DETAIL_KEY;
       if (q.subjectDetailId && q.detail) {
         bump(detailMap, q.subjectDetailId, q.detail.name, isWrong);
       } else {
         bump(detailMap, UNCLASSIFIED_DETAIL_KEY, UNCLASSIFIED_DETAIL_LABEL, isWrong);
       }
+      // 약점 진단(#37)에서 축별 오답 원인을 세려면 문항이 어느 축인지 알아야 한다.
+      // byReason은 전체 합산이라 "이 하위요소에서 실수가 많다"를 말할 수 없다.
+      detailKeyByQuestion.set(sq.questionId, detailKey);
       for (const qt of q.questionTags) {
         bump(keywordMap, qt.tag.id, qt.tag.name, isWrong);
       }
@@ -304,11 +311,22 @@ export class MeService {
     });
     const annByQuestion = new Map<string, typeof annotations>();
     const reasonMap = new Map<string, number>();
+    /** 축(하위요소) key → { reasonCode: count } — 약점 진단의 처방 분류에 쓴다(#37). */
+    const reasonsByDetail = new Map<string, Map<string, number>>();
     for (const ann of annotations) {
       const list = annByQuestion.get(ann.questionId) ?? [];
       list.push(ann);
       annByQuestion.set(ann.questionId, list);
-      if (ann.reasonCode) reasonMap.set(ann.reasonCode, (reasonMap.get(ann.reasonCode) ?? 0) + 1);
+      if (ann.reasonCode) {
+        reasonMap.set(ann.reasonCode, (reasonMap.get(ann.reasonCode) ?? 0) + 1);
+        // 같은 원인을 축(하위요소)별로도 접어 둔다 — 처방(개념 vs 훈련) 판정 근거.
+        const axisKey = detailKeyByQuestion.get(ann.questionId);
+        if (axisKey) {
+          const perAxis = reasonsByDetail.get(axisKey) ?? new Map<string, number>();
+          perAxis.set(ann.reasonCode, (perAxis.get(ann.reasonCode) ?? 0) + 1);
+          reasonsByDetail.set(axisKey, perAxis);
+        }
+      }
     }
     const byReason: ReasonStat[] = [...reasonMap.entries()].map(([code, count]) => ({
       code,
@@ -375,6 +393,12 @@ export class MeService {
         review: { due, byStatus },
         // 자기채점 대기 서술형 답안 수(#39 B-2) — 범위 필터를 따라간다. 0이면 프론트에서 숨김.
         ungradedCount,
+        /**
+         * 약점 진단(#37) — 하위요소 축 기준 상위 3개 + 표본 부족 축.
+         * 여기서 계산해 내려주는 이유: 집계가 이미 이 요청 안에 다 있어 추가 쿼리가 없고,
+         * 표본 하한·점수식 같은 진단 규칙을 화면마다 다르게 구현하지 않게 하려는 것.
+         */
+        weakness: rankWeaknesses([...detailMap.values()], reasonsByDetail),
       },
       wrongQuestions,
       // 채점 이력이 조회 상한(NOTES_GRADED_LIMIT)에 걸려 잘렸는지(#39 B-3).
@@ -427,6 +451,9 @@ export class MeService {
     return {
       coins: user.coins,
       xpBoostUntil: user.xpBoostUntil,
+      // HINT_TOKEN은 상점에서 내렸지만(응시 중 AI 힌트 폐기, 2026-08-04) 이미 코인을 주고
+      // 산 사용자가 있을 수 있어 보유 수량은 계속 보여준다. 소리 없이 감추면 "산 게 사라졌다"가 된다.
+      // 보상/회수 처리는 제품 결정 사항이라 여기서 임의로 하지 않는다.
       inventory: { STREAK_SHIELD: qty('STREAK_SHIELD'), HINT_TOKEN: qty('HINT_TOKEN') },
       cosmetics: {
         owned: inv.filter((i) => i.itemKey.startsWith('COSMETIC_') && i.quantity > 0).map((i) => i.itemKey),

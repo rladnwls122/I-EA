@@ -38,7 +38,7 @@ npm run prisma:generate   # schema.prisma 수정 후 Prisma Client 재생성
 
 - `JwtAuthGuard`가 `app.module.ts`에 전역 `APP_GUARD`로 등록돼 있다. **모든 라우트가 기본 인증된다.** 라우트별 예외는 `@Public()`(`src/common/decorators/public.decorator.ts`).
 - `@Roles(...)` + `RolesGuard`가 CREATOR/ADMIN 전용 동작(마스터 데이터, 발행)을 제한한다. `RolesGuard`는 `JwtAuthGuard`가 이미 `request.user`를 채웠다고 가정한다.
-- 인증은 이메일 + 비밀번호(bcrypt)다. `auth.service.ts`의 `register`/`login`, `passwordHash` 컬럼. `README.md`와 `LOCAL_TEST_GUIDE.md`는 비밀번호 없는 구식 이메일 프로비저닝 로그인을 설명한다 — **낡았다. 코드를 믿어라.**
+- 인증은 이메일 + 비밀번호(bcrypt 12라운드)다. `auth.service.ts`의 `register`/`login`, `passwordHash` 컬럼. 토큰 무효화는 `users.token_version`(JWT의 `tv` 클레임)으로 하고 `POST /auth/logout-all`이 올린다. 인증 라우트에는 레이트리밋이 걸려 있다(로그인 5분 10회).
 
 ### ProseMirror는 우리 코드가 소유한다, LLM이 아니라
 
@@ -96,7 +96,7 @@ npm run prisma:generate   # schema.prisma 수정 후 Prisma Client 재생성
 
 ## 낡은 문서
 
-`README.md`와 `LOCAL_TEST_GUIDE.md`는 낡았다. units, enum `QuestionType`, variants/memos 모듈, 비밀번호 없는 로그인을 아직 설명한다. **근거로 쓰지 마라.** `schema.prisma`와 코드가 진실이다.
+`README.md`·`LOCAL_TEST_GUIDE.md`·`ARCHITECTURE.md`는 현재 코드에 맞게 갱신돼 있다(units·enum `QuestionType`·variants/memos·비밀번호 없는 로그인 서술은 전부 제거됨). 다만 충돌이 보이면 여전히 **`schema.prisma`와 코드가 최종 진실**이고, 문서 쪽을 고쳐라.
 
 ## 작업 절차
 

@@ -480,6 +480,7 @@ model ExamSessionQuestion {
   displayOrder  Int       @map("display_order")
   snapshot      Json
   // 힌트 트래킹: 힌트 열람 여부 + 최초 열람 시각
+  // [고아 컬럼] 위 users.hint_free_* 와 같은 사유 — 응시 중 AI 힌트 폐기(2026-08-04).
   isHintUsed    Boolean   @default(false) @map("is_hint_used")
   hintUsedAt    DateTime? @map("hint_used_at")
 

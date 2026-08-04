@@ -45,7 +45,7 @@ export function rollCoins(tier: BoxTier, rng: () => number = Math.random): numbe
 export type ShopItemKind = 'BOOST' | 'CONSUMABLE' | 'COSMETIC' | 'PHYSICAL';
 
 type BoostEffect = { type: 'BOOST'; hours: number };
-type ConsumableEffect = { type: 'CONSUMABLE'; inventoryKey: 'STREAK_SHIELD' | 'HINT_TOKEN' };
+type ConsumableEffect = { type: 'CONSUMABLE'; inventoryKey: 'STREAK_SHIELD' };
 type CosmeticEffect = { type: 'COSMETIC'; field: 'equippedTitle' | 'nameColor'; value: string };
 type PhysicalEffect = { type: 'PHYSICAL' };
 type ShopEffect = BoostEffect | ConsumableEffect | CosmeticEffect | PhysicalEffect;
@@ -61,7 +61,6 @@ export const SHOP_ITEMS = {
   XP_BOOST:        { name: 'XP 부스터',       price: 100,  kind: 'BOOST',      effect: { type: 'BOOST', hours: 24 } },
   XP_BOOST_LARGE:  { name: '대형 XP 부스터',  price: 300,  kind: 'BOOST',      effect: { type: 'BOOST', hours: 72 } },
   STREAK_SHIELD:   { name: '연속학습 보호권', price: 250,  kind: 'CONSUMABLE', effect: { type: 'CONSUMABLE', inventoryKey: 'STREAK_SHIELD' } },
-  HINT_TOKEN:      { name: '힌트 토큰',       price: 80,   kind: 'CONSUMABLE', effect: { type: 'CONSUMABLE', inventoryKey: 'HINT_TOKEN' } },
   COSMETIC_TITLE_MASTER:    { name: '칭호: 문제의 지배자', price: 150, kind: 'COSMETIC', effect: { type: 'COSMETIC', field: 'equippedTitle', value: '문제의 지배자' } },
   COSMETIC_NAMECOLOR_GOLD:  { name: '닉네임 색: 골드',     price: 200, kind: 'COSMETIC', effect: { type: 'COSMETIC', field: 'nameColor', value: '#E9B949' } },
   RICEBALL_COUPON: { name: '배불리주먹밥 쿠폰(실물)', price: 7777, kind: 'PHYSICAL', effect: { type: 'PHYSICAL' } },
@@ -77,9 +76,6 @@ export function getShopItem(key: ShopItemKey): ShopItem | undefined {
 export function boostExpiryHours(now: Date, hours: number): Date {
   return new Date(now.getTime() + hours * 3_600_000);
 }
-
-/** 힌트 하루 무료 횟수. */
-export const HINT_FREE_PER_DAY = 3;
 
 // ─── 저자 리워드(출제자 보상) 규칙 ───
 export const AUTHOR_PUBLISH_REWARD = { exp: 20, coins: 20 } as const;

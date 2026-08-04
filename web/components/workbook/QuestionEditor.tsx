@@ -7,7 +7,7 @@ import {
   Trash2, ChevronDown, ChevronUp, RotateCcw, Loader2, Settings2,
 } from "lucide-react";
 import { TiptapEditor } from "@/components/editor/TiptapEditor";
-import { buildRichDoc, extractPlainText } from "@/lib/prosemirror";
+import { buildRichDoc, extractPlainText, isRichEmpty } from "@/lib/prosemirror";
 import {
   createAiGeneration,
   fetchAiGeneration,
@@ -382,7 +382,7 @@ export function QuestionEditor() {
           questionIds.push(d.id);
           continue;
         }
-        if (!extractPlainText(d.stem).trim()) continue; // 빈 발문은 건너뜀
+        if (isRichEmpty(d.stem)) continue; // 빈 발문은 건너뜀(텍스트가 아니라 내용 기준)
         const created = await createQuestion({
           subjectId,
           questionType: d.type,
@@ -398,9 +398,7 @@ export function QuestionEditor() {
           correctAnswerText:
             d.type === "주관식" && d.answerText.trim() ? d.answerText.trim() : undefined,
           // 백엔드는 해설을 블록 노드 배열로 받는다(doc 래퍼 아님).
-          explanation: extractPlainText(d.explanation).trim()
-            ? d.explanation?.content
-            : undefined,
+          explanation: isRichEmpty(d.explanation) ? undefined : d.explanation?.content,
         } as any);
         questionIds.push(created.id);
       }

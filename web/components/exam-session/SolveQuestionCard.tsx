@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Check, Lightbulb, Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useDebounce, useSubmitAnswer, useRevealHint } from "@/lib/hooks";
+import { useDebounce, useSubmitAnswer } from "@/lib/hooks";
 import { extractPlainText } from "@/lib/prosemirror";
 import type { SessionQuestionItem } from "@/lib/types";
 
@@ -22,7 +22,6 @@ export function SolveQuestionCard({
 }) {
   const isObjective = item.snapshot.questionType === "객관식";
   const submitAnswer = useSubmitAnswer(item.sessionQuestionId);
-  const revealHint = useRevealHint();
 
   // ── 객관식: 단일 선택(라디오). 마스킹된 snapshot은 복수정답 여부를 알 수 없다(Global Constraints 참고) ──
   const selectChoice = (choiceId: string) => {
@@ -46,18 +45,6 @@ export function SolveQuestionCard({
   }, [debouncedText]);
 
   // ── 힌트 ──
-  // 한 번 받은 힌트는 hintText에 남겨 재클릭 시 재호출하지 않는다(문항당 1회, 비용 절약).
-  const [hintText, setHintText] = useState<string | null>(null);
-  const [hintError, setHintError] = useState<string | null>(null);
-  const openHint = () => {
-    if (hintText) return; // 이미 받은 힌트 있으면 재호출 안 함
-    setHintError(null);
-    revealHint.mutate(item.sessionQuestionId, {
-      onSuccess: (res) => setHintText(res.hint),
-      onError: (e: unknown) =>
-        setHintError(e instanceof Error ? e.message : "힌트를 불러오지 못했어요. 다시 시도해 주세요."),
-    });
-  };
 
   const choices = item.snapshot.choices ?? [];
 
@@ -127,35 +114,11 @@ export function SolveQuestionCard({
       )}
 
       <div className="mt-2 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={openHint}
-          disabled={revealHint.isPending}
-          className="-ml-2 flex h-10 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
-        >
-          {revealHint.isPending ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <Lightbulb size={13} />
-          )}
-          힌트
-        </button>
         {submitAnswer.isPending && (
           <span className="text-[10px] text-muted-foreground">저장 중…</span>
         )}
       </div>
 
-      {hintText && (
-        <div className="mt-2 flex items-start gap-2 rounded-lg bg-primary/5 px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-          <Lightbulb size={13} className="mt-0.5 flex-none text-primary" aria-hidden="true" />
-          <p>{hintText}</p>
-        </div>
-      )}
-      {hintError && (
-        <p className="mt-2 text-xs text-destructive" role="alert">
-          {hintError}
-        </p>
-      )}
     </article>
   );
 }
