@@ -18,6 +18,7 @@ import {
   fetchComments,
   fetchAnnotations,
   fetchMyNotes,
+  fetchReviewSummary,
   fetchMyExamSessions,
   createQuestion,
   updateQuestion,
@@ -31,7 +32,6 @@ import {
   deleteAnnotation,
   fetchSession,
   submitSessionAnswer,
-  revealSessionHint,
   submitSession,
   selfGradeSessionQuestion,
   fetchReviews,
@@ -51,10 +51,7 @@ import {
 } from './api';
 import type {
   Subject,
-  Question,
   QuestionStatus,
-  Workbook,
-  AiGeneration,
   SubmitAnswerInput,
 } from './types';
 
@@ -344,9 +341,22 @@ export function useMyNotes(
   params?: { examType?: string; examCategory?: string; subjectId?: string },
   enabled = true,
 ) {
+  // 빈 필터({}·값 전부 falsy)는 undefined로 정규화 — 무필터 호출부들
+  // (대시보드·AppSidebar·notes 스토어 기본값)이 캐시 한 장을 공유하게.
+  const normalized =
+    params && Object.values(params).some(Boolean) ? params : undefined;
   return useQuery({
-    queryKey: ['my-notes', params],
-    queryFn: () => fetchMyNotes(params),
+    queryKey: ['my-notes', normalized],
+    queryFn: () => fetchMyNotes(normalized),
+    enabled,
+  });
+}
+
+/** 복습 요약(due 배지용) — 마운트 시 1회 조회, 폴링 없음. 비로그인이면 enabled=false로 게이트. */
+export function useReviewSummary(enabled = true) {
+  return useQuery({
+    queryKey: ['review-summary'],
+    queryFn: fetchReviewSummary,
     enabled,
   });
 }
@@ -471,13 +481,6 @@ export function useSubmitAnswer(sessionQuestionId: string) {
   });
 }
 
-/** 힌트 열람. 힌트 없는 문항이면 apiFetch가 Error를 throw(404) */
-export function useRevealHint() {
-  return useMutation({
-    mutationFn: (sessionQuestionId: string) =>
-      revealSessionHint(sessionQuestionId),
-  });
-}
 
 /**
  * 세션 최종 제출. 성공 시:
@@ -494,6 +497,10 @@ export function useSubmitSession() {
       queryClient.invalidateQueries({ queryKey: ['me'] });
       queryClient.invalidateQueries({ queryKey: ['milestones'] });
       queryClient.invalidateQueries({ queryKey: ['active-session'] });
+      // 채점이 복습 상태(O/세모/X/마스터)를 갱신하므로 오답노트도 재조회
+      queryClient.invalidateQueries({ queryKey: ['my-notes'] });
+      // 제출로 due(복습 도래)·ungraded(자기채점 대기)가 바뀌므로 내비 배지 카운트도 재조회
+      queryClient.invalidateQueries({ queryKey: ['review-summary'] });
     },
   });
 }
@@ -515,6 +522,10 @@ export function useSelfGrade() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me'] });
       queryClient.invalidateQueries({ queryKey: ['milestones'] });
+      // 자기채점도 복습 상태를 갱신한다
+      queryClient.invalidateQueries({ queryKey: ['my-notes'] });
+      // 자기채점으로 ungraded(대기 수)·due가 바뀌므로 내비 배지 카운트도 재조회
+      queryClient.invalidateQueries({ queryKey: ['review-summary'] });
     },
   });
 }

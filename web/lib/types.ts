@@ -153,6 +153,16 @@ export interface CreateAiGenerationInput {
   questionType?: QuestionType;
   /** OX(참/거짓) 2지선다 스타일 힌트. 저장되는 questionType은 그대로 객관식. */
   ox?: boolean;
+  /**
+   * 객관식 선지 개수(2~8). 생략하면 시험별 관행(수능·내신·한능검 5지 / 공무원·공기업·토익 4지)을
+   * 프롬프트로 유도만 하고 개수를 강제하지 않는다. ox가 true면 무시된다.
+   */
+  choiceCount?: number;
+  /**
+   * 출력 언어. 생략하면 시험·대분류로 추정한다(토익 → en, 영어 대분류 → en-passage-ko-stem).
+   * 'en-passage-ko-stem' = 지문·선지 영어 + 발문·해설 한국어.
+   */
+  language?: "ko" | "en" | "en-passage-ko-stem";
 }
 
 /** POST /ai-generations 응답 (즉시 202) */
@@ -305,6 +315,18 @@ export interface ReasonStat {
   count: number;
 }
 
+// ─── 복습 상태 (오답 복습 기능, 이슈 #15) ───────────────────────────
+
+/** O=처음부터 맞음 / TRIANGLE(세모)=재도전 성공 / X=연속 틀림 / MASTERED=2연속 정답(복습 졸업) */
+export type ReviewStatus = 'O' | 'TRIANGLE' | 'X' | 'MASTERED';
+
+export interface ReviewState {
+  status: ReviewStatus;
+  consecutiveCorrect: number;
+  /** 다음 복습 예정일. O/MASTERED는 null */
+  nextReviewAt: string | null;
+}
+
 export interface WrongQuestionItem {
   questionId: string;
   subjectId: string;
@@ -316,6 +338,8 @@ export interface WrongQuestionItem {
   sessionId: string;
   annotationCount: number;
   annotations: UserQuestionAnnotation[];
+  /** 복습 상태 — 채점 이력이 없으면 null(구데이터) */
+  reviewState?: ReviewState | null;
 }
 
 export interface MyNotesResponse {
@@ -325,17 +349,62 @@ export interface MyNotesResponse {
     correct: number;
     scorePercent: number;
     bySubject: WrongStat[];
+    /** 하위요소(4단계)별 — 약점 진단(#37)의 분류축 */
+    bySubjectDetail?: WrongStat[];
     byType: WrongStat[];
     byReason: ReasonStat[];
     /** 개념별(#키워드) 오답 — 틀린 횟수 많은 순. key=태그 id, label=키워드명. */
     byKeyword: WrongStat[];
+    /** 복습 현황 — due는 복습 예정일 도래 수(필터 무관, 유저 전체 기준) */
+    review?: {
+      due: number;
+      byStatus: { O: number; TRIANGLE: number; X: number; MASTERED: number };
+    };
+    /** 자기채점을 기다리는 서술형 답안 수(1차 응시 기준, 범위 필터 적용). 0이면 숨김 */
+    ungradedCount?: number;
+    /** 약점 진단(#37) — 서버가 표본 하한·점수식을 적용해 계산해 내려준다. */
+    weakness?: WeaknessReport;
   };
   wrongQuestions: WrongQuestionItem[];
+  /** 채점 이력이 서버 조회 상한(500)에 걸려 잘렸는지 */
+  truncated?: boolean;
+}
+
+/**
+ * 약점 진단(#37) — 계산은 서버(weakness.util)가 한다.
+ * 표본 하한·점수식 같은 진단 규칙을 화면에서 다시 구현하지 마라(화면마다 다른 진단이 된다).
+ */
+export interface Weakness {
+  key: string;
+  label: string;
+  total: number;
+  wrong: number;
+  accuracyPercent: number;
+  score: number;
+  /** CONCEPT=개념 약점(다시 배우기) / DRILL=훈련 부족(알지만 실수) — 처방이 다르다 */
+  kind: 'CONCEPT' | 'DRILL';
+  dominantReason: { code: string; label: string; count: number } | null;
+}
+
+export interface WeaknessReport {
+  weaknesses: Weakness[];
+  /** 표본이 부족해 판정을 보류한 축 — "더 풀어보세요" 안내용 */
+  needsMoreData: { key: string; label: string; total: number }[];
+}
+
+/** GET /me/review-summary 응답 — 전역 내비 due 배지용 경량 카운트 */
+export interface ReviewSummaryResponse {
+  /** 재노출 예정일이 도래한 복습 대기 문항 수(마스터 제외) */
+  due: number;
+  /** 자기채점을 기다리는 서술형 답안 수(1차 응시 기준) */
+  ungraded: number;
 }
 
 /** GET /me/exam-sessions 응답 항목 */
 export interface MyExamSession {
   id: string;
+  /** 복습 세션 여부 */
+  isReview?: boolean;
   /** 문제집 응시(교차 과목)면 null — 대신 workbookTitle 사용 */
   subjectName: string | null;
   workbookId: string | null;
@@ -401,10 +470,10 @@ export interface SessionQuestionItem {
   sessionQuestionId: string;
   questionId: string;
   displayOrder: number;
-  isHintUsed: boolean;
-  hintUsedAt: string | null;
   snapshot: SessionQuestionSnapshot;
   answer: SessionAnswer | null;
+  /** 채점 후 복습 상태 — IN_PROGRESS에는 없음 */
+  reviewState?: ReviewState | null;
 }
 
 export interface SessionDetail {
@@ -416,6 +485,8 @@ export interface SessionDetail {
   startedAt: string | null;
   submittedAt: string | null;
   durationSec: number | null;
+  /** 복습 세션 여부(정답 시 REVIEW_CORRECT 보너스, 전체 통계 미반영) */
+  isReview?: boolean;
   questions: SessionQuestionItem[];
 }
 
@@ -428,13 +499,6 @@ export interface SubmitAnswerInput {
 export interface SubmitAnswerResult {
   sessionQuestionId: string;
   saved: true;
-}
-
-export interface RevealHintResult {
-  sessionQuestionId: string;
-  hint: string | null;
-  isHintUsed: true;
-  hintUsedAt: string;
 }
 
 export interface RewardBreakdown {
@@ -520,6 +584,8 @@ export interface CreateSessionInput {
   questionIds?: string[];
   isReview?: boolean;
   subjectId?: string;
+  /** 하위요소(4단계) 필터 — 약점 공략 세트 조립에 쓴다(#37). */
+  subjectDetailId?: string;
   workbookId?: string;
   questionCount?: number;
   filter?: {
@@ -587,8 +653,11 @@ export interface Wallet {
   xpBoostUntil: string | null;
   inventory: {
     STREAK_SHIELD: number;
-    HINT_TOKEN: number;
+    /** 복습 튜터 대화 한 턴에 1개. 폐기된 HINT_TOKEN의 후신. */
+    AI_CREDIT: number;
   };
+  /** 오늘 남은 무료 AI 턴. 크레딧보다 **먼저** 소모된다. */
+  aiFreeRemaining: number;
   cosmetics: {
     /** 보유 코스메틱 itemKey 목록 (COSMETIC_ 접두) */
     owned: string[];

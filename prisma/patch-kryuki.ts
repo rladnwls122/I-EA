@@ -175,8 +175,13 @@ async function main() {
   const wrongKeywords = [...new Set(wrongPicks.map(keywordOf))];
   for (const q of wrongPicks) {
     const kw = keywordOf(q);
-    let tag = await prisma.tag.findFirst({ where: { name: kw, category: 'weakness' } });
-    if (!tag) tag = await prisma.tag.create({ data: { id: randomUUID(), name: kw, category: 'weakness' } });
+    // tags는 (category, name) 유니크 — find-then-create는 같은 키워드가 여러 문항에
+    // 걸릴 때 P2002로 터진다. upsert가 멱등하다(catalog.service·생성 프로세서와 동일 패턴).
+    const tag = await prisma.tag.upsert({
+      where: { category_name: { category: 'weakness', name: kw } },
+      update: {},
+      create: { id: randomUUID(), name: kw, category: 'weakness' },
+    });
     await prisma.questionTag.upsert({
       where: { questionId_tagId: { questionId: q.id, tagId: tag.id } },
       create: { questionId: q.id, tagId: tag.id },

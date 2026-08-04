@@ -52,11 +52,13 @@ export class CatalogService {
     if (dto.category !== KEYWORD_TAG_CATEGORY) {
       const allowed = user.roles.some((r) => r === UserRoleType.ADMIN || r === UserRoleType.CREATOR);
       if (!allowed) throw new ForbiddenException('이 카테고리의 태그는 ADMIN/CREATOR만 생성할 수 있습니다.');
-      return this.prisma.tag.create({ data: { name: dto.name, category: dto.category } });
     }
-    // 키워드는 동시 요청·중복 입력이 흔하므로 find-or-create로 중복 생성을 막는다.
-    return this.prisma.tag.findFirst({ where: { name: dto.name, category: dto.category } }).then(
-      (existing) => existing ?? this.prisma.tag.create({ data: { name: dto.name, category: dto.category } }),
-    );
+    // (category, name)이 유니크이므로 upsert로 멱등하게 만든다.
+    // find-then-create는 동시 요청에서 둘 다 조회를 미스해 한쪽이 P2002로 터진다.
+    return this.prisma.tag.upsert({
+      where: { category_name: { category: dto.category, name: dto.name } },
+      update: {},
+      create: { name: dto.name, category: dto.category },
+    });
   }
 }

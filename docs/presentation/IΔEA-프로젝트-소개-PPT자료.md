@@ -77,7 +77,7 @@ AI 문제은행 · 모의고사 · 오답노트 플랫폼
 | **모의고사** | 세션 조립, OMR 패널, 필기 오버레이, 계산기 |
 | **채점** | 객관식·단답 자동채점, 서술형 자기채점 |
 | **오답노트 2.0** | 텍스트 앵커 하이라이트/밑줄 + 오답원인 태그 |
-| **AI 튜터** | SSE 스트리밍 대화, Redis 히스토리 |
+| **오답 복습 코치** | 채점 후 SSE 스트리밍 대화, Redis 히스토리 |
 | **게이미피케이션** | XP·레벨·스트릭·코인·상자·상점 |
 
 ---
@@ -88,7 +88,7 @@ AI 문제은행 · 모의고사 · 오답노트 플랫폼
 
 | 계층 | 기술 |
 |------|------|
-| 프레임워크 | **NestJS 10** (TypeScript) |
+| 프레임워크 | **NestJS 11** (TypeScript) |
 | ORM / DB | **Prisma 5** → MySQL (프로덕션: TiDB Serverless) |
 | 비동기 큐 | **BullMQ** + Redis |
 | 인증 | JWT + Passport, bcrypt |
@@ -140,7 +140,7 @@ AI 문제은행 · 모의고사 · 오답노트 플랫폼
 
 **통신 방식**
 - REST API: 대부분의 CRUD·조회
-- SSE: AI 튜터, 대화형 출제 채팅
+- SSE: 오답 복습 코치, 대화형 출제 채팅
 - 폴링: AI 일괄 생성 상태 (`PENDING → COMPLETED`)
 
 ---
@@ -158,7 +158,7 @@ AI 문제은행 · 모의고사 · 오답노트 플랫폼
 | `ai-generation` | AI 생성 | 비동기 생성 + 대화형 SSE 출제 |
 | `annotations` | 오답노트 | 텍스트 주석 CRUD |
 | `me` | 개인화 | 풀이 기록, 통합 오답노트/통계 |
-| `tutor` | AI 튜터 | SSE 스트리밍 채팅 |
+| `tutor` | 오답 복습 코치 | 채점 후 SSE 스트리밍 채팅 |
 | `shop` / `loot-boxes` | 재화/보상 | 코인, 상자, 상점 |
 
 > 전역 `JwtAuthGuard` — 모든 API 기본 인증, `@Public()` 예외만 공개
@@ -201,8 +201,12 @@ AI 문제은행 · 모의고사 · 오답노트 플랫폼
 - `IN_PROGRESS` 상태 조회 시:
   - 선지 `isCorrect` 숨김
   - 주관식 `correctAnswerText` 숨김
-  - 해설 숨김
+  - 해설·힌트 숨김
 - 제출(`SUBMITTED`) 후에만 정답·해설 공개
+- **경계는 세션 하나가 아니다** — 세션 응답이 `questionId`를 함께 주므로
+  `GET /questions/:id`와 `/stats`도 같은 판정으로 가린다. 안 그러면 요청 한 번에 뚫린다.
+  `/stats`는 비로그인에도 열려 있어 `isCorrect`를 `null`로 준다(`false`로 주면 소거법으로 역산됨).
+- 정답이 XP·코인 → 상점 실물 상품으로 이어지므로 표시상의 문제가 아니라 **재화 경계**다.
 
 ### 3. ProseMirror 일원화
 
@@ -248,13 +252,15 @@ POST /ai-generations
 - 우측: AI 채팅 (미리보기 → 적용/교체)
 - Redis 히스토리 `authoring:{workbookId}`, 레이트리밋
 
-### AI 튜터
-- `POST /tutor/chat` — SSE 스트리밍
-- 문항 맥락 기반 학습 도우미
+### 오답 복습 AI 코치 (#40)
+- `POST /tutor/review-chat` — SSE 스트리밍
+- 채점이 끝난 문항 한정. 학습자의 제출 답·자가 진단(오답 원인 태그)을 컨텍스트로
+  ① 왜 내 답이 틀렸나 ② 왜 이게 정답인가 ③ 다음에 확인할 것 순으로 답한다.
+- 그 문항을 지금 응시 중이면 거절 — 복습이 커닝 경로가 되지 않게.
 
-### 응시 중 AI 힌트 (설계 완료)
-- 풀이 화면에서 즉석 힌트 생성
-- 하루 무료 횟수 + 코인 소비 게이팅
+### 풀이 중 튜터·AI 힌트 — 폐기
+- 응시 중 대화형 튜터 계획은 무효화됐고 구현도 제거됐다(2026-08-04).
+- 학습 도움은 채점 이후(복습 코치)로 일원화한다.
 
 ---
 
@@ -327,18 +333,22 @@ POST /ai-generations
 ### Backend (Railway)
 ```bash
 npm run start:railway
-# → prisma db push && node dist/main.js
+# → prisma db push --skip-generate && node dist/main.js
 ```
 - 프로덕션 DB: `db push` (마이그레이션 아님)
-- CORS: `ALLOWED_ORIGINS` + `*.vercel.app`
+- `--accept-data-loss` 없음 → 스키마 드리프트 시 조용히 지우는 대신 **배포 실패**
+- CORS: `ALLOWED_ORIGINS` 화이트리스트 + `VERCEL_PREVIEW_PREFIX` 접두 일치 프리뷰만
 
 ### Frontend (Vercel)
 - URL: `https://i-ea.vercel.app`
 - `web/` 디렉터리 별도 배포
 
 ### 환경 변수
-- `DATABASE_URL`, `REDIS_*`, `JWT_SECRET`
-- `GEMINI_API_KEY`, AWS S3 키
+- **부팅 필수**: `DATABASE_URL`, `JWT_SECRET` (운영은 `ALLOWED_ORIGINS`도) — 없으면 기동 중단
+- 선택(없으면 기능만 degrade): `GEMINI_API_KEY`, AWS S3 키, `REDIS_*`
+
+### CI
+- PR마다 lint·typecheck·test·build + 의존성 감사 + 시크릿 스캔(gitleaks)
 
 ### 안정화 (2026-07-12)
 - TiDB 유휴 연결 401 → 503 + 재연결
@@ -393,7 +403,7 @@ npm run start:railway
 
 | 우선순위 | 기능 | 상태 |
 |----------|------|------|
-| 높음 | 응시 중 AI 힌트 | 설계 승인, 구현 예정 |
+| — | 응시 중 AI 힌트 | 폐기(복습 코치로 대체) |
 | 중간 | 상점·코인 시스템 고도화 | 스키마 반영, UI 진행 중 |
 | 중간 | Pick & Mix 장바구니 UX | 설계 완료 |
 | 낮음 | 홈 대시보드 개선 | 설계 완료 |
@@ -480,7 +490,8 @@ npm run start:railway
 | 프론트 가이드 | `web/WEB_GUIDE.md` |
 | 로컬 테스트 | `LOCAL_TEST_GUIDE.md` |
 | DB 스키마 | `prisma/schema.prisma` |
-| API 인벤토리 | `docs/superpowers/plans/2026-07-08-qidea-api-inventory.md` |
+| API 표면 | Swagger `/api/docs` (개발 환경) · `src/modules/*/`.controller.ts |
+| 아키텍처 · 보안 | `ARCHITECTURE.md` |
 | 변경 로그 | `docs/superpowers/CHANGELOG-2026-07-12.md` |
 | UI 토큰 | `docs/superpowers/specs/2026-07-12-ui-redesign-tokens.md` |
 

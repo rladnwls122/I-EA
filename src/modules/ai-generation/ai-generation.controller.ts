@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -50,6 +51,13 @@ export class AiGenerationController {
     @Res() res: Response,
   ): Promise<void> {
     return this.authoringChat.chat(user.id, dto, res);
+  }
+
+  // ⚠ ':id' 라우트보다 먼저 선언해야 'templates'가 UUID 파라미터로 오인되지 않는다.
+  @Get('templates')
+  @ApiOperation({ summary: '출제 형식 템플릿 목록 (examType으로 필터, #43)' })
+  templates(@Query('examType') examType?: string) {
+    return this.service.listFormatTemplates(examType);
   }
 
   @Get(':id')

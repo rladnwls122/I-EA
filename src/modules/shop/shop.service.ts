@@ -64,10 +64,12 @@ export class ShopService {
           data: { xpBoostUntil: nextUntil },
         });
       } else if (eff.type === 'CONSUMABLE') {
+        // 묶음 판매 지원(AI 크레딧 10개 등). 생략하면 1개.
+        const qty = eff.quantity ?? 1;
         await tx.userInventory.upsert({
           where: { userId_itemKey: { userId, itemKey: eff.inventoryKey } },
-          create: { userId, itemKey: eff.inventoryKey, quantity: 1 },
-          update: { quantity: { increment: 1 } },
+          create: { userId, itemKey: eff.inventoryKey, quantity: qty },
+          update: { quantity: { increment: qty } },
         });
       } else if (eff.type === 'COSMETIC') {
         await tx.userInventory.upsert({

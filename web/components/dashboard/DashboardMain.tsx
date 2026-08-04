@@ -9,8 +9,12 @@ import { REASON_COLORS } from "@/components/notes/reason-colors";
 export function WrongNotesSummary({ enabled }: { enabled: boolean }) {
   const { data, isLoading } = useMyNotes(undefined, enabled);
   const byReason = enabled ? data?.summary.byReason || [] : [];
-  const wrongCount = enabled ? (data?.wrongQuestions || []).length : 0;
+  // "미해결" 오답 — 마스터(복습 졸업)는 해결된 것이므로 제외(/notes 기본 숨김과 일치)
+  const wrongCount = enabled
+    ? (data?.wrongQuestions || []).filter((q) => q.reviewState?.status !== "MASTERED").length
+    : 0;
   const total = byReason.reduce((s, r) => s + r.count, 0);
+  const review = enabled ? data?.summary.review : undefined;
 
   return (
     <section className="rounded-2xl border bg-card p-4 shadow-surface md:p-5">
@@ -40,10 +44,31 @@ export function WrongNotesSummary({ enabled }: { enabled: boolean }) {
         </div>
       ) : (
         <>
-          <div className="mb-3 flex items-baseline gap-1.5">
-            <span className="font-mono text-2xl font-semibold text-wrong">{wrongCount}</span>
-            <span className="text-xs text-muted-foreground">미해결 오답</span>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-mono text-2xl font-semibold text-wrong">{wrongCount}</span>
+              <span className="text-xs text-muted-foreground">미해결 오답</span>
+              {review && review.due > 0 && (
+                <span className="ml-1 rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-medium text-primary">
+                  오늘 복습 {review.due}
+                </span>
+              )}
+            </div>
+            {wrongCount > 0 && (
+              <Button asChild size="sm">
+                <Link href="/notes">지금 복습하기</Link>
+              </Button>
+            )}
           </div>
+          {review && (review.byStatus.X > 0 || review.byStatus.TRIANGLE > 0 || review.byStatus.MASTERED > 0) && (
+            <p className="mb-3 font-mono text-[11px] text-muted-foreground">
+              <span className="text-wrong">✗ {review.byStatus.X}</span>
+              <span className="mx-1.5">·</span>
+              <span className="text-amber-600 dark:text-amber-400">△ {review.byStatus.TRIANGLE}</span>
+              <span className="mx-1.5">·</span>
+              <span className="text-violet-600 dark:text-violet-400">★ {review.byStatus.MASTERED}</span>
+            </p>
+          )}
           <div className="space-y-2">
             {byReason.map((r) => {
               const pct = total > 0 ? Math.round((r.count / total) * 100) : 0;

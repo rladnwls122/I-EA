@@ -10,7 +10,7 @@
 
 ```text
 .
-├── src/                # Backend (NestJS 10)
+├── src/                # Backend (NestJS 11)
 │   ├── modules/        # 도메인별 비즈니스 로직 모듈
 │   │   ├── ai-generation/   # AI 문항 생성 로직 및 LLM 연동
 │   │   ├── exam-sessions/   # 시험 응시, 스냅샷, 채점 로직
@@ -36,7 +36,7 @@
 
 | 구분 | 기술 | 상세 |
 | --- | --- | --- |
-| **Backend** | NestJS 10 | REST API 서버 프레임워크 |
+| **Backend** | NestJS 11 | REST API 서버 프레임워크 |
 | **Frontend** | Next.js 14 | App Router 기반 웹 애플리케이션 |
 | **Database** | MySQL | Prisma ORM을 통한 데이터 관리 |
 | **Cache/Queue** | Redis | BullMQ를 이용한 비동기 작업 처리 |

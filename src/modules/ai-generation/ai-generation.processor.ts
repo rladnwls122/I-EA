@@ -12,6 +12,8 @@ import { buildRichBlocks, buildRichDoc, extractPlainText } from '@/common/prosem
 import { KEYWORD_TAG_CATEGORY, QuestionKind } from '@/common/constants/question';
 import { GeminiLlmService } from './llm/gemini-llm.service';
 import { LlmGenerationContext, LlmQuestion } from './llm/llm.types';
+import { OutputLanguage, resolveOutputLanguage } from './exam-format';
+import { getTemplate, resolveTemplateFormat } from './format-templates';
 import { AI_GENERATION_QUEUE } from './ai-generation.constants';
 
 interface GenerationJobData {
@@ -49,13 +51,42 @@ export class AiGenerationProcessor extends WorkerHost {
     }
 
     const params = generation.inputParams as Record<string, unknown>;
+    // 출제 형식 템플릿 해석(#43) — 템플릿이 선지 개수·언어·지문 여부·유형의 기본값을 깔고,
+    // 요청에서 명시한 개별 파라미터(null이 아닌 값)가 항상 우선한다.
+    const templateId = params.templateId ? String(params.templateId) : undefined;
+    const template = templateId ? getTemplate(templateId) : undefined;
+    if (templateId && !template) {
+      // 스냅샷의 템플릿이 레지스트리에서 사라진 경우(id 변경·제거) — FAILED는 과하다.
+      // 무템플릿으로 진행해 재생성 가능성을 유지하되, 형식 지시가 빠졌음을 로그로 남긴다.
+      this.logger.warn(
+        `생성 작업 ${generationId}: 알 수 없는 템플릿 ID '${templateId}' — 템플릿 없이 진행합니다.`,
+      );
+    }
+    const format = resolveTemplateFormat(template, {
+      choiceCount: params.choiceCount != null ? Number(params.choiceCount) : undefined,
+      language: (params.language as OutputLanguage | null) ?? undefined,
+      includePassage: params.includePassage != null ? Boolean(params.includePassage) : undefined,
+      questionType: (params.questionType as QuestionKind | null) ?? undefined,
+    });
     const ctx: LlmGenerationContext = {
       prompt: String(params.prompt ?? ''),
       difficulty: Number(params.difficulty ?? 3),
       questionCount: Number(params.questionCount ?? 1),
-      includePassage: Boolean(params.includePassage ?? false),
-      questionType: (params.questionType as QuestionKind) ?? undefined,
+      includePassage: format.includePassage,
+      // 지문 수(0~3). 2 이상이면 다중지문 세트 모드(gap 3) — LLM 계약이 passages[]로 바뀐다.
+      passageCount: format.passageCount,
+      questionType: format.questionType,
       ox: Boolean(params.ox ?? false),
+      // 템플릿·요청 어느 쪽에도 없으면 undefined — 시험별 관행은 프롬프트 지시로만 유도하고
+      // 개수 검증은 걸지 않는다(모델이 하나 어긋났다고 배치 전체를 FAILED로 떨구지 않기 위함).
+      choiceCount: format.choiceCount,
+      // 템플릿·요청 어느 쪽에도 없으면 시험/대분류로 추정한다(토익 → 영어, 영어 대분류 → 지문 영어 + 발문 한국어).
+      language:
+        format.language ??
+        resolveOutputLanguage(generation.subject?.examType, generation.subject?.examCategory),
+      // 복수정답 모드(#43 gap 4)와 템플릿 형식 지시 — 프롬프트 조립·검증 완화에 쓰인다.
+      answerMode: format.answerMode,
+      templateHints: format.promptHints,
       subjectName: generation.subject?.name,
       examCategory: generation.subject?.examCategory,
       examType: generation.subject?.examType,
@@ -66,9 +97,25 @@ export class AiGenerationProcessor extends WorkerHost {
       const result = await this.llm.generate(ctx);
 
       await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        let passageId: string | null = null;
+        // 다중지문 세트(gap 3): passages[]를 각각 Passage 행으로 만들고(스키마는 원래 1:N)
+        // 문항이 passageIndex로 자기 지문을 문다. 단일 지문은 종전 경로 그대로.
+        const multiPassageIds: string[] = [];
+        let singlePassageId: string | null = null;
 
-        if (ctx.includePassage && result.passage?.bodyText) {
+        if ((ctx.passageCount ?? 0) >= 2 && result.passages?.length) {
+          for (const bodyText of result.passages) {
+            const passage = await tx.passage.create({
+              data: {
+                creatorId: generation.creatorId,
+                generationId: generation.id,
+                content: buildRichDoc(bodyText) as JsonWritable,
+                status: 'DRAFT',
+              },
+              select: { id: true },
+            });
+            multiPassageIds.push(passage.id);
+          }
+        } else if (ctx.includePassage && result.passage?.bodyText) {
           const passage = await tx.passage.create({
             data: {
               creatorId: generation.creatorId,
@@ -78,13 +125,20 @@ export class AiGenerationProcessor extends WorkerHost {
             },
             select: { id: true },
           });
-          passageId = passage.id;
+          singlePassageId = passage.id;
         }
 
         // 이 생성 배치 안에서 같은 키워드가 여러 문항에 걸치면 한 번만 만들어 재사용한다.
         const tagIdByName = new Map<string, string>();
 
         for (const q of result.questions) {
+          // 다중지문이면 문항별 근거 지문(passageIndex — 파서가 범위를 검증했다), 아니면 단일 지문.
+          const passageId = multiPassageIds.length
+            ? (multiPassageIds[q.passageIndex ?? 0] ?? null)
+            : singlePassageId;
+          const passageBody = multiPassageIds.length
+            ? result.passages?.[q.passageIndex ?? 0]
+            : result.passage?.bodyText;
           const kind = this.normalizeType(q.questionType);
           const choices = this.buildChoices(q, kind);
           const tagIds = await this.resolveKeywordTagIds(tx, tagIdByName, q.keywords ?? []);
@@ -113,7 +167,7 @@ export class AiGenerationProcessor extends WorkerHost {
               ...(tagIds.length ? { questionTags: { create: tagIds.map((tagId) => ({ tagId })) } } : {}),
               difficulty: this.clampDifficulty(q.difficulty ?? ctx.difficulty),
               status: 'DRAFT',
-              searchText: this.buildSearchText(q, result.passage?.bodyText),
+              searchText: this.buildSearchText(q, passageBody),
             },
           });
         }
@@ -204,9 +258,11 @@ export class AiGenerationProcessor extends WorkerHost {
   }
 
   /**
-   * 키워드 문자열 배열 → "키워드" 카테고리 태그 ID 배열(find-or-create).
-   * cache는 이 생성 배치(트랜잭션) 안에서 같은 이름을 중복 생성하지 않게 막는다 —
-   * catalog.service.createTag의 find-or-create와 같은 이유(동시 요청 중복 방지).
+   * 키워드 문자열 배열 → "키워드" 카테고리 태그 ID 배열(upsert).
+   * cache는 이 생성 배치(트랜잭션) 안에서 같은 이름을 재조회하지 않게 막는다.
+   * tags는 (category, name)이 유니크라 upsert가 멱등하다 —
+   * find-then-create는 동시 요청에서 둘 다 조회를 미스해 한쪽이 P2002로 터진다
+   * (catalog.service.createTag도 같은 이유로 upsert를 쓴다).
    */
   private async resolveKeywordTagIds(
     tx: Prisma.TransactionClient,
@@ -220,13 +276,13 @@ export class AiGenerationProcessor extends WorkerHost {
       const key = name.toLowerCase();
       let id = cache.get(key);
       if (!id) {
-        const existing = await tx.tag.findFirst({
-          where: { name, category: KEYWORD_TAG_CATEGORY },
+        const tag = await tx.tag.upsert({
+          where: { category_name: { category: KEYWORD_TAG_CATEGORY, name } },
+          update: {},
+          create: { name, category: KEYWORD_TAG_CATEGORY },
           select: { id: true },
         });
-        id = existing
-          ? existing.id
-          : (await tx.tag.create({ data: { name, category: KEYWORD_TAG_CATEGORY } })).id;
+        id = tag.id;
         cache.set(key, id);
       }
       ids.push(id);

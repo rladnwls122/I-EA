@@ -1,13 +1,15 @@
 import { Test } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { Job } from 'bullmq';
 import { AiGenerationProcessor } from './ai-generation.processor';
 import { PrismaService } from '@/prisma/prisma.service';
 import { GeminiLlmService } from './llm/gemini-llm.service';
 
 /**
- * AI 자동 키워드 태깅 — keywords 문자열 배열을 "키워드" 카테고리 태그로
- * find-or-create한다. 같은 생성 배치(트랜잭션) 안에서는 캐시로 중복 생성을 막는다
- * (catalog.service의 find-or-create와 같은 이유 — 동시 요청 중복 방지).
+ * AI 자동 키워드 태깅 — keywords 문자열 배열을 "키워드" 카테고리 태그로 upsert한다.
+ * tags는 (category, name)이 유니크라 upsert가 멱등하다. 같은 생성 배치(트랜잭션)
+ * 안에서는 캐시로 재조회까지 막는다(catalog.service.createTag와 같은 패턴).
  */
 describe('AiGenerationProcessor.resolveKeywordTagIds', () => {
   async function setup() {
@@ -36,46 +38,41 @@ describe('AiGenerationProcessor.resolveKeywordTagIds', () => {
     return { resolve };
   }
 
-  it('기존 태그가 있으면 재사용하고 새로 만들지 않는다', async () => {
+  /** upsert 한 번으로 기존 재사용/신규 생성이 모두 처리되므로 목도 하나면 된다. */
+  const txWith = (id: string) =>
+    ({
+      tag: { upsert: jest.fn().mockResolvedValue({ id }) },
+    }) as unknown as Prisma.TransactionClient;
+
+  it('기존 태그가 있으면 그 id를 그대로 쓴다', async () => {
     const { resolve } = await setup();
-    const tx = {
-      tag: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'existing-tag' }),
-        create: jest.fn(),
-      },
-    } as unknown as Prisma.TransactionClient;
+    const tx = txWith('existing-tag');
 
     const ids = await resolve(tx, new Map(), ['이차방정식']);
 
     expect(ids).toEqual(['existing-tag']);
-    expect(tx.tag.create).not.toHaveBeenCalled();
+    expect(tx.tag.upsert).toHaveBeenCalledTimes(1);
   });
 
-  it('없으면 "키워드" 카테고리로 생성한다', async () => {
+  it('"키워드" 카테고리 복합 유니크 키로 upsert한다 — 중복 행이 생기지 않는다', async () => {
     const { resolve } = await setup();
-    const tx = {
-      tag: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({ id: 'new-tag' }),
-      },
-    } as unknown as Prisma.TransactionClient;
+    const tx = txWith('new-tag');
 
     const ids = await resolve(tx, new Map(), ['인과관계 오류']);
 
     expect(ids).toEqual(['new-tag']);
-    expect(tx.tag.create).toHaveBeenCalledWith({
-      data: { name: '인과관계 오류', category: '키워드' },
-    });
+    expect(tx.tag.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { category_name: { category: '키워드', name: '인과관계 오류' } },
+        update: {},
+        create: { name: '인과관계 오류', category: '키워드' },
+      }),
+    );
   });
 
-  it('같은 배치 안에서 같은 키워드는 캐시로 재사용 — DB를 다시 조회하지 않는다', async () => {
+  it('같은 배치 안에서 같은 키워드는 캐시로 재사용 — DB를 다시 건드리지 않는다', async () => {
     const { resolve } = await setup();
-    const tx = {
-      tag: {
-        findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({ id: 'new-tag' }),
-      },
-    } as unknown as Prisma.TransactionClient;
+    const tx = txWith('new-tag');
     const cache = new Map<string, string>();
 
     const first = await resolve(tx, cache, ['미적분']);
@@ -83,19 +80,221 @@ describe('AiGenerationProcessor.resolveKeywordTagIds', () => {
 
     expect(first).toEqual(['new-tag']);
     expect(second).toEqual(['new-tag']);
-    expect(tx.tag.findFirst).toHaveBeenCalledTimes(1);
-    expect(tx.tag.create).toHaveBeenCalledTimes(1);
+    expect(tx.tag.upsert).toHaveBeenCalledTimes(1);
   });
 
   it('빈 문자열/공백만 있는 키워드는 건너뛴다', async () => {
     const { resolve } = await setup();
-    const tx = {
-      tag: { findFirst: jest.fn(), create: jest.fn() },
-    } as unknown as Prisma.TransactionClient;
+    const tx = txWith('unused');
 
     const ids = await resolve(tx, new Map(), ['  ', '']);
 
     expect(ids).toEqual([]);
-    expect(tx.tag.findFirst).not.toHaveBeenCalled();
+    expect(tx.tag.upsert).not.toHaveBeenCalled();
+  });
+});
+
+// #43 템플릿 해석 — input_params 스냅샷의 templateId가 LLM 컨텍스트로 풀리는 경로.
+describe('AiGenerationProcessor.process — 템플릿 해석', () => {
+  const makeJob = () =>
+    ({ data: { generationId: 'gen-1' }, attemptsMade: 0, opts: { attempts: 2 } }) as unknown as Job<{
+      generationId: string;
+    }>;
+
+  const DEFAULT_RESULT = {
+    questions: [
+      {
+        questionType: '객관식',
+        stemText: '다음 중 옳은 것은?',
+        choices: [
+          { content: '선지1', isCorrect: true },
+          { content: '선지2', isCorrect: false },
+        ],
+        difficulty: 3,
+      },
+    ],
+  };
+
+  async function setupProcess(
+    inputParams: Record<string, unknown>,
+    generateResult: unknown = DEFAULT_RESULT,
+  ) {
+    const generate = jest.fn().mockResolvedValue(generateResult);
+    let passageSeq = 0;
+    const tx = {
+      // 지문마다 다른 id를 돌려줘 문항-지문 연결을 검증할 수 있게 한다.
+      passage: { create: jest.fn().mockImplementation(() => ({ id: `p${++passageSeq}` })) },
+      question: { create: jest.fn().mockResolvedValue({ id: 'q1' }) },
+      aiGeneration: { update: jest.fn() },
+      tag: { upsert: jest.fn().mockResolvedValue({ id: 't1' }) },
+    };
+    const prisma = {
+      aiGeneration: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'gen-1',
+          status: 'PENDING',
+          creatorId: 'u1',
+          subjectId: 's1',
+          inputParams,
+          subject: { name: 'Part5_문법', examCategory: 'RC', examType: '토익' },
+        }),
+        update: jest.fn(),
+      },
+      tag: { findMany: jest.fn().mockResolvedValue([]) },
+      $transaction: jest
+        .fn()
+        .mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx)),
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        AiGenerationProcessor,
+        { provide: PrismaService, useValue: prisma },
+        { provide: GeminiLlmService, useValue: { generate } },
+      ],
+    }).compile();
+    return { processor: module.get(AiGenerationProcessor), generate, tx };
+  }
+
+  it('템플릿 기본값이 LLM 컨텍스트에 깔린다(toeic-part5 → 4지·영어·지문 없음·단일정답)', async () => {
+    const { processor, generate } = await setupProcess({
+      prompt: '어법 문항',
+      difficulty: 3,
+      questionCount: 1,
+      templateId: 'toeic-part5',
+    });
+    await processor.process(makeJob());
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        choiceCount: 4,
+        language: 'en',
+        includePassage: false,
+        answerMode: 'single',
+        templateHints: expect.arrayContaining([expect.stringContaining('빈칸')]),
+      }),
+    );
+  });
+
+  it('요청에서 명시한 개별 파라미터가 템플릿 기본값보다 우선한다', async () => {
+    const { processor, generate } = await setupProcess({
+      prompt: '어법 문항',
+      difficulty: 3,
+      questionCount: 1,
+      templateId: 'toeic-part5',
+      choiceCount: 5,
+      language: 'ko',
+    });
+    await processor.process(makeJob());
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ choiceCount: 5, language: 'ko' }),
+    );
+  });
+
+  it('다중지문 템플릿이면 passageCount가 LLM 컨텍스트에 실린다(toeic-part7-double → 2)', async () => {
+    const { processor, generate } = await setupProcess(
+      { prompt: '이중지문 세트', difficulty: 3, questionCount: 5, templateId: 'toeic-part7-double' },
+      {
+        passages: ['문서 1', '문서 2'],
+        questions: [
+          {
+            questionType: '객관식',
+            stemText: 'Q1',
+            choices: [
+              { content: 'a', isCorrect: true },
+              { content: 'b', isCorrect: false },
+            ],
+            passageIndex: 0,
+            difficulty: 3,
+          },
+          {
+            questionType: '객관식',
+            stemText: 'Q2',
+            choices: [
+              { content: 'a', isCorrect: true },
+              { content: 'b', isCorrect: false },
+            ],
+            passageIndex: 1,
+            difficulty: 3,
+          },
+        ],
+      },
+    );
+    await processor.process(makeJob());
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ includePassage: true, passageCount: 2 }),
+    );
+  });
+
+  it('다중지문 결과는 지문마다 Passage 행을 만들고 문항을 passageIndex대로 연결한다(gap 3)', async () => {
+    const { processor, tx } = await setupProcess(
+      { prompt: '이중지문 세트', difficulty: 3, questionCount: 3, templateId: 'toeic-part7-double' },
+      {
+        passages: ['첫 번째 문서 본문', '두 번째 문서 본문'],
+        questions: [
+          {
+            questionType: '객관식',
+            stemText: 'Q1(문서1 근거)',
+            choices: [
+              { content: 'a', isCorrect: true },
+              { content: 'b', isCorrect: false },
+            ],
+            passageIndex: 0,
+            difficulty: 3,
+          },
+          {
+            questionType: '객관식',
+            stemText: 'Q2(문서2 근거)',
+            choices: [
+              { content: 'a', isCorrect: true },
+              { content: 'b', isCorrect: false },
+            ],
+            passageIndex: 1,
+            difficulty: 3,
+          },
+          {
+            questionType: '객관식',
+            stemText: 'Q3(문서2 근거)',
+            choices: [
+              { content: 'a', isCorrect: true },
+              { content: 'b', isCorrect: false },
+            ],
+            passageIndex: 1,
+            difficulty: 3,
+          },
+        ],
+      },
+    );
+    await processor.process(makeJob());
+
+    // 지문 2개 → Passage 행 2개
+    expect(tx.passage.create).toHaveBeenCalledTimes(2);
+    // 문항이 자기 지문을 문다: Q1 → p1, Q2·Q3 → p2
+    const passageIdsOfQuestions = tx.question.create.mock.calls.map(
+      (c: [{ data: { passageId: string | null } }]) => c[0].data.passageId,
+    );
+    expect(passageIdsOfQuestions).toEqual(['p1', 'p2', 'p2']);
+    // search_text에는 각 문항의 "자기" 지문 본문이 실린다
+    const searchTexts = tx.question.create.mock.calls.map(
+      (c: [{ data: { searchText: string } }]) => c[0].data.searchText,
+    );
+    expect(searchTexts[0]).toContain('첫 번째 문서 본문');
+    expect(searchTexts[0]).not.toContain('두 번째 문서 본문');
+    expect(searchTexts[1]).toContain('두 번째 문서 본문');
+  });
+
+  it('레지스트리에 없는 templateId는 경고만 남기고 무템플릿으로 진행한다(FAILED 아님)', async () => {
+    const { processor, generate } = await setupProcess({
+      prompt: '문항',
+      difficulty: 3,
+      questionCount: 1,
+      templateId: '없는-템플릿',
+    });
+    const warn = jest
+      .spyOn((processor as unknown as { logger: Logger }).logger, 'warn')
+      .mockImplementation();
+    await processor.process(makeJob());
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('없는-템플릿'));
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ templateHints: [], answerMode: 'single' }),
+    );
   });
 });

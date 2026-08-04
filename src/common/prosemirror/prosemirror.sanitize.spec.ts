@@ -83,7 +83,6 @@ describe('sanitizeProseMirrorNode — 차단', () => {
           {
             type: 'text',
             text: 'x',
-            // eslint-disable-next-line no-script-url
             marks: [{ type: 'link', attrs: { href: 'javascript:alert(1)' } }],
           },
         ],

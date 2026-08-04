@@ -32,6 +32,12 @@ export class MeController {
     return this.service.notes(user.id, query);
   }
 
+  @Get('review-summary')
+  @ApiOperation({ summary: '복습 요약 — due 배지용 경량 카운트 (due: 재노출 도래, ungraded: 자기채점 대기)' })
+  reviewSummary(@CurrentUser() user: CurrentUserPayload) {
+    return this.service.reviewSummary(user.id);
+  }
+
   @Get('xp/history')
   @ApiOperation({ summary: 'XP 적립 원장 (최신순, 페이지네이션)' })
   xpHistory(@CurrentUser() user: CurrentUserPayload, @Query() query: PaginationQueryDto) {

@@ -7,7 +7,7 @@ import {
   Trash2, ChevronDown, ChevronUp, RotateCcw, Loader2, Settings2,
 } from "lucide-react";
 import { TiptapEditor } from "@/components/editor/TiptapEditor";
-import { buildRichDoc, extractPlainText } from "@/lib/prosemirror";
+import { buildRichDoc, extractPlainText, isRichEmpty } from "@/lib/prosemirror";
 import {
   createAiGeneration,
   fetchAiGeneration,
@@ -84,6 +84,11 @@ type TypeChip = (typeof TYPE_CHIPS)[number];
 
 const DIFFICULTY_OPTIONS = [1, 2, 3, 4, 5];
 const COUNT_OPTIONS = [1, 2, 3, 5];
+/**
+ * 선지 개수. null = "자동" — 백엔드가 시험별 관행(수능·내신·한능검 5지, 공무원·공기업·토익 4지)을
+ * 프롬프트로 유도하고 개수를 강제하지 않는다. 숫자를 고르면 그 개수를 정확히 강제한다.
+ */
+const CHOICE_COUNT_OPTIONS: (number | null)[] = [null, 4, 5];
 
 /**
  * 선택된 유형 칩 → 생성 API의 questionType 힌트(단일값·optional).
@@ -176,6 +181,8 @@ export function QuestionEditor() {
   const [difficulty, setDifficulty] = useState(3);
   const [count, setCount] = useState(1);
   const [includePassage, setIncludePassage] = useState(true);
+  // null = 자동(시험 관행에 맡김). OX 선택 시에는 2지선다가 되므로 이 값은 서버에서 무시된다.
+  const [choiceCount, setChoiceCount] = useState<number | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   // 생성옵션(과목/유형/난이도/문항수) 접이식 — 기본 접힘, 톱니로 펼침.
@@ -189,7 +196,8 @@ export function QuestionEditor() {
   const toggleType = (t: TypeChip) =>
     setTypeSel((prev) => {
       const next = new Set(prev);
-      next.has(t) ? next.delete(t) : next.add(t);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
       return next;
     });
 
@@ -301,6 +309,8 @@ export function QuestionEditor() {
         includePassage,
         questionType: resolveQuestionTypeHint(typeSel),
         ox: resolveOx(typeSel),
+        // 자동(null)이면 아예 보내지 않는다 — 서버가 시험별 관행으로 유도만 하고 개수를 강제하지 않는다.
+        ...(choiceCount ? { choiceCount } : {}),
       });
       pushAi("생성 중이에요… 잠시만 기다려 주세요.");
 
@@ -373,7 +383,7 @@ export function QuestionEditor() {
           questionIds.push(d.id);
           continue;
         }
-        if (!extractPlainText(d.stem).trim()) continue; // 빈 발문은 건너뜀
+        if (isRichEmpty(d.stem)) continue; // 빈 발문은 건너뜀(텍스트가 아니라 내용 기준)
         const created = await createQuestion({
           subjectId,
           questionType: d.type,
@@ -389,9 +399,7 @@ export function QuestionEditor() {
           correctAnswerText:
             d.type === "주관식" && d.answerText.trim() ? d.answerText.trim() : undefined,
           // 백엔드는 해설을 블록 노드 배열로 받는다(doc 래퍼 아님).
-          explanation: extractPlainText(d.explanation).trim()
-            ? d.explanation?.content
-            : undefined,
+          explanation: isRichEmpty(d.explanation) ? undefined : d.explanation?.content,
         } as any);
         questionIds.push(created.id);
       }
@@ -1008,6 +1016,36 @@ export function QuestionEditor() {
             </button>
           </div>
         </div>
+
+        {/* 선지 개수 — 자동이면 시험별 관행(5지/4지)에 맡긴다. OX 선택 시에는 의미 없어 숨긴다. */}
+        {!resolveOx(typeSel) && (
+          <div className="px-4 pb-2">
+            <label className="mb-1.5 block text-[11px] font-medium text-muted-foreground">
+              선지 개수
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {CHOICE_COUNT_OPTIONS.map((n) => (
+                <button
+                  key={n ?? "auto"}
+                  type="button"
+                  onClick={() => setChoiceCount(n)}
+                  disabled={isGenerating}
+                  aria-pressed={choiceCount === n}
+                  className={`px-3 py-1.5 rounded-full border text-[11px] font-medium transition-colors duration-150 motion-reduce:transition-none disabled:opacity-50 ${
+                    choiceCount === n
+                      ? "bg-primary border-transparent text-primary-foreground"
+                      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  }`}
+                >
+                  {n === null ? "자동" : `${n}지선다`}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              자동은 시험 관행을 따라요 — 수능·내신·한능검 5지, 공무원·공기업·토익 4지.
+            </p>
+          </div>
+        )}
         </>
         )}
 

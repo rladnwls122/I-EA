@@ -12,6 +12,8 @@ import {
   Min,
 } from 'class-validator';
 import { QUESTION_KINDS, QuestionKind } from '@/common/constants/question';
+import { OUTPUT_LANGUAGES, OutputLanguage } from '../exam-format';
+import { FORMAT_TEMPLATE_IDS } from '../format-templates';
 
 export class CreateGenerationDto {
   @ApiProperty({ description: '생성 문제가 분류될 세부과목 ID (questions.subject_id는 NOT NULL)' })
@@ -54,4 +56,34 @@ export class CreateGenerationDto {
   @IsOptional()
   @IsIn(QUESTION_KINDS)
   questionType?: QuestionKind;
+
+  @ApiPropertyOptional({
+    description:
+      '객관식 선지 개수(2~8). 생략하면 시험별 관행(수능·내신·한능검 5지 / 공무원·공기업·토익 4지)을 프롬프트로 유도만 하고 개수를 강제하지 않는다. ox가 true면 무시된다(OX는 2개 고정).',
+    minimum: 2,
+    maximum: 8,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  @Max(8)
+  choiceCount?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "출력 언어. 생략하면 시험·대분류로 추정한다(토익 → en, 영어 대분류 → en-passage-ko-stem, 그 외 → ko). 'en-passage-ko-stem'은 지문·선지 영어 + 발문·해설 한국어.",
+    enum: OUTPUT_LANGUAGES,
+  })
+  @IsOptional()
+  @IsIn(OUTPUT_LANGUAGES)
+  language?: OutputLanguage;
+
+  @ApiPropertyOptional({
+    description:
+      '출제 형식 템플릿 ID (GET /ai-generations/templates 참조). 템플릿이 선지 개수·언어·지문 여부·유형의 기본값을 깔고, 개별 파라미터를 명시하면 항상 그쪽이 우선한다. 과목의 시험(examType)과 맞지 않는 템플릿은 400.',
+    enum: FORMAT_TEMPLATE_IDS,
+  })
+  @IsOptional()
+  @IsIn(FORMAT_TEMPLATE_IDS, { message: '알 수 없는 출제 형식 템플릿입니다.' })
+  templateId?: string;
 }

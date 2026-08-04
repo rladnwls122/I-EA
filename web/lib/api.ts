@@ -22,12 +22,12 @@ import type {
   AuthResponse,
   MeProfile,
   MyNotesResponse,
+  ReviewSummaryResponse,
   MyExamSession,
   PaginatedResponse,
   SessionDetail,
   SubmitAnswerInput,
   SubmitAnswerResult,
-  RevealHintResult,
   SubmitSessionResult,
   SelfGradeResult,
   QuestionReview,
@@ -437,6 +437,97 @@ export function fetchAiGeneration(id: string) {
   return apiFetch<AiGeneration>(`/ai-generations/${id}`);
 }
 
+// ─── 미디어(이미지) 업로드 ──────────────────────────────────────────
+//
+// 백엔드 파이프라인은 오래전부터 완비돼 있었는데 프런트 호출부가 한 곳도 없었다(#41).
+// 흐름은 3단계이고, **2단계는 우리 API가 아니라 S3로 직접 보낸다**:
+//   1) POST /media-assets/presign  → { url, fields, publicUrl }
+//   2) url 로 multipart/form-data POST (fields 전부 + 마지막에 file)  ← S3
+//   3) (선택) POST /media-assets   → media_assets 행 등록
+//
+// PUT이 아니라 POST인 이유는 서버가 policy로 Content-Type과 크기를 강제하기 위해서다
+// (s3.service.ts 주석 참고). fields 순서도 규약이라 file을 마지막에 append 해야 한다.
+
+/** presign이 허용하는 이미지 MIME — 백엔드 media.constants와 같은 목록이어야 한다. */
+export const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+export type AllowedImageType = (typeof ALLOWED_IMAGE_TYPES)[number];
+
+/** 업로드 최대 크기 5MB — 백엔드 MAX_UPLOAD_BYTES와 같아야 한다. */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+export interface PresignResult {
+  url: string;
+  fields: Record<string, string>;
+  key: string;
+  publicUrl: string;
+  expiresInSec: number;
+}
+
+/** 1단계 — presigned POST 발급. contentLength는 policy로 정확히 강제되므로 실제 크기여야 한다. */
+export function presignMedia(contentType: AllowedImageType, contentLength: number) {
+  return apiFetch<PresignResult>('/media-assets/presign', {
+    method: 'POST',
+    body: JSON.stringify({ contentType, contentLength }),
+  });
+}
+
+/**
+ * 3단계(선택) — media_assets 행 등록.
+ * `passageId`와 `questionId` 중 **정확히 하나**가 필요하고 그 대상이 이미 존재해야 한다.
+ * 그래서 아직 저장 안 된 새 카드에서는 부를 수 없다 — 업로드/삽입 자체는 이것 없이 동작한다.
+ */
+export function registerMediaAsset(data: {
+  storageUrl: string;
+  assetType?: 'IMAGE';
+  questionId?: string;
+  passageId?: string;
+  widthPx?: number;
+  heightPx?: number;
+}) {
+  return apiFetch<{ id: string; storageUrl: string }>('/media-assets', {
+    method: 'POST',
+    body: JSON.stringify({ assetType: 'IMAGE', ...data }),
+  });
+}
+
+/** 업로드 전에 브라우저에서 거르는 검증 — 서버 400을 기다리지 않고 즉시 사유를 준다. */
+export function validateImageFile(file: File): string | null {
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type as AllowedImageType)) {
+    return 'PNG · JPEG · WebP 이미지만 올릴 수 있어요.';
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    return `이미지는 ${Math.floor(MAX_IMAGE_BYTES / 1024 / 1024)}MB 이하만 올릴 수 있어요.`;
+  }
+  if (file.size < 1) return '빈 파일은 올릴 수 없어요.';
+  return null;
+}
+
+/**
+ * 1~2단계를 묶은 업로드. 성공하면 공개 URL을 돌려준다(에디터 image 노드의 src).
+ * 실패는 사용자에게 그대로 보여줄 수 있는 한국어 메시지로 throw 한다.
+ */
+export async function uploadImage(file: File): Promise<{ publicUrl: string; key: string }> {
+  const invalid = validateImageFile(file);
+  if (invalid) throw new Error(invalid);
+
+  const presigned = await presignMedia(file.type as AllowedImageType, file.size);
+
+  const form = new FormData();
+  // policy 필드를 전부 싣고 file은 **마지막에** — S3 POST 규약.
+  Object.entries(presigned.fields).forEach(([k, v]) => form.append(k, v));
+  form.append('file', file);
+
+  // 우리 API가 아니라 S3로 직접 보낸다 — apiFetch(Authorization·JSON 헤더)를 쓰면 안 된다.
+  // Content-Type은 브라우저가 boundary와 함께 붙이도록 지정하지 않는다.
+  const res = await fetch(presigned.url, { method: 'POST', body: form });
+  if (!res.ok) {
+    // S3는 XML로 에러를 준다. 원문을 그대로 노출하지 않고 상태 코드만 남긴다.
+    throw new Error(`이미지 업로드에 실패했어요. (S3 ${res.status})`);
+  }
+
+  return { publicUrl: presigned.publicUrl, key: presigned.key };
+}
+
 // ─── 댓글 ───────────────────────────────────────────────────────────
 
 /** 문제 댓글 목록 조회 */
@@ -531,6 +622,11 @@ export function fetchMyNotes(params?: {
   );
 }
 
+/** 복습 요약 — due 배지용 경량 카운트 (전량 로드 없음) */
+export function fetchReviewSummary() {
+  return apiFetch<ReviewSummaryResponse>('/me/review-summary');
+}
+
 /** 태그 목록 (category로 선택 필터) */
 export function fetchTags(category?: string) {
   const qs = category ? `?category=${encodeURIComponent(category)}` : '';
@@ -571,13 +667,6 @@ export function submitSessionAnswer(
   );
 }
 
-/** 힌트 열람 (힌트 없는 문항이면 404) */
-export function revealSessionHint(sessionQuestionId: string) {
-  return apiFetch<RevealHintResult>(
-    `/exam-sessions/questions/${sessionQuestionId}/hint`,
-    { method: 'POST' },
-  );
-}
 
 /** 세션 최종 제출 — 채점 집계 + XP 적립 */
 export function submitSession(id: string) {

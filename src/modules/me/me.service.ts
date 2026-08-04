@@ -12,7 +12,14 @@ import {
   titleForLevel,
   xpToNextTier,
 } from '@/common/constants/xp';
-import { getShopItem, ShopItemKey } from '@/common/constants/shop';
+import {
+  AI_CREDIT_ITEM_KEY,
+  aiFreeRemainingToday,
+  getShopItem,
+  ShopItemKey,
+} from '@/common/constants/shop';
+import { REVIEW_STATUS } from '@/modules/exam-sessions/review-state.util';
+import { rankWeaknesses } from './weakness.util';
 
 export interface WrongStat {
   key: string;
@@ -26,6 +33,19 @@ export interface ReasonStat {
   label: string;
   count: number;
 }
+
+/**
+ * bySubjectDetail의 미분류 버킷 키 — subject_detail_id가 null인 문항(기존 문항 전부)의 집계처.
+ * 스키마 방침(subject_details 주석)대로 null은 숨기지 않고 "미분류"로 노출한다.
+ */
+export const UNCLASSIFIED_DETAIL_KEY = 'UNCLASSIFIED';
+export const UNCLASSIFIED_DETAIL_LABEL = '미분류';
+
+/**
+ * 오답노트 채점 이력 조회 상한(#39 B-3) — 응답 크기 폭주 방지 보험.
+ * 프론트 복습 큐 상한(100) + 통계 표본으로 충분한 값. 상한 도달 시 truncated=true로 알린다.
+ */
+export const NOTES_GRADED_LIMIT = 500;
 
 @Injectable()
 export class MeService {
@@ -75,6 +95,8 @@ export class MeService {
         id: s.id,
         // 문제집 응시(Pick & Mix)는 교차 과목이라 소분류가 없다. 대신 문제집 제목을 노출한다.
         subjectName: s.subject?.name ?? null,
+        // 복습(오답노트 출처) 세션 여부 — 목록에서 복습 회차를 구분해 표기한다.
+        isReview: s.isReview,
         workbookId: s.workbook?.id ?? null,
         workbookTitle: s.workbook?.title ?? null,
         status: s.status,
@@ -133,7 +155,7 @@ export class MeService {
   }
 
   /**
-   * 통합 오답노트 — 통계(bySubject/byType/byReason) + 오답 문항 + 각 문항의 내 주석을 한 번에.
+   * 통합 오답노트 — 통계(bySubject/bySubjectDetail/byType/byReason) + 오답 문항 + 각 문항의 내 주석을 한 번에.
    * 정오가 확정된(is_correct NOT NULL) 답안만 통계 대상(서술형은 자기채점 후 반영).
    * filter(시험/대분류/세부과목)가 오면 그 범위의 문항만 집계한다.
    */
@@ -157,14 +179,21 @@ export class MeService {
           }
         : undefined;
 
-    const graded = await this.prisma.examSessionAnswer.findMany({
+    // 1차 응시(isReview: false)만 집계한다(#39 B-1) — 복습은 정의상 틀린 문제만 다시 푸는
+    // 행위라, 섞이면 과목별 정답률이 실력과 무관하게 출렁인다. 오답 판정도 1차 응시 기준.
+    // (복습에서 또 틀린 것은 복습 상태 테이블이 별도로 추적한다.)
+    // 최신 제출 순 + 상한(#39 B-3) — 채점 시각 컬럼이 없어 세션 제출 시각을 정렬 기준으로 쓴다.
+    // 상한+1건을 조회해 초과분 존재 여부로 truncated를 판정한다(정확히 상한 건수일 때 오판정 방지).
+    const gradedRows = await this.prisma.examSessionAnswer.findMany({
       where: {
         isCorrect: { not: null },
         examSessionQuestion: {
-          examSession: { userId, status: 'SUBMITTED' },
+          examSession: { userId, status: 'SUBMITTED', isReview: false },
           ...(questionWhere ? { question: questionWhere } : {}),
         },
       },
+      orderBy: { examSessionQuestion: { examSession: { submittedAt: 'desc' } } },
+      take: NOTES_GRADED_LIMIT + 1,
       include: {
         examSessionQuestion: {
           select: {
@@ -177,6 +206,9 @@ export class MeService {
                 stem: true,
                 difficulty: true,
                 subject: { select: { name: true } },
+                // 하위요소(4단계)별 오답 통계용 — null(미분류)은 미분류 버킷으로 집계한다.
+                subjectDetailId: true,
+                detail: { select: { name: true } },
                 // 개념별(#키워드) 오답 통계용 — "키워드" 카테고리 태그만.
                 questionTags: {
                   where: { tag: { category: KEYWORD_TAG_CATEGORY } },
@@ -189,11 +221,19 @@ export class MeService {
       },
     });
 
+    // 상한 초과 여부 판정 후, 여분 1건은 집계에 섞이지 않게 잘라낸다.
+    const truncated = gradedRows.length > NOTES_GRADED_LIMIT;
+    const graded = truncated ? gradedRows.slice(0, NOTES_GRADED_LIMIT) : gradedRows;
+
     const subjectMap = new Map<string, WrongStat>();
     const typeMap = new Map<string, WrongStat>();
+    // 하위요소(4단계)별 통계 — 약점 진단(#37)의 분류축. null은 미분류 버킷으로 흘린다.
+    const detailMap = new Map<string, WrongStat>();
     // 개념별(#키워드) 오답 통계 — 태그 id로 집계하고 라벨은 태그명을 쓴다.
     const keywordMap = new Map<string, WrongStat>();
     const sessionIds = new Set<string>();
+    /** 문항 → 하위요소 축 key. 아래에서 주석의 reasonCode를 축별로 접는 데 쓴다(#37). */
+    const detailKeyByQuestion = new Map<string, string>();
     const wrongList: {
       questionId: string;
       subjectId: string;
@@ -223,6 +263,16 @@ export class MeService {
       sessionIds.add(sq.examSessionId);
       bump(subjectMap, q.subjectId, q.subject.name, isWrong);
       bump(typeMap, q.questionType, q.questionType, isWrong);
+      // 하위요소 미지정(기존 문항 전부 null)은 미분류 버킷에 쌓아 표본이 새지 않게 한다.
+      const detailKey = q.subjectDetailId && q.detail ? q.subjectDetailId : UNCLASSIFIED_DETAIL_KEY;
+      if (q.subjectDetailId && q.detail) {
+        bump(detailMap, q.subjectDetailId, q.detail.name, isWrong);
+      } else {
+        bump(detailMap, UNCLASSIFIED_DETAIL_KEY, UNCLASSIFIED_DETAIL_LABEL, isWrong);
+      }
+      // 약점 진단(#37)에서 축별 오답 원인을 세려면 문항이 어느 축인지 알아야 한다.
+      // byReason은 전체 합산이라 "이 하위요소에서 실수가 많다"를 말할 수 없다.
+      detailKeyByQuestion.set(sq.questionId, detailKey);
       for (const qt of q.questionTags) {
         bump(keywordMap, qt.tag.id, qt.tag.name, isWrong);
       }
@@ -239,6 +289,19 @@ export class MeService {
       }
     }
 
+    // 미채점 서술형(#39 B-2) — 제출 완료된 1차 응시 세션에서 자기채점이 아직 안 된(is_correct
+    // IS NULL) 답안 수. 리마인드용 카운트만 노출하고 복습 큐에는 넣지 않는다(채점이 상태 전이의
+    // 입력이므로, 채점 전 문항을 복습시키는 것은 복습이 아니라 채점 독촉이다).
+    const ungradedCount = await this.prisma.examSessionAnswer.count({
+      where: {
+        isCorrect: null,
+        examSessionQuestion: {
+          examSession: { userId, status: 'SUBMITTED', isReview: false },
+          ...(questionWhere ? { question: questionWhere } : {}),
+        },
+      },
+    });
+
     // 내 주석 — byReason 통계 + 오답 문항별 주석 조인.
     // 범위 필터가 있으면 그 범위에서 채점된 문항의 주석만 센다(원인 통계도 범위를 따라간다).
     const scopedQuestionIds = questionWhere
@@ -253,11 +316,22 @@ export class MeService {
     });
     const annByQuestion = new Map<string, typeof annotations>();
     const reasonMap = new Map<string, number>();
+    /** 축(하위요소) key → { reasonCode: count } — 약점 진단의 처방 분류에 쓴다(#37). */
+    const reasonsByDetail = new Map<string, Map<string, number>>();
     for (const ann of annotations) {
       const list = annByQuestion.get(ann.questionId) ?? [];
       list.push(ann);
       annByQuestion.set(ann.questionId, list);
-      if (ann.reasonCode) reasonMap.set(ann.reasonCode, (reasonMap.get(ann.reasonCode) ?? 0) + 1);
+      if (ann.reasonCode) {
+        reasonMap.set(ann.reasonCode, (reasonMap.get(ann.reasonCode) ?? 0) + 1);
+        // 같은 원인을 축(하위요소)별로도 접어 둔다 — 처방(개념 vs 훈련) 판정 근거.
+        const axisKey = detailKeyByQuestion.get(ann.questionId);
+        if (axisKey) {
+          const perAxis = reasonsByDetail.get(axisKey) ?? new Map<string, number>();
+          perAxis.set(ann.reasonCode, (perAxis.get(ann.reasonCode) ?? 0) + 1);
+          reasonsByDetail.set(axisKey, perAxis);
+        }
+      }
     }
     const byReason: ReasonStat[] = [...reasonMap.entries()].map(([code, count]) => ({
       code,
@@ -265,9 +339,44 @@ export class MeService {
       count,
     }));
 
+    // 복습 상태(O/세모/X/마스터) — 유저 전체를 한 번의 findMany로 배치 조회(N+1 금지).
+    // 오답 문항별 reviewState 조인과 summary.review(due/byStatus) 집계에 함께 쓴다.
+    // due/byStatus는 범위 필터와 무관하게 유저 전체 기준이다.
+    const reviewRows = await this.prisma.userQuestionReviewState.findMany({
+      where: { userId },
+      select: { questionId: true, status: true, consecutiveCorrect: true, nextReviewAt: true },
+    });
+    const reviewByQuestion = new Map(
+      reviewRows.map((r) => [
+        r.questionId,
+        { status: r.status, consecutiveCorrect: r.consecutiveCorrect, nextReviewAt: r.nextReviewAt },
+      ]),
+    );
+    const now = new Date();
+    const byStatus: Record<string, number> = {
+      [REVIEW_STATUS.O]: 0,
+      [REVIEW_STATUS.TRIANGLE]: 0,
+      [REVIEW_STATUS.X]: 0,
+      [REVIEW_STATUS.MASTERED]: 0,
+    };
+    // due = 재노출 시각이 도래한(마스터 제외) 복습 대기 문항 수.
+    let due = 0;
+    for (const r of reviewRows) {
+      if (r.status in byStatus) byStatus[r.status] += 1;
+      if (r.status !== REVIEW_STATUS.MASTERED && r.nextReviewAt !== null && r.nextReviewAt <= now) {
+        due += 1;
+      }
+    }
+
     const wrongQuestions = wrongList.map((w) => {
       const anns = annByQuestion.get(w.questionId) ?? [];
-      return { ...w, annotationCount: anns.length, annotations: anns };
+      return {
+        ...w,
+        annotationCount: anns.length,
+        annotations: anns,
+        // 이 문항의 내 복습 상태(기록 없으면 null) — 복습 진입 버튼/뱃지용.
+        reviewState: reviewByQuestion.get(w.questionId) ?? null,
+      };
     });
 
     return {
@@ -277,15 +386,56 @@ export class MeService {
         correct,
         scorePercent: solved > 0 ? Math.round((correct / solved) * 1000) / 10 : 0,
         bySubject: [...subjectMap.values()],
+        // 하위요소별(4단계) — 약점 진단(#37)용. total(표본)·wrong에서 정답 수(total-wrong)가 나온다.
+        bySubjectDetail: [...detailMap.values()],
         byType: [...typeMap.values()],
         byReason,
         // 개념별 오답 — 틀린 횟수 많은 순. 오답이 하나도 없는 키워드는 노출하지 않는다.
         byKeyword: [...keywordMap.values()]
           .filter((k) => k.wrong > 0)
           .sort((a, b) => b.wrong - a.wrong || b.wrongRatio - a.wrongRatio),
+        // 복습 큐 현황(유저 전체 기준, 필터 무관) — due = 재노출 도래 수, byStatus = 상태별 분포.
+        review: { due, byStatus },
+        // 자기채점 대기 서술형 답안 수(#39 B-2) — 범위 필터를 따라간다. 0이면 프론트에서 숨김.
+        ungradedCount,
+        /**
+         * 약점 진단(#37) — 하위요소 축 기준 상위 3개 + 표본 부족 축.
+         * 여기서 계산해 내려주는 이유: 집계가 이미 이 요청 안에 다 있어 추가 쿼리가 없고,
+         * 표본 하한·점수식 같은 진단 규칙을 화면마다 다르게 구현하지 않게 하려는 것.
+         */
+        weakness: rankWeaknesses([...detailMap.values()], reasonsByDetail),
       },
       wrongQuestions,
+      // 채점 이력이 조회 상한(NOTES_GRADED_LIMIT)에 걸려 잘렸는지(#39 B-3).
+      truncated,
     };
+  }
+
+  /**
+   * 복습 요약(#39 C) — 전역 내비 due 배지용 경량 조회. 전량 로드 없이 count 두 번만.
+   *   due: 재노출 시각이 도래한(마스터 제외) 복습 대기 문항 수 — notes()의 due 정의와 동일.
+   *   ungraded: 제출 완료된 1차 응시 세션의 자기채점 대기 서술형 답안 수 — notes()의 ungradedCount와 동일.
+   */
+  async reviewSummary(userId: string) {
+    const now = new Date();
+    const [due, ungraded] = await Promise.all([
+      // nextReviewAt <= now 조건은 null을 매칭하지 않으므로 O/MASTERED(null)는 자연 제외되지만,
+      // notes() 집계와 정의를 정확히 맞추기 위해 MASTERED 제외 조건을 명시한다.
+      this.prisma.userQuestionReviewState.count({
+        where: {
+          userId,
+          status: { not: REVIEW_STATUS.MASTERED },
+          nextReviewAt: { lte: now },
+        },
+      }),
+      this.prisma.examSessionAnswer.count({
+        where: {
+          isCorrect: null,
+          examSessionQuestion: { examSession: { userId, status: 'SUBMITTED', isReview: false } },
+        },
+      }),
+    ]);
+    return { due, ungraded };
   }
 
   /** 지갑 — 코인·XP부스터·인벤토리(보호권/힌트)·코스메틱 보유·칭호·이름색·미개봉 상자 수. */
@@ -293,7 +443,14 @@ export class MeService {
     const [user, inv, unopenedBoxCount] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: userId },
-        select: { coins: true, xpBoostUntil: true, equippedTitle: true, nameColor: true },
+        select: {
+          coins: true,
+          xpBoostUntil: true,
+          equippedTitle: true,
+          nameColor: true,
+          aiFreeDate: true,
+          aiFreeUsed: true,
+        },
       }),
       this.prisma.userInventory.findMany({
         where: { userId },
@@ -306,7 +463,12 @@ export class MeService {
     return {
       coins: user.coins,
       xpBoostUntil: user.xpBoostUntil,
-      inventory: { STREAK_SHIELD: qty('STREAK_SHIELD'), HINT_TOKEN: qty('HINT_TOKEN') },
+      // HINT_TOKEN은 폐기됐다(2026-08-04 응시 중 AI 힌트 제거 → 2026-08-04 보유분 리셋).
+      // 후신은 AI_CREDIT이고 복습 튜터 대화 한 턴에 1개 쓴다.
+      inventory: { STREAK_SHIELD: qty('STREAK_SHIELD'), AI_CREDIT: qty(AI_CREDIT_ITEM_KEY) },
+      // 오늘 남은 무료 턴. 크레딧보다 먼저 소모되므로 UI가 이걸 앞에 보여줘야
+      // "왜 산 게 안 줄지?"라는 오해가 안 생긴다.
+      aiFreeRemaining: aiFreeRemainingToday(user.aiFreeDate, user.aiFreeUsed, new Date()),
       cosmetics: {
         owned: inv.filter((i) => i.itemKey.startsWith('COSMETIC_') && i.quantity > 0).map((i) => i.itemKey),
         equippedTitle: user.equippedTitle,

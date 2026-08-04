@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -9,10 +8,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { QuestionKind } from '@/common/constants/question';
 import { rollBoxTier, type BoxTier, SOLVE_MILESTONE_THRESHOLD, SOLVE_MILESTONE_COINS } from '@/common/constants/shop';
-import { resolveHintQuota } from './hint-quota';
-import { extractPlainText, PMNode } from '@/common/prosemirror/prosemirror.util';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
-import { LlmHintContext } from '@/modules/ai-generation/llm/llm.types';
 import {
   XP_RULES,
   levelForXp,
@@ -30,6 +26,7 @@ import {
 import { CreateSessionDto } from './dto/create-session.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
 import { grade, isSelfGradable, maskSnapshot, QuestionSnapshot } from './grading.util';
+import { transitionReviewState } from './review-state.util';
 
 // Json 컬럼 쓰기용 국소 캐스팅(생성 클라이언트가 InputJsonValue를 표면화하지 않음).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -80,6 +77,19 @@ export class ExamSessionsService {
     } else {
       if (!dto.questionCount) {
         throw new BadRequestException('questionCount 또는 questionIds 중 하나가 필요합니다.');
+      }
+      // 하위요소 필터 — relationMode="prisma"라 DB FK가 없으므로 소속 과목을 앱단에서 검증한다
+      // (schema의 subject_details 주석 참조). 요청 subjectId 소속이 아니면 조합 자체가 모순이라
+      // "조건에 맞는 문제가 없습니다"로 흘리지 않고 명시적으로 거부한다.
+      if (dto.filter?.subjectDetailId) {
+        const detail = await this.prisma.subjectDetail.findUnique({
+          where: { id: dto.filter.subjectDetailId },
+          select: { subjectId: true },
+        });
+        if (!detail) throw new NotFoundException('하위요소를 찾을 수 없습니다.');
+        if (detail.subjectId !== dto.subjectId) {
+          throw new BadRequestException('하위요소가 요청한 소분류(subjectId)에 속하지 않습니다.');
+        }
       }
       // 후보 ID만 가볍게 조회한 뒤 앱에서 셔플·표본추출(간단·MySQL 무관).
       const candidates = await this.prisma.question.findMany({
@@ -183,11 +193,33 @@ export class ExamSessionsService {
 
     const inProgress = session.status === 'IN_PROGRESS';
 
+    // 제출 후 결과 화면용 — 문항별 복습 상태(O/세모/X/마스터)를 한 번의 조회로 배치 로드(N+1 금지).
+    // 진행 중에는 채점 전이라 의미가 없으므로 조회하지 않는다.
+    const reviewStateByQuestion = new Map<
+      string,
+      { status: string; consecutiveCorrect: number; nextReviewAt: Date | null }
+    >();
+    if (!inProgress && session.sessionQuestions.length > 0) {
+      const states = await this.prisma.userQuestionReviewState.findMany({
+        where: { userId, questionId: { in: session.sessionQuestions.map((sq) => sq.questionId) } },
+        select: { questionId: true, status: true, consecutiveCorrect: true, nextReviewAt: true },
+      });
+      for (const st of states) {
+        reviewStateByQuestion.set(st.questionId, {
+          status: st.status,
+          consecutiveCorrect: st.consecutiveCorrect,
+          nextReviewAt: st.nextReviewAt,
+        });
+      }
+    }
+
     return {
       id: session.id,
       subject: session.subject,
       // 결과 화면 추천에서 방금 푼 문제집 자체를 제외하는 데 쓴다(문제집 응시가 아니면 null).
       workbookId: session.workbookId,
+      // 복습(오답노트 출처) 세션 여부 — 결과 화면에서 통계 미반영(#19) 안내 등에 쓴다.
+      isReview: session.isReview,
       status: session.status,
       startedAt: session.startedAt,
       submittedAt: session.submittedAt,
@@ -198,10 +230,10 @@ export class ExamSessionsService {
           sessionQuestionId: sq.id,
           questionId: sq.questionId,
           displayOrder: sq.displayOrder,
-          isHintUsed: sq.isHintUsed,
-          hintUsedAt: sq.hintUsedAt,
           // 진행 중에는 정답 은닉, 채점 완료 후에는 원본 스냅샷 공개.
           snapshot: inProgress ? maskSnapshot(snapshot) : snapshot,
+          // 제출 후에만 문항별 복습 상태 노출(기록 없으면 null).
+          ...(inProgress ? {} : { reviewState: reviewStateByQuestion.get(sq.questionId) ?? null }),
           answer: sq.answer
             ? {
                 selectedChoiceIds: sq.answer.selectedChoiceIds,
@@ -260,134 +292,6 @@ export class ExamSessionsService {
 
     // 진행 중에는 정오 결과를 숨기고, 저장 여부만 반환한다.
     return { sessionQuestionId, saved: true };
-  }
-
-  /**
-   * 문항 힌트 열람. 최초 열람 시각을 exam_session_questions에 기록하고(is_hint_used),
-   * 라이브 문제의 hint_content를 반환한다. 채점 근거가 아니므로 스냅샷이 아닌 원본에서 가져온다.
-   */
-  async revealHint(sessionQuestionId: string, userId: string) {
-    const sq = await this.prisma.examSessionQuestion.findUnique({
-      where: { id: sessionQuestionId },
-      select: {
-        id: true,
-        isHintUsed: true,
-        hintUsedAt: true,
-        question: {
-          select: {
-            hintContent: true,
-            questionType: true,
-            stem: true,
-            choices: true,
-            correctAnswerText: true,
-            explanation: true,
-            difficulty: true,
-            subject: { select: { name: true, examCategory: true, examType: true } },
-          },
-        },
-        examSession: { select: { userId: true, status: true } },
-      },
-    });
-    if (!sq) throw new NotFoundException('세션 문항을 찾을 수 없습니다.');
-    if (sq.examSession.userId !== userId) throw new ForbiddenException('본인 세션만 응시할 수 있습니다.');
-    if (sq.examSession.status !== 'IN_PROGRESS') {
-      throw new BadRequestException('이미 제출된 세션입니다.');
-    }
-
-    // 최초 열람 시각만 남긴다(이미 열람했으면 기존 값 유지).
-    const hintUsedAt = sq.hintUsedAt ?? new Date();
-
-    // 출제자 작성 힌트가 있으면 그대로(빠른 경로), 없으면 AI로 즉석 생성(휘발 — 저장하지 않는다).
-    const resolveHintText = async (): Promise<string> =>
-      sq.question.hintContent ?? (await this.geminiLlm.generateHint(this.buildHintContext(sq.question))).hint;
-
-    let hint: string;
-    if (!sq.isHintUsed) {
-      // 하루 무료 3회를 넘기면 힌트 토큰 1개를 소모한다. 토큰도 없으면 열람을 막는다.
-      // AI 힌트는 LLM 호출 비용이 들기 때문에, 쿼터를 넘긴 요청은 힌트를 생성하기 전에 먼저 차단한다.
-      const today = new Date();
-      const [user, tokenInv] = await Promise.all([
-        this.prisma.user.findUnique({
-          where: { id: userId },
-          select: { hintFreeDate: true, hintFreeUsed: true },
-        }),
-        this.prisma.userInventory.findUnique({
-          where: { userId_itemKey: { userId, itemKey: 'HINT_TOKEN' } },
-          select: { quantity: true },
-        }),
-      ]);
-      const quota = resolveHintQuota(
-        user?.hintFreeDate ?? null,
-        user?.hintFreeUsed ?? 0,
-        tokenInv?.quantity ?? 0,
-        today,
-      );
-      if (!quota.allow) {
-        throw new ConflictException('오늘 무료 힌트를 다 썼어요. 힌트 토큰이 필요합니다.');
-      }
-
-      // 쿼터를 통과한 뒤에야 힌트 본문을 확정한다.
-      hint = await resolveHintText();
-
-      await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        // 토큰 소모는 동시 열람 시 음수로 빠지면 안 되므로, 수량이 남아있을 때만
-        // 원자적으로 차감한다(loot-boxes open()의 openedAt 가드와 같은 패턴).
-        // count===0이면 이미 다른 요청이 토큰을 다 써버린 것 — 열람을 거부한다.
-        if (quota.useToken) {
-          const debit = await tx.userInventory.updateMany({
-            where: { userId, itemKey: 'HINT_TOKEN', quantity: { gt: 0 } },
-            data: { quantity: { decrement: 1 } },
-          });
-          if (debit.count === 0) {
-            throw new ConflictException('힌트 토큰이 없습니다.');
-          }
-        }
-        await tx.examSessionQuestion.update({
-          where: { id: sessionQuestionId },
-          data: { isHintUsed: true, hintUsedAt },
-        });
-        await tx.user.update({
-          where: { id: userId },
-          data: { hintFreeDate: today, hintFreeUsed: quota.newFreeUsed },
-        });
-      });
-    } else {
-      // 이미 열람한 문항: 쿼터 소모는 최초 1회뿐이므로 재차 게이트를 걸지 않고 힌트 본문만 다시 확인해 준다.
-      hint = await resolveHintText();
-    }
-
-    return { sessionQuestionId, hint, isHintUsed: true, hintUsedAt };
-  }
-
-  /**
-   * 라이브 question(스냅샷 아님 — 힌트는 채점 근거가 아니다)에서 힌트 생성 컨텍스트를 만든다.
-   * ProseMirror JSON(stem/choices[].content)은 extractPlainText로 평문화한다.
-   */
-  private buildHintContext(q: {
-    questionType: string;
-    stem: unknown;
-    choices: unknown;
-    correctAnswerText: string | null;
-    explanation: unknown;
-    difficulty: number;
-    subject: { name: string; examCategory: string; examType: string };
-  }): LlmHintContext {
-    const rawChoices = Array.isArray(q.choices) ? (q.choices as Array<Record<string, unknown>>) : [];
-    const choices = rawChoices.map((c) => ({
-      content: extractPlainText(c.content as PMNode | PMNode[] | null | undefined),
-      isCorrect: c.isCorrect === true,
-    }));
-    return {
-      questionType: q.questionType as QuestionKind,
-      stemText: extractPlainText(q.stem as PMNode | PMNode[] | null | undefined),
-      choices: choices.length ? choices : undefined,
-      correctAnswerText: q.correctAnswerText ?? undefined,
-      explanationText: extractPlainText(q.explanation as PMNode | PMNode[] | null | undefined) || undefined,
-      difficulty: q.difficulty,
-      subjectName: q.subject.name,
-      examCategory: q.subject.examCategory,
-      examType: q.subject.examType,
-    };
   }
 
   /**
@@ -473,39 +377,47 @@ export class ExamSessionsService {
         });
       }
 
-      // 문항별 정답률 캐시 갱신(같은 문항이 여러 번 나오는 경우는 없다고 가정).
-      // 증가 후 값으로 누적 10솔브 저자 보너스를 함께 판정한다.
-      for (const g of gradedQuestionIds) {
-        const updatedQuestion = await tx.question.update({
-          where: { id: g.id },
-          data: {
-            totalSolvedCount: { increment: 1 },
-            ...(g.correct ? { correctSolvedCount: { increment: 1 } } : {}),
-          },
-          select: { id: true, creatorId: true, totalSolvedCount: true, solveBonusAwarded: true },
-        });
-        await this.maybeAwardSolveMilestone(tx, updatedQuestion, now);
+      // 문항 전역 통계 캐시 갱신 — 복습(오답노트 출처) 세션의 2차 채점은 전부 건너뛴다(#19).
+      // 이미 1차 응시에서 센 풀이를 다시 세면 정답률·평균 풀이시간·선지 분포가 전부 오염된다.
+      if (!session.isReview) {
+        // 문항별 정답률 캐시 갱신(같은 문항이 여러 번 나오는 경우는 없다고 가정).
+        // 증가 후 값으로 누적 10솔브 저자 보너스를 함께 판정한다.
+        for (const g of gradedQuestionIds) {
+          const updatedQuestion = await tx.question.update({
+            where: { id: g.id },
+            data: {
+              totalSolvedCount: { increment: 1 },
+              ...(g.correct ? { correctSolvedCount: { increment: 1 } } : {}),
+            },
+            select: { id: true, creatorId: true, totalSolvedCount: true, solveBonusAwarded: true },
+          });
+          await this.maybeAwardSolveMilestone(tx, updatedQuestion, now);
+        }
+
+        // 평균 풀이시간 캐시(avg = totalTimeSpentSec / timedSolvedCount).
+        for (const t of timed) {
+          await tx.question.update({
+            where: { id: t.id },
+            data: {
+              totalTimeSpentSec: { increment: t.sec },
+              timedSolvedCount: { increment: 1 },
+            },
+          });
+        }
+
+        // 선지별 선택 분포. 해당 (문항,선지) 행이 없으면 만들고 있으면 +1.
+        for (const p of choicePicks) {
+          await tx.questionChoiceStat.upsert({
+            where: { questionId_choiceId: { questionId: p.questionId, choiceId: p.choiceId } },
+            create: { questionId: p.questionId, choiceId: p.choiceId, count: 1 },
+            update: { count: { increment: 1 } },
+          });
+        }
       }
 
-      // 평균 풀이시간 캐시(avg = totalTimeSpentSec / timedSolvedCount).
-      for (const t of timed) {
-        await tx.question.update({
-          where: { id: t.id },
-          data: {
-            totalTimeSpentSec: { increment: t.sec },
-            timedSolvedCount: { increment: 1 },
-          },
-        });
-      }
-
-      // 선지별 선택 분포. 해당 (문항,선지) 행이 없으면 만들고 있으면 +1.
-      for (const p of choicePicks) {
-        await tx.questionChoiceStat.upsert({
-          where: { questionId_choiceId: { questionId: p.questionId, choiceId: p.choiceId } },
-          create: { questionId: p.questionId, choiceId: p.choiceId, count: 1 },
-          update: { count: { increment: 1 } },
-        });
-      }
+      // 복습 상태(O/세모/X/마스터) 전이 — 자동채점(정오 확정)된 문항 전부.
+      // isReview 여부와 무관하게 항상 수행한다(복습 세션이야말로 상태 전이의 핵심 입력).
+      await this.applyReviewTransitions(tx, userId, gradedQuestionIds, now);
 
       // XP 적립: 정답 기본점 + 콤보 + 스트릭, 부스터 반영. 서술형(미확정)은 selfGrade에서.
       // 복습(오답노트 출처) 세션이면 정답 기본점을 REVIEW_CORRECT(+15)로 올린다.
@@ -581,7 +493,10 @@ export class ExamSessionsService {
 
       // 정답률 캐시 델타: 최초 확정이면 total+1(+정답 시 correct+1), 재채점이면 correct만 보정.
       // 최초 확정(=totalSolvedCount 증가) 시에만 증가 후 값으로 누적 10솔브 저자 보너스를 판정한다.
-      if (prev === null || prev === undefined) {
+      // 복습(오답노트 출처) 세션의 2차 채점은 통계에 반영하지 않는다(#19).
+      if (sq.examSession.isReview) {
+        // 통계 미반영 — 아래 else-if 체인을 건너뛴다.
+      } else if (prev === null || prev === undefined) {
         const updatedQuestion = await tx.question.update({
           where: { id: sq.questionId },
           data: {
@@ -598,6 +513,14 @@ export class ExamSessionsService {
         });
       }
 
+      // 복습 상태 전이 — 최초 확정(prev === null)에만 적용한다(isReview 여부와는 무관).
+      // 재채점(같은 값 재전송·정오 번복)은 실제 재도전이 아니라 채점 '정정'이므로 전이 입력으로
+      // 세지 않는다 — 같은 정답을 두 번 보내는 것만으로 2연속 정답이 돼 즉시 MASTERED로
+      // 졸업하는 오염을 막기 위함이다.
+      if (prev === null || prev === undefined) {
+        await this.applyReviewTransitions(tx, userId, [{ id: sq.questionId, correct: isCorrect }], new Date());
+      }
+
       return xpDelta !== 0
         ? this.awardXp(tx, userId, xpDelta, {
             reason: XP_REASON.SELF_GRADE,
@@ -607,6 +530,55 @@ export class ExamSessionsService {
     });
 
     return { sessionQuestionId, isCorrect, reward };
+  }
+
+  /**
+   * 오답 복습 상태(user_question_review_states) 전이를 채점 트랜잭션 안에서 일괄 반영한다.
+   * 기존 상태를 한 번의 findMany로 배치 조회한 뒤(N+1 금지) transitionReviewState(순수 함수)를
+   * 적용해 유저×문항당 1행을 upsert한다. 세션 제출·자기채점 양쪽에서 호출된다.
+   */
+  private async applyReviewTransitions(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    graded: { id: string; correct: boolean }[],
+    now: Date,
+  ): Promise<void> {
+    if (graded.length === 0) return;
+
+    const prevRows = await tx.userQuestionReviewState.findMany({
+      where: { userId, questionId: { in: graded.map((g) => g.id) } },
+      select: { questionId: true, status: true, consecutiveCorrect: true },
+    });
+    const prevByQuestion = new Map(prevRows.map((r) => [r.questionId, r]));
+
+    for (const g of graded) {
+      const prev = prevByQuestion.get(g.id) ?? null;
+      const next = transitionReviewState(prev, g.correct, now);
+      try {
+        await tx.userQuestionReviewState.upsert({
+          where: { userId_questionId: { userId, questionId: g.id } },
+          create: { userId, questionId: g.id, ...next },
+          update: next,
+        });
+      } catch (e) {
+        // 동시 제출 경합 방어: Prisma upsert는 원자적이지 않아(특히 relationMode="prisma")
+        // 두 트랜잭션이 동시에 create 경로를 타면 UNIQUE(user,question) 충돌(P2002)이 난다.
+        // 복습 상태 한 건 때문에 제출 전체를 500으로 죽이지 않도록, 경합 상대가 만든 행을
+        // 재조회해 그 값을 기준으로 전이를 1회만 다시 적용한다.
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+          const cur = await tx.userQuestionReviewState.findUnique({
+            where: { userId_questionId: { userId, questionId: g.id } },
+            select: { status: true, consecutiveCorrect: true },
+          });
+          await tx.userQuestionReviewState.update({
+            where: { userId_questionId: { userId, questionId: g.id } },
+            data: transitionReviewState(cur ?? null, g.correct, now),
+          });
+        } else {
+          throw e;
+        }
+      }
+    }
   }
 
   /**
@@ -891,6 +863,8 @@ export class ExamSessionsService {
       status: 'PUBLISHED',
       // 소분류 소속. 필터 모드에서만 호출되며 DTO의 @ValidateIf가 존재를 보장한다.
       subjectId: dto.subjectId!,
+      // 하위요소(4단계) 필터 — 소속 검증은 create()가 사전에 수행한다.
+      ...(f.subjectDetailId ? { subjectDetailId: f.subjectDetailId } : {}),
       ...(f.questionTypes?.length ? { questionType: { in: f.questionTypes } } : {}),
       ...(difficulty ? { difficulty } : {}),
       ...(f.tagIds?.length ? { questionTags: { some: { tagId: { in: f.tagIds } } } } : {}),

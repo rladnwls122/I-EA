@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { BookmarkCheck, BookOpenCheck, Lightbulb, Store, User } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { useWallet } from "@/lib/hooks";
+import { useReviewSummary, useWallet } from "@/lib/hooks";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -17,6 +17,15 @@ export function AppSidebar() {
   }, [pathname]);
   const { data: wallet } = useWallet(hasToken);
   const unopenedBoxCount = wallet?.unopenedBoxCount ?? 0;
+  // 복습 예정일 도래 수 — 경량 카운트 엔드포인트(/me/review-summary)로 조회.
+  // 오답노트 전량(/me/notes)을 배지 하나 때문에 내려받지 않는다(#39 C).
+  const { data: reviewSummary } = useReviewSummary(hasToken);
+  const reviewDue = reviewSummary?.due ?? 0;
+  // 항목별 알림 뱃지 수 — 0이면 숨김
+  const badgeByHref: Record<string, number> = {
+    "/shop": unopenedBoxCount,
+    "/notes": reviewDue,
+  };
 
   // 인트로(비로그인 랜딩)는 몰입형 — 사이드바를 아예 그리지 않는다.
   // body의 md:pl-[64px]는 인트로 페이지가 md:-ml-[64px]로 상쇄한다(intro/page.tsx 참고).
@@ -68,12 +77,12 @@ export function AppSidebar() {
                     className="absolute -left-2.5 h-5 w-0.5 rounded-full bg-primary"
                   />
                 )}
-                {href === "/shop" && unopenedBoxCount > 0 && (
+                {(badgeByHref[href] ?? 0) > 0 && (
                   <span
                     aria-hidden
                     className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 font-mono text-[9px] font-semibold text-destructive-foreground"
                   >
-                    {unopenedBoxCount}
+                    {badgeByHref[href]}
                   </span>
                 )}
                 <Icon size={21} strokeWidth={2} />
@@ -123,12 +132,12 @@ export function AppSidebar() {
                   className="absolute left-1/2 top-0 h-0.5 w-8 -translate-x-1/2 rounded-full bg-primary"
                 />
               )}
-              {href === "/shop" && unopenedBoxCount > 0 && (
+              {(badgeByHref[href] ?? 0) > 0 && (
                 <span
                   aria-hidden
                   className="absolute right-[calc(50%-20px)] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 font-mono text-[9px] font-semibold text-destructive-foreground"
                 >
-                  {unopenedBoxCount}
+                  {badgeByHref[href]}
                 </span>
               )}
               <Icon size={20} strokeWidth={2} />

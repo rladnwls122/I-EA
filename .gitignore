@@ -39,3 +39,8 @@ package-lock.json.head
 *service-account*.json
 *.pem
 *.key
+
+# 에이전트 작업용 worktree — 저장소에 들어가면 안 된다.
+# 예전에 .gitmodules 없는 gitlink(mode 160000)로 커밋돼 CI checkout 정리가
+# 매번 exit 128로 실패했다.
+.claude/worktrees/

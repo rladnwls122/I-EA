@@ -26,7 +26,7 @@ tools: Read, Grep, Glob, Bash
 - `prisma/schema.prisma`가 유일한 권위 소스다. `prisma/migrations/`는 프로덕션 경로가 아니다.
 - `prisma/0001_qidea_extensions.sql`은 손으로 관리하는 참고 파일일 뿐이다. 실행되지 않는다.
 - DB 컬럼명은 `@map`으로 snake_case, Prisma 필드는 camelCase.
-- `README.md`는 낡았다. units, enum `QuestionType`, variants/memos 모듈을 아직 설명한다. **근거로 쓰지 마라.**
+- `README.md`·`ARCHITECTURE.md`는 현재 코드에 맞게 갱신돼 있다(units·enum `QuestionType`·variants/memos 서술은 제거됨). 그래도 판단 근거는 **`schema.prisma`가 우선**이다.
 
 ### MVP 분류 모델
 

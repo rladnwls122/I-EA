@@ -1,5 +1,7 @@
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ExamSessionsService } from './exam-sessions.service';
+import { CreateSessionDto } from './dto/create-session.dto';
 import { PrismaService } from '@/prisma/prisma.service';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
 import { XP_RULES } from '@/common/constants/xp';
@@ -37,6 +39,90 @@ describe('ExamSessionsService.readChoiceIds', () => {
 
   it('배열 안의 비문자열·빈문자열을 걸러낸다', () => {
     expect(read(['c1', 3, null, '', { id: 'c2' }, 'c4'])).toEqual(['c1', 'c4']);
+  });
+});
+
+/**
+ * 필터 모드의 하위요소(subjectDetailId) 필터 — 약점 진단(#37) 선행 작업.
+ * relationMode="prisma"라 DB FK가 없으므로, 하위요소가 요청 subjectId 소속인지는
+ * create()의 앱단 검증이 유일한 방어선이다.
+ */
+describe('ExamSessionsService.create — 하위요소(subjectDetailId) 필터', () => {
+  async function makeService(prisma: Record<string, unknown>) {
+    const module = await Test.createTestingModule({
+      providers: [
+        ExamSessionsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: GeminiLlmService, useValue: {} },
+      ],
+    }).compile();
+    return module.get(ExamSessionsService);
+  }
+
+  it('하위요소가 요청 subjectId 소속이 아니면 400으로 거부한다', async () => {
+    const service = await makeService({
+      subject: { findUnique: jest.fn().mockResolvedValue({ id: 'sub1' }) },
+      // d1은 다른 과목(sub2) 소속 — 조합 모순.
+      subjectDetail: { findUnique: jest.fn().mockResolvedValue({ subjectId: 'sub2' }) },
+    });
+
+    await expect(
+      service.create('u1', {
+        subjectId: 'sub1',
+        questionCount: 5,
+        filter: { subjectDetailId: 'd1' },
+      } as CreateSessionDto),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('존재하지 않는 하위요소면 404로 거부한다', async () => {
+    const service = await makeService({
+      subject: { findUnique: jest.fn().mockResolvedValue({ id: 'sub1' }) },
+      subjectDetail: { findUnique: jest.fn().mockResolvedValue(null) },
+    });
+
+    await expect(
+      service.create('u1', {
+        subjectId: 'sub1',
+        questionCount: 5,
+        filter: { subjectDetailId: 'd-none' },
+      } as CreateSessionDto),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('buildQuestionWhere가 subjectDetailId를 기존 필터(유형·난이도·태그)와 조합한다', async () => {
+    const service = await makeService({});
+    const where = (
+      service as unknown as { buildQuestionWhere(dto: CreateSessionDto): Record<string, unknown> }
+    ).buildQuestionWhere({
+      subjectId: 'sub1',
+      questionCount: 5,
+      filter: {
+        subjectDetailId: 'd1',
+        questionTypes: ['객관식'],
+        minDifficulty: 2,
+        maxDifficulty: 4,
+        tagIds: ['t1'],
+      },
+    } as CreateSessionDto);
+
+    expect(where).toEqual({
+      status: 'PUBLISHED',
+      subjectId: 'sub1',
+      subjectDetailId: 'd1',
+      questionType: { in: ['객관식'] },
+      difficulty: { gte: 2, lte: 4 },
+      questionTags: { some: { tagId: { in: ['t1'] } } },
+    });
+  });
+
+  it('subjectDetailId가 없으면 where에 키 자체가 들어가지 않는다', async () => {
+    const service = await makeService({});
+    const where = (
+      service as unknown as { buildQuestionWhere(dto: CreateSessionDto): Record<string, unknown> }
+    ).buildQuestionWhere({ subjectId: 'sub1', questionCount: 5 } as CreateSessionDto);
+
+    expect('subjectDetailId' in where).toBe(false);
   });
 });
 

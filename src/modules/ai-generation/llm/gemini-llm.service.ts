@@ -11,11 +11,17 @@ import {
   LlmGenerationResult,
   LlmRegenerateChoicesContext,
   LlmRegenerateChoicesResult,
-  LlmHintContext,
-  LlmHintResult,
   TutorTurn,
 } from './llm.types';
 import { GeminiKeyPool } from './gemini-key-pool';
+import {
+  OutputLanguage,
+  defaultChoiceCount,
+  examFormatHints,
+  languageRule,
+  resolveOutputLanguage,
+} from '../exam-format';
+import { AnswerMode } from '../format-templates';
 
 /**
  * 인라인 재생성은 사용자가 버튼을 누르고 기다린다. 배치보다 짧게 끊는다.
@@ -102,8 +108,22 @@ export class GeminiLlmService {
    * 출력이 계약을 어기면 예외를 던져 프로세서가 FAILED 처리하도록 한다.
    */
   async generate(ctx: LlmGenerationContext): Promise<LlmGenerationResult> {
-    const raw = await this.callGemini(this.buildSystemPrompt(), this.buildUserPrompt(ctx));
-    return this.parseResult(raw);
+    // 지문 수 — passageCount 명시가 없으면 includePassage로 0/1을 따른다(종전 동작).
+    // 2 이상이면 다중지문 세트 모드(gap 3): 스키마·프롬프트·검증이 passages[] 계약으로 바뀐다.
+    const passageCount = ctx.passageCount ?? (ctx.includePassage ? 1 : 0);
+    const raw = await this.callGemini(
+      this.buildSystemPrompt(ctx.language ?? 'ko', passageCount),
+      this.buildUserPrompt(ctx),
+    );
+    // choiceCount를 명시한 요청만 개수를 검증한다 — 시험별 관행 권고와 ox 힌트는
+    // 종전대로 프롬프트 유도까지이고 검증 대상이 아니다(멀쩡한 배치를 FAILED로 떨구지 않도록).
+    // answerMode='multiple'(복수정답 템플릿, #43 gap 4)이면 "정답 정확히 1개" 강제를 "1개 이상"으로 완화한다.
+    return this.parseResult(
+      raw,
+      ctx.ox ? undefined : ctx.choiceCount,
+      ctx.answerMode ?? 'single',
+      passageCount,
+    );
   }
 
   /**
@@ -119,86 +139,15 @@ export class GeminiLlmService {
    */
   async regenerateChoices(ctx: LlmRegenerateChoicesContext): Promise<LlmRegenerateChoicesResult> {
     const raw = await this.callGemini(
-      this.buildChoicesSystemPrompt(ctx.choiceCount),
+      // 선지 재생성도 같은 언어 규칙을 따라야 한다 — 영어 지문 문항에 한국어 선지가 붙으면 못 쓴다.
+      this.buildChoicesSystemPrompt(
+        ctx.choiceCount,
+        ctx.language ?? resolveOutputLanguage(ctx.examType, ctx.examCategory),
+      ),
       this.buildChoicesUserPrompt(ctx),
       { timeoutMs: REGENERATE_TIMEOUT_MS, attempts: REGENERATE_ATTEMPTS, disableThinking: true },
     );
     return this.parseChoicesResult(raw, ctx.choiceCount);
-  }
-
-  /**
-   * 응시 중 풀이 힌트 즉석 생성 (동기 인라인 UX).
-   *
-   * regenerateChoices와 동일한 동기 정책: 짧은 타임아웃 + 일시 장애 자체 재시도 + thinking off.
-   * DB에 쓰지 않는다(휘발). 정답을 모델에 주되 프롬프트로 노출을 억제한다.
-   */
-  async generateHint(ctx: LlmHintContext): Promise<LlmHintResult> {
-    const raw = await this.callGemini(
-      this.buildHintSystemPrompt(),
-      this.buildHintUserPrompt(ctx),
-      { timeoutMs: REGENERATE_TIMEOUT_MS, attempts: REGENERATE_ATTEMPTS, disableThinking: true },
-    );
-    return this.parseHintResult(raw);
-  }
-
-  private buildHintSystemPrompt(): string {
-    return [
-      '너는 한국 시험 문항의 풀이 코치다. 학생이 스스로 답을 찾도록 방향만 제시하는',
-      '짧은 힌트를 만든다. 아래 JSON 스키마를 "그대로" 따르는 JSON 하나만 출력한다.',
-      '서두/설명/코드펜스 금지.',
-      '',
-      '{ "hint": string }',
-      '',
-      '규칙:',
-      '- hint는 1~2문장, 한국어.',
-      '- 정답 선지 번호, 정답 텍스트, 정답을 곧바로 유추하게 하는 문구를 절대 쓰지 않는다.',
-      '- 접근 방법·주의할 함정·떠올려야 할 개념/공식만 짚는다.',
-      '- 수식은 순수 텍스트로만(예: x^2 - 2x = 0). LaTeX/KaTeX 금지.',
-      '- JSON 외 문자는 절대 출력하지 않는다.',
-    ].join('\n');
-  }
-
-  private buildHintUserPrompt(ctx: LlmHintContext): string {
-    const lines = [
-      `시험: ${ctx.examType ?? '(미지정)'}`,
-      `대분류: ${ctx.examCategory ?? '(미지정)'}`,
-      `소분류: ${ctx.subjectName ?? '(미지정)'}`,
-      `난이도: ${ctx.difficulty ?? 3} (1 쉬움 ~ 5 어려움)`,
-      `유형: ${ctx.questionType}`,
-      '',
-      '발문:',
-      ctx.stemText,
-    ];
-    if (ctx.choices?.length) {
-      lines.push('', '선지(정답 표시는 힌트에 노출 금지):');
-      ctx.choices.forEach((c, i) => {
-        lines.push(`${i + 1}. ${c.content}${c.isCorrect ? '  [정답]' : ''}`);
-      });
-    }
-    if (ctx.correctAnswerText) lines.push('', `정답(노출 금지): ${ctx.correctAnswerText}`);
-    if (ctx.explanationText) lines.push('', `해설(힌트 근거용): ${ctx.explanationText}`);
-    lines.push('', '위 문항에 대해, 정답을 노출하지 않는 풀이 힌트를 만들어라.');
-    return lines.join('\n');
-  }
-
-  /** 힌트 응답 파싱. hint가 비면 예외 — 프론트에 빈 힌트가 표시되지 않게 한다. */
-  private parseHintResult(raw: string): LlmHintResult {
-    const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-    if (start === -1 || end === -1) {
-      throw new ServiceUnavailableException('모델 응답에서 JSON을 찾지 못했습니다.');
-    }
-    let parsed: LlmHintResult;
-    try {
-      parsed = JSON.parse(cleaned.slice(start, end + 1));
-    } catch {
-      throw new ServiceUnavailableException('모델 응답 JSON 파싱에 실패했습니다.');
-    }
-    if (typeof parsed.hint !== 'string' || !parsed.hint.trim()) {
-      throw new ServiceUnavailableException('모델이 빈 힌트를 반환했습니다.');
-    }
-    return { hint: parsed.hint.trim() };
   }
 
   /**
@@ -488,7 +437,12 @@ export class GeminiLlmService {
     return (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
   }
 
-  private parseResult(raw: string): LlmGenerationResult {
+  private parseResult(
+    raw: string,
+    expectedChoiceCount?: number,
+    answerMode: AnswerMode = 'single',
+    passageCount = 0,
+  ): LlmGenerationResult {
     // 코드펜스/서두 텍스트가 섞여 와도 첫 JSON 오브젝트만 안전하게 추출한다.
     const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
     const start = cleaned.indexOf('{');
@@ -520,28 +474,83 @@ export class GeminiLlmService {
         if (q.choices.some((c) => typeof c?.content !== 'string' || !c.content.trim())) {
           throw new ServiceUnavailableException('모델이 빈 선지를 포함한 문항을 반환했습니다.');
         }
+        // 요청이 선지 개수를 명시했으면 정확히 그 개수여야 한다 —
+        // 4지/5지 관행이 갈리는 시험을 섞어 쓰는 이상, 어긋난 개수는 조용히 저장하면 안 된다(#36).
+        if (expectedChoiceCount && q.choices.length !== expectedChoiceCount) {
+          throw new ServiceUnavailableException(
+            `모델이 선지 ${expectedChoiceCount}개를 반환하지 않았습니다(받은 값: ${q.choices.length}개).`,
+          );
+        }
         const correctCount = q.choices.filter((c) => c.isCorrect === true).length;
-        if (correctCount !== 1) {
+        // 복수정답 모드(#43 gap 4)는 1개 이상이면 통과 — 채점(grading.util)은 정답 집합 비교라 그대로 호환된다.
+        if (answerMode === 'multiple') {
+          if (correctCount < 1) {
+            throw new ServiceUnavailableException('모델이 정답 선지가 없는 문항을 반환했습니다.');
+          }
+        } else if (correctCount !== 1) {
           throw new ServiceUnavailableException(
             `모델이 정답 선지 개수가 잘못된 문항을 반환했습니다(받은 값: ${correctCount}개).`,
           );
         }
       }
     }
+    // 단일/무지문 모드에서 다중지문 계약(passages 배열)이 섞여 오면 거부한다 —
+    // 프로세서가 passages를 무시하므로, 그대로 두면 지문 없는 문항 배치가 조용히 COMPLETED 된다.
+    if (passageCount <= 1 && Array.isArray(parsed.passages)) {
+      throw new ServiceUnavailableException(
+        '모델이 요청하지 않은 다중지문(passages)을 반환했습니다.',
+      );
+    }
+    // 다중지문 세트 모드(gap 3) — 지문 개수·문항별 인덱스·빈 지문을 검증한다.
+    // 여기서 막지 않으면 지문 없는 문항/문항 없는 지문이 조용히 저장된다.
+    if (passageCount >= 2) {
+      const passages = parsed.passages;
+      if (!Array.isArray(passages) || passages.length !== passageCount) {
+        throw new ServiceUnavailableException(
+          `모델이 지문 ${passageCount}개를 반환하지 않았습니다(받은 값: ${Array.isArray(passages) ? passages.length : 0}개).`,
+        );
+      }
+      if (passages.some((p) => typeof p !== 'string' || !p.trim())) {
+        throw new ServiceUnavailableException('모델이 빈 지문을 반환했습니다.');
+      }
+      const assigned = new Set<number>();
+      for (const q of parsed.questions) {
+        const idx = q.passageIndex;
+        if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0 || idx >= passageCount) {
+          throw new ServiceUnavailableException(
+            `모델이 지문 인덱스(passageIndex)가 잘못된 문항을 반환했습니다(받은 값: ${String(idx)}).`,
+          );
+        }
+        assigned.add(idx);
+      }
+      if (assigned.size < passageCount) {
+        throw new ServiceUnavailableException(
+          '모델이 문항이 배정되지 않은 지문을 반환했습니다 — 모든 지문에 최소 1문항이 필요합니다.',
+        );
+      }
+    }
     return parsed;
   }
 
-  private buildSystemPrompt(): string {
+  private buildSystemPrompt(language: OutputLanguage = 'ko', passageCount = 0): string {
+    // 다중지문 세트(gap 3)는 passages 배열 + 문항별 passageIndex 계약으로 바뀐다.
+    // 단일 지문/무지문(passageCount <= 1)은 종전 계약(passage 단일 객체) 그대로.
+    const multiPassage = passageCount >= 2;
     return [
       '너는 한국 시험 문항 출제 전문가다. 요청에 맞는 문항을 생성하고,',
       '아래 JSON 스키마를 "그대로" 따르는 JSON 하나만 출력한다. 서두/설명/코드펜스 금지.',
       '',
       '{',
-      '  "passage": { "title": string(선택), "bodyText": string } | null,',
+      multiPassage
+        ? `  "passages": [ string, ... ] (지문 평문 정확히 ${passageCount}개 — 배열 순서가 지문 번호다),`
+        : '  "passage": { "title": string(선택), "bodyText": string } | null,',
       '  "questions": [',
       '    {',
       '      "questionType": "객관식"|"주관식",',
       '      "stemText": string,',
+      ...(multiPassage
+        ? [`      "passageIndex": 0~${passageCount - 1} (이 문항의 근거 지문 인덱스),`]
+        : []),
       '      "choices": [ { "content": string, "isCorrect": boolean, "explanation": string(선택) } ](객관식 전용),',
       '      "answerText": string(주관식 단답 정답, 선택),',
       '      "explanationText": string(선택),',
@@ -552,11 +561,26 @@ export class GeminiLlmService {
       '}',
       '',
       '규칙:',
+      ...(multiPassage
+        ? [
+            '- 모든 문항에 passageIndex를 지정하고, 모든 지문(passages의 각 인덱스)에 최소 1문항을 배정한다.',
+          ]
+        : []),
       '- 객관식은 choices를 제공하고 isCorrect:true가 1개 이상(단일정답이면 정확히 1개).',
       '- 주관식 단답형은 answerText에 정답을 넣는다(자동채점 대상).',
       '- 주관식 서술형은 answerText 없이 explanationText에 모범답안을 서술한다.',
       '- keywords는 오답노트에서 "어느 개념에서 틀렸는지" 통계에 쓰인다 — 매 문항 반드시 채운다.',
-      '- 모든 텍스트는 한국어. JSON 외 문자는 절대 출력하지 않는다.',
+      // 언어는 시험별로 갈린다 — 토익 RC는 전부 영어, 한국 시험의 영어 과목은 발문만 한국어(#36 gap 2).
+      languageRule(language),
+      '',
+      // "시험급" 품질 기준 4축(#34, 결정 3) — 형식 규격은 파서가 검증하므로 여기서는 나머지 축만 지시한다.
+      '품질 기준(시험급):',
+      '- 발문은 실제 기출 패턴의 간결한 한 문장으로 쓴다. 부정발문이면 "않은"/"없는"을 발문에 명시한다.',
+      '- 오답 선지는 각각 그럴듯한 오해·실수에서 나오도록 설계하고, 해설에서 정답 근거와 대표 오답의 함정을 함께 짚는다.',
+      '- difficulty 기준: 1=개념 확인, 3=표준 적용, 5=다단계 추론·복합 자료 해석.',
+      '- 지문이 있는 문항은 지문을 읽어야만 풀리게 만든다. 일반 상식만으로 답이 나오는 문항은 금지.',
+      '',
+      'JSON 외 문자는 절대 출력하지 않는다.',
     ].join('\n');
   }
 
@@ -599,7 +623,7 @@ export class GeminiLlmService {
     return { choices };
   }
 
-  private buildChoicesSystemPrompt(choiceCount: number): string {
+  private buildChoicesSystemPrompt(choiceCount: number, language: OutputLanguage = 'ko'): string {
     return [
       '너는 한국 시험 문항 출제 전문가다. 주어진 발문에 대한 선지 집합을 새로 만든다.',
       '아래 JSON 스키마를 "그대로" 따르는 JSON 하나만 출력한다. 서두/설명/코드펜스 금지.',
@@ -611,7 +635,11 @@ export class GeminiLlmService {
       '- isCorrect:true는 정확히 1개(단일정답).',
       '- 오답 선지는 그럴듯하되 명확히 틀려야 한다. 정답과 의미가 겹치면 안 된다.',
       '- 수식은 순수 텍스트로만 쓴다(예: x^2 - 2x = 0, f\'(x)). LaTeX/KaTeX 문법 금지.',
-      '- 모든 텍스트는 한국어. JSON 외 문자는 절대 출력하지 않는다.',
+      // 선지 언어는 지문 언어를 따라간다 — 'en-passage-ko-stem'(발문만 한국어)에서도 선지는 영어다.
+      language === 'ko'
+        ? '- 선지 본문은 한국어로 쓴다.'
+        : '- 선지 본문은 영어로 쓴다. 해설(explanation)은 한국어로 써도 된다.',
+      'JSON 외 문자는 절대 출력하지 않는다.',
     ].join('\n');
   }
 
@@ -630,15 +658,50 @@ export class GeminiLlmService {
   }
 
   private buildUserPrompt(ctx: LlmGenerationContext): string {
+    const passageCount = ctx.passageCount ?? (ctx.includePassage ? 1 : 0);
     const lines = [
       `시험: ${ctx.examType ?? '(미지정)'}`,
       `대분류: ${ctx.examCategory ?? '(미지정)'}`,
       `소분류: ${ctx.subjectName ?? '(미지정)'}`,
       `난이도: ${ctx.difficulty} (1 쉬움 ~ 5 어려움)`,
       `문항 수: ${ctx.questionCount}`,
-      `지문 포함: ${ctx.includePassage ? '예' : '아니오'}`,
+      passageCount >= 2
+        ? `지문 포함: 예 — 서로 연계된 지문 ${passageCount}개 세트`
+        : `지문 포함: ${passageCount === 1 ? '예' : '아니오'}`,
     ];
+    if (passageCount >= 2) {
+      lines.push(
+        `다중지문 세트: passages에 지문을 정확히 ${passageCount}개 쓰고, 각 문항의 passageIndex(0부터)에 근거 지문을 지정한다. 모든 지문에 최소 1문항을 배정한다.`,
+        // 시험별 관행(examFormatHints)에는 "지문 1개에 문항 여러 개" 같은 단일 지문 전제가
+        // 섞여 있다 — 문자열 필터링은 취약하므로, 우선순위를 명시해 모순을 해소한다.
+        '아래 형식 지시 중 "지문 1개" 전제의 관행과 어긋나는 부분은 이 다중지문 지시가 우선한다.',
+      );
+    }
     if (ctx.questionType) lines.push(`선호 유형: ${ctx.questionType}`);
+    // 선지 개수 — 명시값이 있으면 강제, 없으면 시험별 관행(5지/4지)을 권고로만 흘린다(#36 gap 1).
+    // ox는 2지선다를 따로 지시하므로 여기서 겹쳐 말하지 않는다.
+    if (!ctx.ox) {
+      if (ctx.choiceCount) {
+        lines.push(`선지 개수: 객관식 문항의 선지는 정확히 ${ctx.choiceCount}개.`);
+      } else {
+        const conventional = defaultChoiceCount(ctx.examType);
+        if (conventional) {
+          lines.push(`선지 개수: 이 시험의 관행은 ${conventional}지선다다. 특별한 이유가 없으면 따른다.`);
+        }
+      }
+    }
+    // 시험별 형식 지시 — 이게 없으면 모델 출력이 전부 수능 스타일로 치우친다(#36 gap 5).
+    const formatHints = examFormatHints(ctx.examType);
+    if (formatHints.length) lines.push('', ...formatHints);
+    // 출제 형식 템플릿 지시(#43) — 시험별 관행보다 구체적(발문 패턴·소재·선지 관행)이라 뒤에 싣는다.
+    if (ctx.templateHints?.length) lines.push('', ...ctx.templateHints);
+    // 복수정답 모드(#43 gap 4) — 검증 완화(parseResult)와 짝을 이루는 프롬프트 지시.
+    if (ctx.answerMode === 'multiple') {
+      lines.push(
+        '',
+        '복수정답: 정답(isCorrect:true)이 2개 이상일 수 있다. 발문에 "모두 고른 것은?"을 쓰고, 해설에 정답 조합의 근거를 밝힌다.',
+      );
+    }
     if (ctx.existingKeywords?.length) {
       lines.push(
         '',

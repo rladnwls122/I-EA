@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { Calculator as CalculatorIcon, LogOut, Pencil, Sparkles } from "lucide-react";
+import { Calculator as CalculatorIcon, LogOut, NotebookPen, Pencil, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -169,6 +169,8 @@ export function SessionPage({ id }: { id: string }) {
     const total = session.questions.length;
     const correct = session.questions.filter((q) => q.answer?.isCorrect === true).length;
     const scorePercent = total > 0 ? Math.round((correct / total) * 1000) / 10 : 0;
+    // 채점된 오답 수 — 오답노트 안내 밴드용(서술형 미채점 null은 제외)
+    const wrongCount = session.questions.filter((q) => q.answer?.isCorrect === false).length;
 
     // 방금 푼 문제집 자체는 추천에서 빼고 최대 4개만 노출.
     const recItems = (recWorkbooks.data?.items ?? [])
@@ -204,6 +206,7 @@ export function SessionPage({ id }: { id: string }) {
               key={q.sessionQuestionId}
               item={q}
               order={q.displayOrder}
+              isReview={!!session.isReview}
               onSelfGraded={() => {
                 /* useSelfGrade는 세션 쿼리를 자동 invalidate하지 않으므로
                    배너/카드 최신화를 위해 세션을 다시 조회한다. 자기채점 이후엔
@@ -214,6 +217,31 @@ export function SessionPage({ id }: { id: string }) {
             />
           ))}
         </div>
+
+        {/* 오답노트 안내 — 즉시 재풀이 대신 오답노트 경유(복습 간격 스케줄 보호).
+            복습 세션이면 상태 반영 안내로 문구를 바꾼다. */}
+        {wrongCount > 0 && (
+          <section className="mt-6 flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4 shadow-surface">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-primary/10 text-primary">
+                <NotebookPen size={16} />
+              </span>
+              <p className="text-[13px] text-foreground">
+                {session.isReview
+                  ? "복습 결과가 반영됐어요. 상태 변화를 확인해보세요."
+                  : (
+                    <>
+                      오답 <span className="font-mono font-semibold text-wrong">{wrongCount}</span>개가
+                      오답노트에 담겼어요.
+                    </>
+                  )}
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => router.push("/notes")}>
+              오답노트 가기
+            </Button>
+          </section>
+        )}
 
         {/* 하단 추천 — 방금 푼 과목의 다른 인기 문제집. 카드 클릭 시 미리보기 사이드바. */}
         {recItems.length > 0 && (

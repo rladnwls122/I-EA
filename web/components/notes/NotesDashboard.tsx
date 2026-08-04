@@ -1,15 +1,18 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronRight, Inbox, RotateCcw, Search } from "lucide-react";
+import { Check, ChevronRight, RotateCcw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useMyNotes, useSubjects } from "@/lib/hooks";
+import { WeaknessCard } from "./WeaknessCard";
+import { useNotesFilterStore } from "@/lib/notes-filter-store";
 import { extractPlainText } from "@/lib/prosemirror";
 import type { ReasonStat } from "@/lib/types";
 
-import { REASON_COLORS, FALLBACK_COLORS, reasonColor } from "./reason-colors";
+import { reasonColor } from "./reason-colors";
+import { ReviewDueLabel, ReviewStateBadge } from "./ReviewStateBadge";
 
 /** 도넛 차트 — 원인별 세그먼트 + 중앙 최다 원인. SVG stroke-dasharray로 그린다. */
 function ReasonDonut({ stats }: { stats: ReasonStat[] }) {
@@ -79,14 +82,13 @@ export function NotesDashboard() {
   const [search, setSearch] = useState("");
 
   // 사이드바 선택(초안)과 조회 버튼으로 확정된 필터를 분리 — 조회를 눌러야 데이터가 바뀐다.
-  const [examType, setExamType] = useState("");
-  const [examCategory, setExamCategory] = useState("");
-  const [subjectId, setSubjectId] = useState("");
-  const [applied, setApplied] = useState<{
-    examType?: string;
-    examCategory?: string;
-    subjectId?: string;
-  }>({});
+  // 확정 필터는 스토어에 둔다 — @sidebar의 "복습 시작"이 같은 범위를 보게.
+  const applied = useNotesFilterStore((s) => s.applied);
+  const setApplied = useNotesFilterStore((s) => s.setApplied);
+  // 초안(칩 선택)은 재진입 시 확정 필터에서 복원
+  const [examType, setExamType] = useState(applied.examType ?? "");
+  const [examCategory, setExamCategory] = useState(applied.examCategory ?? "");
+  const [subjectId, setSubjectId] = useState(applied.subjectId ?? "");
 
   const { data, isLoading } = useMyNotes(applied);
 
@@ -137,11 +139,20 @@ export function NotesDashboard() {
   const byKeyword = data?.summary?.byKeyword ?? [];
   const keywordMaxWrong = byKeyword.reduce((m, s) => Math.max(m, s.wrong), 0);
 
+  // 마스터(2연속 정답, 복습 졸업)는 기본 숨김 — "복습 대상 제외" 의미와 목록 노출을 일치시킨다.
+  const [showMastered, setShowMastered] = useState(false);
+  const masteredCount = useMemo(
+    () =>
+      (data?.wrongQuestions ?? []).filter((q) => q.reviewState?.status === "MASTERED").length,
+    [data],
+  );
+
   const filteredQuestions = useMemo(() => {
-    const list = data?.wrongQuestions ?? [];
+    let list = data?.wrongQuestions ?? [];
+    if (!showMastered) list = list.filter((q) => q.reviewState?.status !== "MASTERED");
     if (!search) return list;
     return list.filter((q) => extractPlainText(q.stem).includes(search));
-  }, [data, search]);
+  }, [data, search, showMastered]);
 
   const appliedLabel = [
     applied.examType,
@@ -166,6 +177,10 @@ export function NotesDashboard() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
         {/* ═══ 본문 ═══ */}
         <div className="min-w-0 lg:order-1">
+          {/* 약점 진단(#37) — 진단 규칙은 서버가 계산해 내려준다(weakness.util).
+              subjectId가 있어야 "공략 세트" 조립이 가능해 필터의 과목을 그대로 넘긴다. */}
+          <WeaknessCard report={data?.summary.weakness} subjectId={applied.subjectId} />
+
           {/* 원인 분석 — 도넛 + 원인별 랭킹 */}
           <section className="mb-6 rounded-xl border border-border bg-card p-6">
             <div className="mb-4 flex items-baseline justify-between gap-3">
@@ -275,6 +290,25 @@ export function NotesDashboard() {
             />
           </div>
 
+          {/* 마스터 포함 토글 — 마스터가 있을 때만 노출 */}
+          {masteredCount > 0 && (
+            <div className="mb-4 flex justify-end">
+              <button
+                type="button"
+                aria-pressed={showMastered}
+                onClick={() => setShowMastered((v) => !v)}
+                className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors duration-150 ease-swift ${
+                  showMastered
+                    ? "border-violet-500/40 bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Check size={13} className={showMastered ? "" : "opacity-0"} />
+                마스터 {masteredCount}개 포함
+              </button>
+            </div>
+          )}
+
           {/* 오답 리스트 */}
           {isLoading ? (
             <div className="space-y-3">
@@ -306,6 +340,11 @@ export function NotesDashboard() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="mb-2.5 flex flex-wrap items-center gap-2">
+                      {/* 상태가 첫 스캔 축 — 행 맨 앞 */}
+                      {q.reviewState && <ReviewStateBadge status={q.reviewState.status} />}
+                      {q.reviewState && (
+                        <ReviewDueLabel nextReviewAt={q.reviewState.nextReviewAt} />
+                      )}
                       <Badge
                         variant="secondary"
                         className="font-mono text-[11px] font-medium text-muted-foreground"
