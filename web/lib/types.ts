@@ -188,6 +188,30 @@ export interface WorkbookQuestion {
   question?: Question;
 }
 
+// ─── 문항 배치 (#41 저장 왕복 배칭) ─────────────────────────────────
+//
+// 배치는 "전부 성공 아니면 전부 실패"가 아니다. 캔버스 저장은 문항 하나가 실패하면
+// 그 문항만 실패로 세고 기준선을 갱신하지 않아 다음 저장에서 다시 시도한다 —
+// 그 정밀도를 유지하려면 서버가 **항목별** 결과를 돌려줘야 한다.
+
+export interface QuestionBatchItemResult {
+  /** 요청 배열에서의 위치. 응답 순서에 기대지 않고 되짚기 위한 것. */
+  index: number;
+  status: 'ok' | 'failed';
+  /** 성공 시 — 만들어졌거나 갱신된 문항 id. */
+  questionId?: string;
+  /** 성공 시 — 문제집에 담긴 자리(생성 배치 전용). */
+  displayOrder?: number;
+  /** 실패 시 — 그대로 사용자에게 보여도 되는 사유. */
+  error?: string;
+}
+
+export interface QuestionBatchResponse {
+  results: QuestionBatchItemResult[];
+  okCount: number;
+  failedCount: number;
+}
+
 // ─── AI 생성 (비동기 파이프라인) ────────────────────────────────────
 //
 // 지금 화면에서 부르는 곳은 없다 — 캔버스는 SSE 채팅(`/ai-generations/chat`)을 쓴다.
@@ -424,6 +448,12 @@ export interface MyNotesResponse {
     ungradedCount?: number;
     /** 약점 진단(#37) — 서버가 표본 하한·점수식을 적용해 계산해 내려준다. */
     weakness?: WeaknessReport;
+    /**
+     * 서술형 평균 득점률(#43 gap 8 후속) — 채점기준표로 채점된 답안만, 1차 응시 기준.
+     * 표본 하한 미만이거나 서술형 채점 이력이 없으면 서버가 null로 내린다 = 판정 불가.
+     * null을 0%로 그리지 마라 — 화면에 아무것도 띄우지 않는다.
+     */
+    rubricScore?: RubricScore | null;
   };
   wrongQuestions: WrongQuestionItem[];
   /** 채점 이력이 서버 조회 상한(500)에 걸려 잘렸는지 */
@@ -459,6 +489,21 @@ export interface Weakness {
     /** 절반 이상 재오답 = "한 번 더 풀어도 안 되는" 축 */
     stuck: boolean;
   } | null;
+}
+
+/**
+ * 서술형 부분점수 지표(#43 gap 8 후속) — 계산은 서버(rubric-score.util)가 한다.
+ * 표본 하한도 서버 규칙이다. 화면에서 다시 판정하지 마라.
+ */
+export interface RubricScore {
+  /** 표본 수(채점기준표로 채점된 답안 수) — 비율만 보여주면 3문항과 300문항이 같아 보인다 */
+  count: number;
+  /** 획득 점수 합 */
+  earnedPoints: number;
+  /** 만점 합(분모) */
+  totalPoints: number;
+  /** earnedPoints / totalPoints (0~1, 소수 둘째 자리) */
+  ratio: number;
 }
 
 export interface WeaknessReport {

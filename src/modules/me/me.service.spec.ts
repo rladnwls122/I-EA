@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { MeService, NOTES_GRADED_LIMIT } from './me.service';
+import { RUBRIC_SCORE_MIN_SAMPLE } from './rubric-score.util';
 import { PrismaService } from '@/prisma/prisma.service';
 
 describe('MeService.notes', () => {
@@ -8,6 +9,10 @@ describe('MeService.notes', () => {
       examSessionAnswer: {
         // 미채점 서술형(자기채점 대기) 2건 — summary.ungradedCount로 그대로 노출.
         count: jest.fn().mockResolvedValue(2),
+        // 서술형 부분점수 집계(#43 gap 8 후속) — 이 케이스는 채점기준표 채점 이력이 없다.
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _count: 0, _sum: { earnedPoints: null, rubricTotalPoints: null } }),
         findMany: jest.fn().mockResolvedValue([
           {
             isCorrect: false,
@@ -154,6 +159,9 @@ describe('MeService.notes', () => {
     const prisma = {
       examSessionAnswer: {
         count: jest.fn().mockResolvedValue(0),
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _count: 0, _sum: { earnedPoints: null, rubricTotalPoints: null } }),
         findMany: jest.fn().mockResolvedValue(rows),
       },
       userQuestionAnnotation: { findMany: jest.fn().mockResolvedValue([]) },
@@ -218,6 +226,9 @@ describe('MeService.notes', () => {
     const prisma = {
       examSessionAnswer: {
         count: jest.fn().mockResolvedValue(0),
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _count: 0, _sum: { earnedPoints: null, rubricTotalPoints: null } }),
         findMany: jest.fn().mockResolvedValue(rows),
       },
       userQuestionAnnotation: { findMany: jest.fn().mockResolvedValue([]) },
@@ -245,6 +256,103 @@ describe('MeService.notes', () => {
       },
       select: { questionId: true, correct: true },
     });
+  });
+});
+
+/**
+ * 서술형 부분점수 지표(#43 gap 8 후속).
+ *
+ * 여기서 지키는 계약: (1) 집계는 앱이 아니라 DB(aggregate)가 한다, (2) 대상은 두 컬럼이
+ * NOT NULL인 답안(=채점기준표로 채점된 답안)뿐이다, (3) 1차 응시만 센다(#39 B-1),
+ * (4) 표본 하한 미만이면 아무것도 말하지 않는다.
+ */
+describe('MeService.notes — 서술형 부분점수 지표', () => {
+  async function makeService(aggregateResult: unknown) {
+    const aggregate = jest.fn().mockResolvedValue(aggregateResult);
+    const prisma = {
+      examSessionAnswer: {
+        count: jest.fn().mockResolvedValue(0),
+        aggregate,
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      userQuestionAnnotation: { findMany: jest.fn().mockResolvedValue([]) },
+      userQuestionReviewState: { findMany: jest.fn().mockResolvedValue([]) },
+      userQuestionReviewTransition: { findMany: jest.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService;
+    const module = await Test.createTestingModule({
+      providers: [MeService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    return { service: module.get(MeService), aggregate };
+  }
+
+  it('SUM/COUNT를 DB에서 받아 평균 득점률로 접는다(답안을 앱으로 끌어오지 않는다)', async () => {
+    // Decimal 컬럼이라 Prisma는 Decimal 객체를 돌려준다 — toString만 있는 객체로 흉내 내
+    // 서비스가 숫자로 접는지까지 확인한다(안 접으면 JSON에서 문자열이 된다).
+    const decimal = (v: string) => ({ toString: () => v, toJSON: () => v });
+    const { service, aggregate } = await makeService({
+      _count: 4,
+      _sum: { earnedPoints: decimal('27'), rubricTotalPoints: decimal('40') },
+    });
+
+    const result = await service.notes('user-1');
+
+    expect(result.summary.rubricScore).toEqual({
+      count: 4,
+      earnedPoints: 27,
+      totalPoints: 40,
+      ratio: 0.68, // 27/40 = 0.675 → 소수 둘째 자리
+    });
+    // 대상 선별은 "두 컬럼이 NOT NULL" + 1차 응시. 집계 자체가 DB에서 돌아야 한다.
+    expect(aggregate).toHaveBeenCalledWith({
+      where: {
+        earnedPoints: { not: null },
+        rubricTotalPoints: { not: null },
+        examSessionQuestion: {
+          examSession: { userId: 'user-1', status: 'SUBMITTED', isReview: false },
+        },
+      },
+      _sum: { earnedPoints: true, rubricTotalPoints: true },
+      _count: true,
+    });
+  });
+
+  it('표본이 하한 미만이면 null — 두 문항으로 "평균 득점률"이라 말하지 않는다', async () => {
+    const { service } = await makeService({
+      _count: RUBRIC_SCORE_MIN_SAMPLE - 1,
+      _sum: { earnedPoints: 2, rubricTotalPoints: 20 },
+    });
+
+    const result = await service.notes('user-1');
+
+    expect(result.summary.rubricScore).toBeNull();
+  });
+
+  it('채점기준표로 채점한 답안이 하나도 없으면 null(0%가 아니다)', async () => {
+    const { service } = await makeService({
+      _count: 0,
+      _sum: { earnedPoints: null, rubricTotalPoints: null },
+    });
+
+    const result = await service.notes('user-1');
+
+    expect(result.summary.rubricScore).toBeNull();
+  });
+
+  it('범위 필터가 있으면 부분점수 집계도 같은 범위를 따라간다', async () => {
+    const { service, aggregate } = await makeService({
+      _count: 3,
+      _sum: { earnedPoints: 9, rubricTotalPoints: 30 },
+    });
+
+    await service.notes('user-1', { subjectId: 'sub1' });
+
+    expect(aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          examSessionQuestion: expect.objectContaining({ question: { subjectId: 'sub1' } }),
+        }),
+      }),
+    );
   });
 });
 

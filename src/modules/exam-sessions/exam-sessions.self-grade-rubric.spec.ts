@@ -118,6 +118,44 @@ describe('selfGrade — 채점기준표가 있는 문항(부분점수)', () => {
     });
   });
 
+  /**
+   * 집계용 컬럼(earned_points/rubric_total_points)은 annotations.rubricGrading과 **같은 숫자**여야 한다.
+   * Json 안의 점수는 SQL로 집계할 수 없어 컬럼을 따로 두는데, 둘이 갈라지면 리포트가 조용히 틀린다.
+   */
+  it('부분점수를 Json과 집계용 컬럼에 같은 update로 함께 쓴다(값이 일치한다)', async () => {
+    const { service, tx } = makeService({ snapshot: essaySnapshot(RUBRIC) });
+
+    await call(service, { checkedCriterionIds: ['c1'] });
+
+    // 두 자리가 한 번의 update에 함께 실려야 트랜잭션 중간에 갈라진 상태가 생기지 않는다.
+    expect(tx.examSessionAnswer.update).toHaveBeenCalledTimes(1);
+    const { data } = tx.examSessionAnswer.update.mock.calls[0][0];
+    expect(data.earnedPoints).toBe(6);
+    expect(data.rubricTotalPoints).toBe(10);
+    expect(data.earnedPoints).toBe(data.annotations.rubricGrading.earnedPoints);
+    expect(data.rubricTotalPoints).toBe(data.annotations.rubricGrading.totalPoints);
+  });
+
+  it('재채점(정정)에서도 두 컬럼이 갱신된다', async () => {
+    // 이미 한 번 채점된 답안(isCorrect=true, 6/10 기록됨)을 다시 채점한다.
+    const { service, tx } = makeService({
+      snapshot: essaySnapshot(RUBRIC),
+      answer: {
+        id: 'a1',
+        isCorrect: true,
+        annotations: {
+          rubricGrading: { checkedIds: ['c1'], earnedPoints: 6, totalPoints: 10, isCorrect: true },
+        },
+      },
+    });
+
+    await call(service, { checkedCriterionIds: ['c1', 'c2'] });
+
+    const { data } = tx.examSessionAnswer.update.mock.calls[0][0];
+    expect(data.earnedPoints).toBe(10);
+    expect(data.annotations.rubricGrading.earnedPoints).toBe(10);
+  });
+
   it('빈 배열이면 0점·오답 (체크 없음도 유효한 채점이다)', async () => {
     const { service } = makeService({ snapshot: essaySnapshot(RUBRIC) });
     const res = await call(service, { checkedCriterionIds: [] });
@@ -162,6 +200,20 @@ describe('selfGrade — 채점기준표가 없는 기존 문항(불변)', () => 
     // annotations는 건드리지 않는다 — 부분점수가 없는 채점이다.
     expect(tx.examSessionAnswer.update.mock.calls[0][0].data.annotations).toBeUndefined();
     expect(tx.examSessionAnswer.update.mock.calls[0][0].data.isCorrect).toBe(true);
+  });
+
+  /**
+   * 집계용 컬럼은 **손도 대지 않아 null로 남아야** 한다. 0으로 채우면 리포트가
+   * "0점 받은 서술형"과 구분하지 못해 평균 득점률이 통째로 무너진다.
+   */
+  it('부분점수 컬럼을 쓰지 않는다 — null로 남아야 대상 답안을 골라낼 수 있다', async () => {
+    const { service, tx } = makeService({ snapshot: essaySnapshot() });
+
+    await call(service, { isCorrect: false });
+
+    const { data } = tx.examSessionAnswer.update.mock.calls[0][0];
+    expect(data.earnedPoints).toBeUndefined();
+    expect(data.rubricTotalPoints).toBeUndefined();
   });
 
   it('isCorrect가 없으면 400', async () => {

@@ -17,6 +17,7 @@ import {
 } from '@/common/constants/shop';
 import { REVIEW_STATUS } from '@/modules/exam-sessions/review-state.util';
 import { rankWeaknesses, type ReviewFailureInput } from './weakness.util';
+import { judgeRubricScore } from './rubric-score.util';
 import { buildReviewQueue } from './review-queue.util';
 import { REVIEW_QUEUE_MAX_LIMIT } from './dto/query-review-queue.dto';
 
@@ -301,6 +302,45 @@ export class MeService {
       },
     });
 
+    // 서술형 부분점수 지표(#43 gap 8 후속) — 채점기준표로 채점된 답안의 평균 득점률.
+    //
+    // 왜 여기(별도 엔드포인트가 아니라 /me/notes 응답)인가: 결정 A(#37)와 같은 이유다.
+    // 범위 필터(questionWhere)·1차 응시 조건·인가 경로가 이미 이 요청 안에 다 있고, 별도
+    // 엔드포인트로 빼면 그 조건을 두 벌 유지하면서 왕복만 한 번 더 생긴다. 다만 이쪽은
+    // "무거운 집계를 두 번 돈다"는 부분이 그대로 적용되진 않는다 — 아래는 쿼리 한 방이다.
+    //
+    // 왜 위 graded 루프에서 같이 세지 않고 별도 집계인가: graded는 응답 크기 보험으로
+    // 500건에 잘려 있다(NOTES_GRADED_LIMIT). 잘린 표본으로 평균을 내면 "최근 500건의
+    // 득점률"이 되는데, 그건 화면이 말하는 값이 아니다. **집계를 DB에서 하면** 행을 앱으로
+    // 끌어오지 않으므로 상한을 걸 이유 자체가 없다 — 컬럼을 꺼낸 이유가 그것이다.
+    //
+    // 분류축(하위요소)별로 쪼개지 않은 이유: 축은 questions 쪽 컬럼이라 Prisma groupBy로
+    // 묶을 수 없고(조인 컬럼 그룹화 불가), 축마다 쿼리를 돌리거나 raw SQL로 가야 한다.
+    // 게다가 서술형 표본은 축당 하한(3)을 거의 못 넘겨 대부분 판정 불가가 된다.
+    // 축별 분해가 실제로 필요해지면 그때 전용 쿼리로 낸다.
+    //
+    // 두 컬럼이 NOT NULL인 답안 = 채점기준표로 채점된 답안. rubric 없는 서술형은 두 컬럼이
+    // null로 남으므로(exam-sessions.service의 rubricGradingWrite) 이 조건이 곧 대상 선별이다.
+    const rubricAgg = await this.prisma.examSessionAnswer.aggregate({
+      where: {
+        earnedPoints: { not: null },
+        rubricTotalPoints: { not: null },
+        examSessionQuestion: {
+          examSession: { userId, status: 'SUBMITTED', isReview: false },
+          ...(questionWhere ? { question: questionWhere } : {}),
+        },
+      },
+      _sum: { earnedPoints: true, rubricTotalPoints: true },
+      _count: true,
+    });
+    // Decimal 컬럼이라 Prisma가 Decimal 객체를 돌려준다 — 응답으로 나가기 전에 숫자로 접는다
+    // (JSON 직렬화가 문자열로 바꿔 놓는다). 저장소 관행: exam-sessions의 `Number(q.points)`.
+    const rubricScore = judgeRubricScore({
+      count: rubricAgg._count,
+      earnedPoints: Number(rubricAgg._sum.earnedPoints ?? 0),
+      totalPoints: Number(rubricAgg._sum.rubricTotalPoints ?? 0),
+    });
+
     // 내 주석 — byReason 통계 + 오답 문항별 주석 조인.
     // 범위 필터가 있으면 그 범위에서 채점된 문항의 주석만 센다(원인 통계도 범위를 따라간다).
     const scopedQuestionIds = questionWhere
@@ -420,6 +460,12 @@ export class MeService {
         review: { due, byStatus },
         // 자기채점 대기 서술형 답안 수(#39 B-2) — 범위 필터를 따라간다. 0이면 프론트에서 숨김.
         ungradedCount,
+        /**
+         * 서술형 평균 득점률(#43 gap 8 후속) — 채점기준표로 채점된 답안만, 1차 응시 기준.
+         * 표본 하한(RUBRIC_SCORE_MIN_SAMPLE) 미만이거나 서술형 채점 이력이 없으면 null이다.
+         * null = "판정 불가"이지 "0점"이 아니다 — 화면은 아무것도 띄우지 않는다.
+         */
+        rubricScore,
         /**
          * 약점 진단(#37) — 하위요소 축 기준 상위 3개 + 표본 부족 축.
          * 여기서 계산해 내려주는 이유: 집계가 이미 이 요청 안에 다 있어 추가 쿼리가 없고,

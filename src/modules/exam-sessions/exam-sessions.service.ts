@@ -544,12 +544,11 @@ export class ExamSessionsService {
         where: { id: answerId },
         data: {
           isCorrect,
-          // 부분점수는 새 컬럼 없이 annotations(답안 부가기록 Json)의 예약 키에 담는다.
-          // 여기에 둬도 안전한 이유: annotations를 쓰는 다른 경로는 submitAnswer뿐이고
-          // 그건 IN_PROGRESS에서만 열린다 — 자기채점(SUBMITTED)과 시점이 겹치지 않는다.
-          // 그래도 통째로 덮지 않고 병합한다(필기 스트로크를 지우지 않으려고).
+          // 부분점수는 채점 근거 전체(annotations.rubricGrading)와 집계용 숫자(두 컬럼)를
+          // **한 곳에서 함께** 만들어 같은 update에 싣는다 — 둘이 어긋나면 리포트가 조용히 틀린다.
+          // rubric이 없는 채점은 아무것도 쓰지 않아 두 컬럼이 null로 남는다(대상 선별의 근거).
           ...(rubricGrading
-            ? { annotations: this.mergeRubricGrading(sq.answer?.annotations, rubricGrading) }
+            ? this.rubricGradingWrite(sq.answer?.annotations, rubricGrading)
             : {}),
         },
       });
@@ -643,16 +642,36 @@ export class ExamSessionsService {
   }
 
   /**
-   * 부분점수 결과를 기존 annotations Json에 병합한다(예약 키 `rubricGrading`).
-   * 기존 값이 평범한 객체가 아니면(배열·스칼라 등 손상 데이터) 병합할 자리가 없으므로
-   * 새 객체로 시작한다 — 채점 결과를 못 남기는 것보다 낫다.
+   * 부분점수 채점 결과를 answers update의 data 조각으로 만든다 — **Json과 컬럼을 함께**.
+   *
+   * 왜 두 곳에 같은 숫자를 쓰는가: 채점 근거 전체(체크한 기준 id 등)는 Json이 아니면 담을
+   * 자리가 없고, 반대로 Json 안에 있는 숫자는 SQL로 집계할 수 없다(MySQL JSON 함수는 TiDB
+   * 호환 때문에 쓰지 않는다). 그래서 근거는 Json에, 집계용 숫자는 컬럼에 둔다.
+   *
+   * 두 값이 갈라지지 않게 하는 방법이 이 함수다: 호출부가 각각 채워 넣을 수 있는 여지를 남기지
+   * 않고 **같은 grading 하나에서 세 필드를 동시에 만들어** 한 update에 싣는다.
+   * 재채점도 같은 경로를 지나므로 Json과 컬럼이 함께 갱신된다.
+   *
+   * annotations는 통째로 덮지 않고 병합한다(필기 스트로크를 지우지 않으려고). 기존 값이 평범한
+   * 객체가 아니면(배열·스칼라 등 손상 데이터) 병합할 자리가 없으므로 새 객체로 시작한다 —
+   * 채점 결과를 못 남기는 것보다 낫다. annotations를 쓰는 다른 경로는 submitAnswer뿐이고
+   * 그건 IN_PROGRESS에서만 열린다 — 자기채점(SUBMITTED)과 시점이 겹치지 않는다.
    */
-  private mergeRubricGrading(existing: unknown, grading: RubricGrading): JsonWritable {
+  private rubricGradingWrite(
+    existing: unknown,
+    grading: RubricGrading,
+  ): { annotations: JsonWritable; earnedPoints: number; rubricTotalPoints: number } {
     const base =
       existing && typeof existing === 'object' && !Array.isArray(existing)
         ? (existing as Record<string, unknown>)
         : {};
-    return { ...base, rubricGrading: grading } as JsonWritable;
+    return {
+      annotations: { ...base, rubricGrading: grading } as JsonWritable,
+      // Decimal(8,2) 컬럼이지만 Prisma가 number 입력을 받는다. 값은 rubric-grading.util이
+      // 이미 소수 2자리로 반올림해 둔 것이라 컬럼 정밀도와 어긋나지 않는다.
+      earnedPoints: grading.earnedPoints,
+      rubricTotalPoints: grading.totalPoints,
+    };
   }
 
   /**
