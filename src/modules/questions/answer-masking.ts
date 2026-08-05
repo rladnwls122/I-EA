@@ -65,20 +65,25 @@ export function maskQuestionAnswers<T extends MaskableQuestion>(question: T): T 
 /**
  * metadata에서 `review`만 떼어낸 사본. 나머지 metadata(빈칸 번호 등)는 그대로 둔다.
  * `keep`이 true면(출제자 본인) 원본을 그대로 돌려준다 — 호출부가 분기를 갖지 않게.
+ *
+ * 집계용 사본인 `reviewVerdict` 컬럼도 **같이 뗀다**. 근거 문장만큼 새지는 않지만
+ * "이 문항은 손봐야 한다고 판정됐다"는 출제자만 볼 정보이고, 둘 중 하나만 가리면
+ * 나중에 어느 쪽이 정본인지 헷갈린다.
  */
-export function stripInternalReview<T extends { metadata?: unknown }>(
+export function stripInternalReview<T extends { metadata?: unknown; reviewVerdict?: unknown }>(
   question: T,
   keep = false,
 ): T {
   if (keep) return question;
-  const meta = question.metadata;
-  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return question;
-  if (!('review' in (meta as Record<string, unknown>))) return question;
+  const stripped = 'reviewVerdict' in question ? { ...question, reviewVerdict: null } : question;
+  const meta = stripped.metadata;
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return stripped;
+  if (!('review' in (meta as Record<string, unknown>))) return stripped;
 
   // 구조분해로 빼면 쓰지 않는 바인딩이 남아 lint에 걸린다 — 키를 빼는 게 목적이니 필터가 곧다.
   const rest = Object.fromEntries(
     Object.entries(meta as Record<string, unknown>).filter(([key]) => key !== 'review'),
   );
   // 검수 기록만 있던 metadata는 빈 객체로 남기지 않는다 — 화면이 "메타데이터 있음"으로 오해한다.
-  return { ...question, metadata: Object.keys(rest).length > 0 ? rest : null };
+  return { ...stripped, metadata: Object.keys(rest).length > 0 ? rest : null };
 }

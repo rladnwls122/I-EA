@@ -184,7 +184,7 @@ export function NotesDashboard() {
 
           {/* 서술형 득점률(#43 gap 8 후속) — 정오로 접히기 전의 부분점수.
               판정 불가(표본 부족·서술형 채점 이력 없음)면 서버가 null을 내리고 카드는 사라진다. */}
-          <RubricScoreCard score={data?.summary.rubricScore} />
+          <RubricScoreCard score={data?.summary.rubricScore} subjectId={applied.subjectId} />
 
           {/* 원인 분석 — 도넛 + 원인별 랭킹 */}
           <section className="mb-6 rounded-xl border border-border bg-card p-6">

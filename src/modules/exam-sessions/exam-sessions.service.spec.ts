@@ -125,6 +125,52 @@ describe('ExamSessionsService.create — 하위요소(subjectDetailId) 필터', 
 
     expect('subjectDetailId' in where).toBe(false);
   });
+
+  /**
+   * 서술형 전용 세트 (#33 잔여 2). 서술형 득점률 축의 "공략" 버튼이 쓰는 조건이라
+   * 모집단이 득점률 지표와 같아야 한다 — 셋 중 하나라도 빠지면 다른 문항이 섞인다.
+   */
+  it('rubricOnly가 주관식·기준표 있음·단답 정답 없음 세 조건을 모두 건다', async () => {
+    const service = await makeService({});
+    const where = (
+      service as unknown as { buildQuestionWhere(dto: CreateSessionDto): Record<string, unknown> }
+    ).buildQuestionWhere({
+      subjectId: 'sub1',
+      questionCount: 5,
+      filter: { subjectDetailId: 'd1', rubricOnly: true },
+    } as CreateSessionDto);
+
+    expect(where.AND).toEqual([
+      { questionType: '주관식' },
+      { rubric: { not: Prisma.DbNull } },
+      { OR: [{ correctAnswerText: null }, { correctAnswerText: '' }] },
+    ]);
+    expect(where.subjectDetailId).toBe('d1');
+  });
+
+  it('rubricOnly는 questionTypes를 덮어쓰지 않는다 — 모순된 조합은 빈 결과로 답한다', async () => {
+    const service = await makeService({});
+    const where = (
+      service as unknown as { buildQuestionWhere(dto: CreateSessionDto): Record<string, unknown> }
+    ).buildQuestionWhere({
+      subjectId: 'sub1',
+      questionCount: 5,
+      filter: { questionTypes: ['객관식'], rubricOnly: true },
+    } as CreateSessionDto);
+
+    // 요청한 '객관식'이 그대로 남고, AND가 '주관식'을 더해 교집합이 빈다.
+    expect(where.questionType).toEqual({ in: ['객관식'] });
+    expect(where.AND).toContainEqual({ questionType: '주관식' });
+  });
+
+  it('rubricOnly가 없으면 AND 키 자체가 들어가지 않는다', async () => {
+    const service = await makeService({});
+    const where = (
+      service as unknown as { buildQuestionWhere(dto: CreateSessionDto): Record<string, unknown> }
+    ).buildQuestionWhere({ subjectId: 'sub1', questionCount: 5 } as CreateSessionDto);
+
+    expect('AND' in where).toBe(false);
+  });
 });
 
 /**

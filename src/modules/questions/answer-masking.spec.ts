@@ -171,4 +171,21 @@ describe('stripInternalReview — 자기검증 기록 노출 차단', () => {
     const other = { metadata: { blankIndex: 1 } };
     expect(stripInternalReview(other)).toBe(other);
   });
+
+  it('집계 컬럼(reviewVerdict)도 함께 뗀다 — 판정값만 남으면 우회로가 된다', () => {
+    const out = stripInternalReview({ ...withReview, reviewVerdict: 'REVISE' });
+    expect(out.reviewVerdict).toBeNull();
+    expect((out.metadata as any).review).toBeUndefined();
+  });
+
+  it('metadata에 review가 없어도 reviewVerdict는 뗀다', () => {
+    const out = stripInternalReview({ metadata: { blankIndex: 1 }, reviewVerdict: 'PASS' });
+    expect(out.reviewVerdict).toBeNull();
+    expect((out.metadata as any).blankIndex).toBe(1);
+  });
+
+  it('출제자 본인에게는 판정값이 그대로 간다', () => {
+    const owned = { ...withReview, reviewVerdict: 'REVISE' };
+    expect(stripInternalReview(owned, true)).toBe(owned);
+  });
 });

@@ -1,6 +1,16 @@
 "use client";
-import { PenLine } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2, PenLine, Target } from "lucide-react";
+import { toast } from "sonner";
+import { useCreateSession } from "@/lib/hooks";
 import type { RubricScore } from "@/lib/types";
+
+/**
+ * 서술형 공략 세트 한 판의 문항 수. 약점 진단(10문항)보다 적다 —
+ * 서술형 한 문항은 쓰는 시간도, 자기채점하는 시간도 객관식과 자릿수가 다르다.
+ */
+const ESSAY_SET_SIZE = 5;
 
 /**
  * 서술형 득점률 카드 (#43 gap 8 후속).
@@ -14,7 +24,18 @@ import type { RubricScore } from "@/lib/types";
  * 여기서 다시 계산하지 마라. score가 null이면 판정 불가(표본 부족·서술형 채점 이력 없음)라
  * 아무것도 띄우지 않는다 — 0%로 그리면 "다 틀렸다"는 거짓말이 된다.
  */
-export function RubricScoreCard({ score }: { score: RubricScore | null | undefined }) {
+export function RubricScoreCard({
+  score,
+  subjectId,
+}: {
+  score: RubricScore | null | undefined;
+  /** 현재 필터의 과목. 세션 조립에 필요하다 — 없으면 처방 버튼을 숨긴다(약점 진단과 같은 규칙). */
+  subjectId?: string;
+}) {
+  const router = useRouter();
+  const createSession = useCreateSession();
+  const [pending, setPending] = useState<string | null>(null);
+
   if (!score) return null;
 
   const percent = Math.round(score.ratio * 100);
@@ -22,6 +43,33 @@ export function RubricScoreCard({ score }: { score: RubricScore | null | undefin
   const needsMoreData = score.needsMoreData ?? [];
   // 축이 하나뿐이면 전체와 같은 숫자를 두 번 그리는 셈이라 분해를 접는다.
   const showAxes = byDetail.length > 1;
+
+  /**
+   * 진단 → 행동 (#33 잔여 2). 약점 진단 카드와 **같은 문법**이다 —
+   * 축을 보여 주고 끝내면 학습자가 할 게 없다.
+   * `rubricOnly`가 서술형만 남기므로 이 세트의 모집단은 위 득점률과 같은 집합이다.
+   */
+  const attack = (key: string) => {
+    if (!subjectId) return;
+    setPending(key);
+    createSession.mutate(
+      {
+        subjectId,
+        // 미분류 버킷은 실제 하위요소 id가 아니라 서버 표식이라 필터로 못 쓴다.
+        filter: { ...(key === "UNCLASSIFIED" ? {} : { subjectDetailId: key }), rubricOnly: true },
+        questionCount: ESSAY_SET_SIZE,
+      },
+      {
+        onSuccess: (res) => router.push(`/exam-sessions/${res.id}`),
+        onError: (e) => {
+          setPending(null);
+          toast.error(
+            e instanceof Error ? e.message : "세트를 만들지 못했어요. 서술형 문항이 부족할 수 있어요.",
+          );
+        },
+      },
+    );
+  };
 
   return (
     <section className="mb-6 rounded-xl border border-border bg-card p-6">
@@ -74,6 +122,22 @@ export function RubricScoreCard({ score }: { score: RubricScore | null | undefin
                 <span className="w-24 shrink-0 text-right font-mono text-[11px] tabular-nums text-muted-foreground">
                   {axisPercent}% · {axis.count}문항
                 </span>
+                {subjectId && (
+                  <button
+                    type="button"
+                    disabled={pending !== null}
+                    onClick={() => attack(axis.key)}
+                    aria-label={`${axis.label} 서술형 ${ESSAY_SET_SIZE}문항 공략`}
+                    className="flex flex-none items-center gap-1 rounded-lg bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground transition-opacity disabled:opacity-50"
+                  >
+                    {pending === axis.key ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      <Target size={11} />
+                    )}
+                    {ESSAY_SET_SIZE}문항
+                  </button>
+                )}
               </li>
             );
           })}

@@ -42,8 +42,10 @@ export function WeaknessCard({
     createSession.mutate(
       {
         subjectId,
+        // 하위요소는 **filter 안**이다. 최상위로 보내면 서버가 400으로 되돌린다
+        // (전역 파이프 forbidNonWhitelisted) — 이 버튼이 그렇게 실패하고 있었다.
         // 미분류 버킷은 실제 하위요소 id가 아니라 서버가 만든 표식이라 필터로 못 쓴다.
-        ...(w.key === "UNCLASSIFIED" ? {} : { subjectDetailId: w.key }),
+        ...(w.key === "UNCLASSIFIED" ? {} : { filter: { subjectDetailId: w.key } }),
         questionCount: ATTACK_SET_SIZE,
       },
       {

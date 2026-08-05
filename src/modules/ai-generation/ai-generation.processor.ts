@@ -23,6 +23,7 @@ import { LlmGenerationContext, LlmGenerationResult, LlmQuestion, ReviewAxis } fr
 import { OutputLanguage, resolveOutputLanguage } from './exam-format';
 import { getTemplate, resolveTemplateFormat } from './format-templates';
 import { AI_GENERATION_QUEUE } from './ai-generation.constants';
+import { readReviewVerdict } from '@/modules/questions/question-metadata';
 
 interface GenerationJobData {
   generationId: string;
@@ -206,6 +207,9 @@ export class AiGenerationProcessor extends WorkerHost {
               ...(choices ? { choices: choices as JsonWritable } : {}),
               ...(correctAnswerText ? { correctAnswerText } : {}),
               ...(Object.keys(metadata).length ? { metadata: metadata as JsonWritable } : {}),
+              // 판정의 집계용 사본(#33 잔여 1). metadata.review와 **같은 쓰기**에서 채운다 —
+              // 갈라지면 컬럼만 비어 있는 문항이 생기고 품질 지표가 조용히 거짓말을 한다.
+              reviewVerdict: readReviewVerdict(metadata),
               ...(q.explanationText
                 ? { explanation: buildRichBlocks(q.explanationText) as JsonWritable }
                 : {}),

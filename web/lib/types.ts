@@ -763,13 +763,19 @@ export interface CreateSessionInput {
   questionIds?: string[];
   isReview?: boolean;
   subjectId?: string;
-  /** 하위요소(4단계) 필터 — 약점 공략 세트 조립에 쓴다(#37). */
-  subjectDetailId?: string;
   workbookId?: string;
   questionCount?: number;
   filter?: {
+    /**
+     * 하위요소(4단계) 필터 — 약점 공략 세트 조립에 쓴다(#37).
+     * ⚠ **`filter` 안이다.** 최상위로 보내면 서버 전역 파이프(`forbidNonWhitelisted`)가
+     * 400으로 되돌린다 — 실제로 공략 버튼이 그렇게 실패하고 있었다(토스트만 떴다).
+     */
+    subjectDetailId?: string;
     tagIds?: string[];
     questionTypes?: string[];
+    /** 서술형(채점기준표 채점)만 — 서술형 득점률 축의 처방 세트(#33). */
+    rubricOnly?: boolean;
     minDifficulty?: number;
     maxDifficulty?: number;
   };

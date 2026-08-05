@@ -39,6 +39,23 @@ export class SessionFilterDto {
   @IsIn(QUESTION_KINDS, { each: true })
   questionTypes?: QuestionKind[];
 
+  /**
+   * 서술형(채점기준표로 채점하는 주관식)만 모은다 (#33 잔여 2).
+   *
+   * `questionTypes`는 객관식/주관식까지만 나눈다 — 주관식 안에서 단답(자동채점)과
+   * 서술형(자기채점+부분점수)은 같은 값이라, 득점률 카드가 짚어 준 축을 그대로
+   * 세트로 만들 수단이 없었다.
+   *
+   * 이름을 `essayOnly`가 아니라 `rubricOnly`로 둔 이유: 화면 용어가 아니라 **모집단을
+   * 정의하는 조건**을 담아야 서술형 득점률 지표와 같은 집합임이 코드에서 읽힌다.
+   */
+  @ApiPropertyOptional({
+    description: '서술형(채점기준표 채점)만 — 주관식 + 단답 정답 없음 + 채점기준표 있음',
+  })
+  @IsOptional()
+  @IsBoolean()
+  rubricOnly?: boolean;
+
   @ApiPropertyOptional({ description: '최소 난이도', minimum: 1, maximum: 5 })
   @IsOptional()
   @IsInt()
