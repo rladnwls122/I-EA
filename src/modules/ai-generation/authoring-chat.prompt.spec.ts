@@ -45,6 +45,44 @@ describe('buildAuthoringSystemPrompt', () => {
     expect(p).toContain('해설: 목성은 태양계 최대 행성이다.');
   });
 
+  describe('선지 개수·지문 포함 힌트 (편집기 일원화로 캔버스에 옮긴 조작)', () => {
+    it('선지 개수를 지정하면 정확한 개수를 지시한다', () => {
+      expect(buildAuthoringSystemPrompt({ batchSize: 1, choiceCount: 5 })).toContain(
+        '정확히 5개',
+      );
+    });
+
+    it('OX일 때는 선지 개수 지시를 넣지 않는다 — 2지 규약과 충돌해 모델이 흔들린다', () => {
+      const p = buildAuthoringSystemPrompt({
+        batchSize: 1,
+        questionType: '객관식',
+        ox: true,
+        choiceCount: 5,
+      });
+      expect(p).not.toContain('정확히 5개');
+      expect(p).toContain('O(맞다)');
+    });
+
+    it('지문 포함을 켜면 지문 없이 못 푸는 문항을 요구한다', () => {
+      expect(buildAuthoringSystemPrompt({ batchSize: 1, includePassage: true })).toContain(
+        '지문 없이는 풀 수 없는',
+      );
+    });
+
+    it('지문 포함을 끄면 지문을 넣지 말라고 지시한다', () => {
+      expect(buildAuthoringSystemPrompt({ batchSize: 1, includePassage: false })).toContain(
+        'passage(지문)는 넣지 마세요',
+      );
+    });
+
+    it('지정하지 않으면 어느 쪽 지시도 넣지 않는다 — 모델이 과목을 보고 판단한다', () => {
+      const p = buildAuthoringSystemPrompt({ batchSize: 1 });
+      expect(p).not.toMatch(/객관식 선지는 정확히/);
+      expect(p).not.toContain('passage(지문)는 넣지 마세요');
+      expect(p).not.toContain('지문 없이는 풀 수 없는');
+    });
+  });
+
   it('선지·정답·해설은 문항당 길이를 잘라 토큰 비대를 막는다', () => {
     const long = '가'.repeat(500);
     const p = buildAuthoringSystemPrompt({

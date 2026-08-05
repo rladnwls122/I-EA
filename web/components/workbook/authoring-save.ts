@@ -52,14 +52,34 @@ export function validateSave(pre: SavePreconditions): string | null {
   return null;
 }
 
-/* ── 지문 그룹 ────────────────────────────────────────────────────── */
+/* ── 지문 그룹 ──────────────────────────────────────────────────────
+ * 예전에는 "지문 평문이 완전히 같으면 같은 지문"이었다(#41 분석 C). 두 방향으로 틀렸다:
+ * 한 글자만 고쳐도 그룹이 깨져 지문이 복제됐고, 서로 무관한 문항의 지문이 우연히
+ * 같으면 의도 없이 묶여 한쪽을 고치면 다른 쪽까지 바뀌었다.
+ *
+ * 이제 카드가 `passageGroupId`를 **직접** 들고 다닌다. 저장된 문항은 실제 passage id를,
+ * 아직 저장 안 된 지문은 `local-passage-` id를 갖는다. 텍스트는 더 이상 판정에 쓰지 않는다.
+ *
+ * 평문 일치는 **유입 경계 한 곳**에만 남는다 — 같은 AI 응답에서 나온 문항들의 지문이
+ * 같을 때(지문세트). 거기서는 평문 일치가 "같은 세트"라는 신뢰할 만한 신호다.
+ * 유입 이후로는 id가 정본이라, 편집해도 그룹이 안 깨지고 남과 섞이지도 않는다.
+ * ──────────────────────────────────────────────────────────────────── */
+
+const LOCAL_PASSAGE_PREFIX = 'local-passage-';
+
+/** 아직 저장되지 않은 새 지문 그룹 id. */
+export function newLocalPassageGroupId(seq: number, now = Date.now()): string {
+  return `${LOCAL_PASSAGE_PREFIX}${now}-${seq}`;
+}
+
+/** 이미 서버에 저장된 지문인가(= 그룹 id가 실제 passage id인가). */
+export function isPersistedPassageGroup(groupId: string): boolean {
+  return !groupId.startsWith(LOCAL_PASSAGE_PREFIX);
+}
 
 /**
- * 지문 공유 판정 키 — 평문 완전일치(공백 정리 후). 빈 지문은 묶지 않는다.
- *
- * 알려진 한계(#41 분석 C): 한 글자만 달라도 그룹이 깨지고, 우연히 같으면 의도 없이
- * 묶인다. 명시적 passageId 연결로 바꾸는 게 옳지만 카드 모델과 AI 생성 경로까지
- * 함께 손대야 해서 이번 범위 밖이다. 최소한 규칙을 한곳에 모아 테스트는 걸어 둔다.
+ * 유입 경계용 지문 동일성 키 — 평문 완전일치(공백 정리 후). 빈 지문은 묶지 않는다.
+ * **여기서만** 텍스트로 판정한다. 저장·편집 경로는 passageGroupId를 본다.
  */
 export function passageKey(card: Pick<CanvasCard, 'passage'>): string | null {
   if (!card.passage) return null;
@@ -67,18 +87,28 @@ export function passageKey(card: Pick<CanvasCard, 'passage'>): string | null {
   return text ? text : null;
 }
 
+/** 카드의 지문 그룹 — 지문이 없으면 null(그룹 id가 남아 있어도 무시한다). */
+export function passageGroupOf(card: Pick<CanvasCard, 'passage' | 'passageGroupId'>): string | null {
+  if (!card.passage) return null;
+  return card.passageGroupId ?? null;
+}
+
 /**
- * 저장해야 할 서로 다른 지문 목록 — 같은 지문은 한 번만 만든다.
- * 반환 순서는 카드 순서를 따른다(생성 순서를 예측 가능하게).
+ * 저장해야 할 서로 다른 지문 목록 — 그룹당 한 번만. 같은 그룹의 카드가 여럿이면
+ * **첫 카드의 내용**을 정본으로 삼는다(편집 전파가 그룹 전체를 같은 값으로 맞춰 두므로
+ * 어느 것을 골라도 같지만, 전파가 실패한 경우에도 결과가 결정적이어야 한다).
+ * 반환 순서는 카드 순서를 따른다.
  */
-export function uniquePassages(cards: CanvasCard[]): { key: string; passage: unknown }[] {
+export function uniquePassages(
+  cards: CanvasCard[],
+): { groupId: string; passage: unknown }[] {
   const seen = new Set<string>();
-  const out: { key: string; passage: unknown }[] = [];
+  const out: { groupId: string; passage: unknown }[] = [];
   for (const c of cards) {
-    const key = passageKey(c);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push({ key, passage: c.passage });
+    const groupId = passageGroupOf(c);
+    if (!groupId || seen.has(groupId)) continue;
+    seen.add(groupId);
+    out.push({ groupId, passage: c.passage });
   }
   return out;
 }
@@ -152,4 +182,81 @@ export function buildQuestionPayload(
       card.type === '주관식' && card.answerText.trim() ? card.answerText.trim() : undefined,
     explanation: isRichEmpty(card.explanation) ? undefined : docToBlocks(card.explanation),
   };
+}
+
+/* ── 변경 감지 ──────────────────────────────────────────────────────
+ * 저장은 지금까지 **모든** 카드를 무조건 다시 썼다. 기존 문제집을 열어 오탈자 하나만
+ * 고치고 저장해도 20문항 전부에 PATCH가 나갔고, 지문은 아예 매번 새로 만들어져
+ * 저장할 때마다 같은 지문이 복제됐다.
+ *
+ * 서버와 일치하던 마지막 모습을 지문(fingerprint)으로 들고 있다가, 같은 값이면 건너뛴다.
+ * 태그 id 대신 키워드 이름을 쓰는 이유: id는 저장 시점에야 정해지지만 사용자가 바꾼 것은
+ * 이름이고, 이름이 그대로면 붙을 태그도 그대로다.
+ * ──────────────────────────────────────────────────────────────────── */
+
+/** 문항 내용의 지문 — 이게 같으면 서버에 다시 쓸 이유가 없다. */
+export function questionFingerprint(card: CanvasCard): string {
+  return JSON.stringify(
+    buildQuestionPayload(card, {
+      tagIds: normalizeKeywords(card.keywords),
+      passageId: passageGroupOf(card) ?? undefined,
+    }),
+  );
+}
+
+/** 지문(passage) 내용의 지문. */
+export function passageFingerprint(passage: unknown): string {
+  return JSON.stringify(passage ?? null);
+}
+
+/* ── 이미지 등록 ────────────────────────────────────────────────────
+ * `POST /media-assets`는 questionId·passageId 중 하나가 **이미 존재**해야 해서
+ * 저장 전 새 카드에서는 부를 수 없다(Phase 2에서 남긴 구멍). 저장 직후 id가 생기는
+ * 이 자리가 등록의 제자리다.
+ *
+ * 등록 대상은 "이번에 새로 들어온 이미지"뿐이다. 불러올 때 이미 문서에 있던 이미지는
+ * 등록됐거나(정상) 등록 기능이 없던 시절의 것인데, 어느 쪽이든 다시 등록하면
+ * media_assets에 중복 행만 쌓인다.
+ * ──────────────────────────────────────────────────────────────────── */
+
+/** 노드 트리(doc·블록 배열 무관) 안의 image src를 순서대로, 중복 없이 모은다. */
+export function collectImageSrcs(value: unknown): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const walk = (node: any): void => {
+    if (!node) return;
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (node.type === 'image' && typeof node.attrs?.src === 'string') {
+      const src = node.attrs.src;
+      if (!seen.has(src)) {
+        seen.add(src);
+        out.push(src);
+      }
+    }
+    if (Array.isArray(node.content)) node.content.forEach(walk);
+  };
+  walk(value);
+  return out;
+}
+
+/** 카드 본문(발문·선지·해설)에 실린 이미지 — 지문은 별도 대상이라 제외한다. */
+export function cardImageSrcs(card: CanvasCard): string[] {
+  const parts: unknown[] = [card.stem, card.explanation];
+  for (const ch of card.choices) {
+    if (ch.sourceContent) parts.push(ch.sourceContent);
+    if (ch.sourceExplanation) parts.push(ch.sourceExplanation);
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of parts) {
+    for (const src of collectImageSrcs(part)) {
+      if (seen.has(src)) continue;
+      seen.add(src);
+      out.push(src);
+    }
+  }
+  return out;
 }

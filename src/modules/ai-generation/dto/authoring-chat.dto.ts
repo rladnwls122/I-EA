@@ -78,6 +78,22 @@ export class AuthoringChatDto {
   @Max(5)
   difficulty?: number;
 
+  /**
+   * 객관식 선지 개수(2~8). 생략하면 시험별 관행(수능·내신·한능검 5지 /
+   * 공무원·공기업·토익 4지)을 프롬프트로 유도만 하고 개수를 강제하지 않는다.
+   * ox가 true면 무시된다(항상 2지). 비동기 생성(CreateGenerationDto)과 같은 규약이다.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  @Max(8)
+  choiceCount?: number;
+
+  /** 지문을 함께 만들지. 생략하면 문항 성격에 따라 모델이 판단한다. */
+  @IsOptional()
+  @IsBoolean()
+  includePassage?: boolean;
+
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

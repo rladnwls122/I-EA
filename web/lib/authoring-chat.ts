@@ -173,6 +173,10 @@ export interface AuthoringChatBody {
   ox?: boolean;
   /** 난이도 1~5. */
   difficulty?: number;
+  /** 객관식 선지 개수(2~8). 생략하면 시험별 관행을 프롬프트로 유도만 한다. */
+  choiceCount?: number;
+  /** 지문을 함께 만들지. 생략하면 AI가 문항 성격에 따라 판단한다. */
+  includePassage?: boolean;
   currentQuestions?: {
     index: number;
     questionType: string;

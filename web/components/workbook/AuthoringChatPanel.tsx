@@ -27,6 +27,20 @@ const TYPE_OPTIONS: Array<{ label: string; value: AiSettings["questionType"] }> 
   { label: "OX", value: "OX" },
 ];
 
+/** 선지 개수 — null은 "자동"(시험별 관행을 AI가 따른다). */
+const CHOICE_COUNT_OPTIONS: Array<{ label: string; value: AiSettings["choiceCount"] }> = [
+  { label: "자동", value: null },
+  { label: "4지", value: 4 },
+  { label: "5지", value: 5 },
+];
+
+/** 지문 포함 — null은 "자동"(문항 성격에 따라 AI가 판단). */
+const PASSAGE_OPTIONS: Array<{ label: string; value: AiSettings["includePassage"] }> = [
+  { label: "자동", value: null },
+  { label: "포함", value: true },
+  { label: "없음", value: false },
+];
+
 export function AuthoringChatPanel({
   workbookId,
   cards,
@@ -48,8 +62,13 @@ export function AuthoringChatPanel({
    * 있으면 이걸 그대로 쓰고, 과목 목록을 다시 불러와 임의로 고르지 않는다.
    */
   resolvedSubjectId?: string;
-  /** 캔버스 반영. 실패하면 한국어 사유를 반환한다(성공 시 null) — 스레드에 표시. */
-  onApplyQuestion: (q: ParsedQuestion) => string | null;
+  /**
+   * 캔버스 반영. 실패하면 한국어 사유를 반환한다(성공 시 null) — 스레드에 표시.
+   * `originKey`는 이 문항이 나온 AI 응답의 식별자다. 캔버스가 같은 응답에서 나온
+   * 지문세트(예: (가)(나) 주제통합)를 하나로 묶는 데만 쓴다 — 응답이 다르면
+   * 지문 평문이 우연히 같아도 남남이다.
+   */
+  onApplyQuestion: (q: ParsedQuestion, originKey: string) => string | null;
   /** 카드 ✨AI 버튼이 넣어주는 입력창 프리필(예: "문제 2 수정: "). */
   prefill?: string | null;
   onPrefillConsumed?: () => void;
@@ -163,6 +182,8 @@ export function AuthoringChatPanel({
         batchSize: settings.count,
         questionType,
         ox,
+        ...(settings.choiceCount ? { choiceCount: settings.choiceCount } : {}),
+        ...(settings.includePassage !== null ? { includePassage: settings.includePassage } : {}),
         difficulty: settings.difficulty,
         currentQuestions,
       },
@@ -207,7 +228,9 @@ export function AuthoringChatPanel({
   };
 
   const apply = (mi: number, qi: number, q: ParsedQuestion) => {
-    const reason = onApplyQuestion(q);
+    // 스레드는 append와 제자리 갱신만 하고 중간을 지우지 않으므로, 인덱스가 그대로
+    // 그 응답의 식별자가 된다.
+    const reason = onApplyQuestion(q, `msg-${mi}`);
     if (reason) {
       // 조용히 버리지 않는다 — 실패 사유를 스레드에 남겨 사용자가 재요청할 수 있게.
       setMessages((p) => [
@@ -285,6 +308,48 @@ export function AuthoringChatPanel({
             />
             <span className="w-4 font-mono tabular-nums text-foreground">{settings.difficulty}</span>
           </label>
+        </div>
+        {/* 선지 개수·지문 포함 — 편집기 일원화(#41 Phase 3)로 사라진 두 조작을 캔버스로 옮긴 것.
+            "자동"이 기본인 이유: 시험마다 관행이 달라(수능 5지 / 공무원·토익 4지) 사용자가
+            매번 고르는 것보다 AI가 과목을 보고 따르는 게 맞을 때가 대부분이다. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-medium text-muted-foreground">선지</span>
+            {CHOICE_COUNT_OPTIONS.map((o) => (
+              <button
+                key={o.label}
+                type="button"
+                disabled={settings.questionType === "주관식"}
+                onClick={() => onSettingsChange({ ...settings, choiceCount: o.value })}
+                aria-pressed={settings.choiceCount === o.value}
+                className={`rounded-md border px-2 py-1 text-[11px] transition-colors disabled:opacity-40 ${
+                  settings.choiceCount === o.value
+                    ? "border-transparent bg-primary font-medium text-primary-foreground"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-medium text-muted-foreground">지문</span>
+            {PASSAGE_OPTIONS.map((o) => (
+              <button
+                key={o.label}
+                type="button"
+                onClick={() => onSettingsChange({ ...settings, includePassage: o.value })}
+                aria-pressed={settings.includePassage === o.value}
+                className={`rounded-md border px-2 py-1 text-[11px] transition-colors ${
+                  settings.includePassage === o.value
+                    ? "border-transparent bg-primary font-medium text-primary-foreground"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

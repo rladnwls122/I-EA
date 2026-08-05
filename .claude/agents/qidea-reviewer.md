@@ -74,7 +74,7 @@ F7. **KaTeX 부활.** `katex` import, `katex/dist/katex.min.css`, `MathText` 컴
 
 F8. **LLM 생성 시각화.** `VizRenderer`, `sanitizeSvg`, `app/api/ai/visualize/route.ts`. Vega-Lite 스펙은 프론트 소스에 하드코딩하고 `data.values`에만 API 응답을 바인딩해야 한다. LLM이 만든 스펙을 실행하면 임의 JS 실행이다.
 
-F9. **사이드바 조건부 분기.** 통계 위젯은 `notes/[questionId]/@sidebar` Parallel Route로만 존재해야 한다. `if (pathname.startsWith('/notes'))` 같은 런타임 분기는 `questions/[id]`(풀이 전 탐색)나 `studio/editor`(출제 중)에서 정답 통계가 새는 경로다.
+F9. **사이드바 조건부 분기.** 통계 위젯은 `notes/[questionId]/@sidebar` Parallel Route로만 존재해야 한다. `if (pathname.startsWith('/notes'))` 같은 런타임 분기는 `questions/[id]`(풀이 전 탐색)나 `edit`(저작 캔버스 — 출제 중)에서 정답 통계가 새는 경로다.
 
 F10. **`UnitTreeSelect` 또는 units 개념 부활.** units 테이블은 없다. `GET /subjects` 1회 호출 후 클라에서 `examType` → `examCategory` 순으로 그룹핑하는 **3단계** 셀렉트다. 유니크 키가 `(examType, examCategory, name)`이므로 `examType`을 빼고 과목을 특정하면 "수능 국어 문학"과 "내신 국어 문학"이 뒤섞인다.
 
