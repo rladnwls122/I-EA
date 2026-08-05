@@ -164,16 +164,22 @@ function choicePayload(ch: CanvasChoice, index: number) {
  *
  * `explanation`은 doc 래퍼만 벗겨 블록 배열로 보낸다 — 평문을 거치지 않는다.
  * 예전엔 `extractPlainText → buildRichBlocks` 왕복이라 서식이 저장 한 번에 증발했다.
+ *
+ * **`tagIds`와 `passageId`는 비어 있어도 반드시 싣는다.** 백엔드 PATCH는 필드가 없으면
+ * "안 건드림"으로 읽는다(`dto.tagIds ? 교체 : 유지`, `dto.passageId !== undefined ? 반영 : 유지`).
+ * 예전처럼 빈 값을 생략하면 **삭제를 표현할 방법이 없다** — 마지막 키워드를 지우거나
+ * 지문을 떼도 서버에는 그대로 남는다. 변경 감지가 붙은 지금은 그 상태가 "동기화됨"으로
+ * 기준선에 박혀 다음 저장에서도 건너뛰므로, 영영 반영되지 않는다.
  */
 export function buildQuestionPayload(
   card: CanvasCard,
-  opts: { tagIds: string[]; passageId?: string },
+  opts: { tagIds: string[]; passageId?: string | null },
 ) {
   return {
     questionType: card.type,
     points: card.points,
-    ...(opts.tagIds.length ? { tagIds: opts.tagIds } : {}),
-    ...(opts.passageId ? { passageId: opts.passageId } : {}),
+    tagIds: opts.tagIds,
+    passageId: opts.passageId ?? null,
     stem: card.stem,
     choices:
       card.type === '객관식'

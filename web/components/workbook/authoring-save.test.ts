@@ -226,10 +226,13 @@ describe('buildQuestionPayload', () => {
     expect(p.choices[1].explanation).toBeUndefined();
   });
 
-  it('tagIds·passageId는 값이 있을 때만 필드로 넣는다', () => {
+  it('tagIds·passageId는 비어 있어도 반드시 싣는다 — 생략하면 삭제를 표현할 수 없다', () => {
+    // 백엔드 PATCH는 필드가 없으면 "안 건드림"으로 읽는다. 예전처럼 빈 값을 생략하면
+    // 마지막 키워드를 지우거나 지문을 떼도 서버에는 그대로 남고, 변경 감지가 그 상태를
+    // "동기화됨"으로 기준선에 박아 다음 저장에서도 건너뛴다.
     const bare = buildQuestionPayload(card(), { tagIds: [] }) as any;
-    expect('tagIds' in bare).toBe(false);
-    expect('passageId' in bare).toBe(false);
+    expect(bare.tagIds).toEqual([]);
+    expect(bare.passageId).toBeNull();
 
     const full = buildQuestionPayload(card(), { tagIds: ['t1'], passageId: 'p1' }) as any;
     expect(full.tagIds).toEqual(['t1']);

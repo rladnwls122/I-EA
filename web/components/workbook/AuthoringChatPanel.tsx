@@ -319,7 +319,11 @@ export function AuthoringChatPanel({
               <button
                 key={o.label}
                 type="button"
-                disabled={settings.questionType === "주관식"}
+                // OX는 선지가 2개로 고정이라 백엔드가 choiceCount를 무시한다 —
+                // 누를 수 있게 두면 선택된 것처럼 보이면서 아무 효과가 없다.
+                disabled={
+                  settings.questionType === "주관식" || settings.questionType === "OX"
+                }
                 onClick={() => onSettingsChange({ ...settings, choiceCount: o.value })}
                 aria-pressed={settings.choiceCount === o.value}
                 className={`rounded-md border px-2 py-1 text-[11px] transition-colors disabled:opacity-40 ${

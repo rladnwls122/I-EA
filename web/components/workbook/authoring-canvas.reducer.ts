@@ -15,6 +15,7 @@ import type { CanvasCard } from './AuthoringCanvas';
 import {
   newLocalCardId,
   newLocalPassageGroupId,
+  passageFingerprint,
   passageGroupOf,
   passageKey,
 } from './authoring-save';
@@ -41,6 +42,14 @@ export interface CanvasState {
   /** 문제집 메타(#키워드·공개 설정) 복원이 끝났는가. */
   metaHydrated: boolean;
   /**
+   * 지금 카드 목록이 문제집의 **전부**인가.
+   *
+   * 복원이 끝나기 전에 사용자가 카드를 넣으면 복원을 건너뛴다(방금 만든 문항을 지울 수
+   * 없으므로). 그때 화면에는 서버에 있는 문항이 빠져 있다 — 그 상태로 순서·빼기를
+   * 보내면 서버가 "누락" 400을 주거나, 더 나쁘게는 안 지운 문항을 지우게 된다.
+   */
+  compositionKnown: boolean;
+  /**
    * 같은 AI 응답에서 나온 지문세트를 잇기 위한 유입 경계 장부.
    * 키는 `${응답 키}::${지문 평문}`. 이 장부 **밖에서는** 평문으로 지문을 묶지 않는다.
    */
@@ -61,6 +70,7 @@ export function initialCanvasState(initialSubjectId?: string): CanvasState {
     baseline: emptyBaseline(),
     questionsHydrated: false,
     metaHydrated: false,
+    compositionKnown: false,
     aiPassageGroups: {},
     seq: 0,
   };
@@ -99,16 +109,18 @@ export function canvasReducer(state: CanvasState, action: CanvasAction): CanvasS
       // 이미 사용자가 카드를 넣었으면 덮어쓰지 않는다 — 복원이 늦게 도착해도
       // 방금 만든 문항을 지우면 안 된다. 그래도 하이드레이션은 끝난 것으로 본다.
       return state.cards.length > 0
-        ? { ...state, questionsHydrated: true }
+        ? { ...state, questionsHydrated: true, compositionKnown: false }
         : {
             ...state,
             cards: action.cards,
             baseline: action.baseline,
             questionsHydrated: true,
+            compositionKnown: true,
           };
 
     case 'hydrateQuestionsEmpty':
-      return { ...state, questionsHydrated: true };
+      // 빈 문제집 — 복원할 게 없으니 화면이 곧 전부다.
+      return { ...state, questionsHydrated: true, compositionKnown: true };
 
     case 'hydrateMeta':
       if (state.metaHydrated) return state;
@@ -199,7 +211,11 @@ export function canvasReducer(state: CanvasState, action: CanvasAction): CanvasS
       if (!next.passage) next.passageGroupId = null;
 
       const group = passageGroupOf(next);
-      const passageChanged = 'passage' in action.patch && next.passage !== target.passage;
+      // 내용으로 본다. 참조 비교(`!==`)는 Tiptap이 같은 내용의 새 객체를 내보내는
+      // onChange마다 참이 돼, 고치지도 않은 지문을 전파하고 알림까지 띄운다.
+      const passageChanged =
+        'passage' in action.patch &&
+        passageFingerprint(next.passage) !== passageFingerprint(target.passage);
       const cards = state.cards.map((c) => {
         if (c.id === action.id) return next;
         // 지문 편집은 같은 **그룹**의 카드에 즉시 전파된다. 예전엔 편집을 끝낼 때
@@ -240,7 +256,9 @@ export function canvasReducer(state: CanvasState, action: CanvasAction): CanvasS
     case 'finishEdit': {
       const edited = state.cards.find((c) => c.id === state.editingId);
       const group = edited ? passageGroupOf(edited) : null;
-      const changed = !!edited && edited.passage !== state.editingPassageAtStart;
+      const changed =
+        !!edited &&
+        passageFingerprint(edited.passage) !== passageFingerprint(state.editingPassageAtStart);
       const shared =
         changed && group
           ? state.cards.filter((c) => c.id !== edited!.id && passageGroupOf(c) === group).length
@@ -269,7 +287,16 @@ export function canvasReducer(state: CanvasState, action: CanvasAction): CanvasS
           ...(newGroup ? { passageGroupId: newGroup } : {}),
         };
       });
-      return { ...state, cards, baseline };
+      // 유입 장부도 함께 옮긴다. 안 옮기면 저장 뒤에 같은 AI 응답의 남은 문항을 적용할 때
+      // 이미 사라진 local-passage-* 가 붙어, 방금 저장한 지문과 같은 내용의 지문이
+      // 하나 더 생기고 세트가 쪼개진다.
+      const aiPassageGroups = Object.fromEntries(
+        Object.entries(state.aiPassageGroups).map(([slot, groupId]) => [
+          slot,
+          newPassageIdByGroupId[groupId] ?? groupId,
+        ]),
+      );
+      return { ...state, cards, baseline, aiPassageGroups };
     }
 
     default:

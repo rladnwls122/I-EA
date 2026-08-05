@@ -47,6 +47,9 @@ export interface SaveClient {
   updateQuestion(id: string, payload: unknown): Promise<unknown>;
   publishQuestion(id: string): Promise<unknown>;
   addQuestionToWorkbook(questionId: string): Promise<unknown>;
+  removeQuestionFromWorkbook(questionId: string): Promise<unknown>;
+  /** 문제집 **전체** 문항 순서. 서버가 빠짐없는 집합을 요구한다. */
+  reorderWorkbookQuestions(questionIds: string[]): Promise<unknown>;
   updateWorkbook(patch: {
     tagIds: string[];
     visibility?: 'PUBLIC' | 'PRIVATE';
@@ -86,6 +89,11 @@ export interface SaveInput {
   isPublic: boolean;
   /** 문제집 공개 설정이 서버와 달라졌는지 — 안 바뀌었으면 visibility를 보내지 않는다. */
   visibilityChanged: boolean;
+  /**
+   * 지금 카드 목록이 문제집의 전부인가. 아니면 순서·빼기를 손대지 않는다 —
+   * 반쪽 목록으로 순서를 보내면 서버가 "누락" 400을 주고, 빼기는 의도치 않은 삭제가 된다.
+   */
+  compositionKnown: boolean;
   baseline: SaveBaseline;
 }
 
@@ -151,9 +159,13 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
   };
   const registered = new Set(baseline.registeredImages);
 
+  // 발문이 빈 카드는 저장 대상이 아니다. 지문 루프까지 전체 카드를 돌면 어느 문항에도
+  // 연결되지 않는 passage 행이 생성·발행된다.
+  const savable = input.cards.filter(isSavableCard);
+
   /* 1) 지문 — 그룹당 한 번. 새 그룹만 만들고, 이미 있는 그룹은 내용이 바뀐 것만 고친다. */
   const passageIdByGroup = new Map<string, string>();
-  for (const { groupId, passage } of uniquePassages(input.cards)) {
+  for (const { groupId, passage } of uniquePassages(savable)) {
     const fingerprint = passageFingerprint(passage);
     if (isPersistedPassageGroup(groupId)) {
       passageIdByGroup.set(groupId, groupId);
@@ -161,6 +173,8 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
       try {
         await client.updatePassage(groupId, passage);
         baseline.passages[groupId] = fingerprint;
+        // 생성 분기에만 등록이 있으면, 기존 지문에 새로 넣은 이미지는 끝내 등록되지 않는다.
+        await registerImages(collectImageSrcs(passage), { passageId: groupId });
       } catch (e) {
         // 지문 갱신 실패는 문항을 못 잇는 실패가 아니다 — 연결은 그대로 살아 있고
         // 내용만 예전 것이다. 기준선을 갱신하지 않아 다음 저장에서 다시 시도한다.
@@ -192,8 +206,16 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
   } catch {
     // 목록을 못 받아도 저장을 막지 않는다 — 아래에서 전부 새로 만들려 시도한다.
   }
-  const resolveTagIds = async (keywords: string[]): Promise<string[]> => {
+  /**
+   * 키워드 → 태그 id. **실패를 숨기지 않는다** — 일부 태그를 못 만든 채 성공으로 치면
+   * 그 카드의 기준선이 "키워드 전부 반영됨"으로 박혀, 빠진 키워드가 다음 저장에서도
+   * 건너뛰어져 영영 사라진다.
+   */
+  const resolveTagIds = async (
+    keywords: string[],
+  ): Promise<{ ids: string[]; complete: boolean }> => {
     const ids: string[] = [];
+    let complete = true;
     for (const name of normalizeKeywords(keywords)) {
       const key = name.toLowerCase();
       let id = tagIdByName.get(key);
@@ -202,12 +224,13 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
           id = (await client.createKeywordTag(name)).id;
           tagIdByName.set(key, id);
         } catch {
-          continue; // 이 키워드만 건너뛰고 나머지는 계속
+          complete = false; // 이 키워드만 건너뛰고 나머지는 계속
+          continue;
         }
       }
       ids.push(id);
     }
-    return ids;
+    return { ids, complete };
   };
 
   /* 3) 문항 — 새 문항은 순서대로 하나씩(담기는 순서가 문제집 순서), 갱신은 제한 병렬. */
@@ -216,16 +239,30 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
   let failedCount = 0;
   let lastError = '';
 
-  const payloadFor = async (card: CanvasCard) => {
+  /**
+   * 기준선에 박을 카드 모습. 새로 만들어진 지문은 이 시점에 이미 실제 id를 얻었으므로
+   * 그 id로 계산해야 한다 — local-passage-* 로 남겨 두면 리듀서가 곧바로 실제 id로
+   * 갈아 끼우는 바람에 지문 가진 새 문항이 매번 한 번씩 헛 PATCH를 맞는다.
+   */
+  const withResolvedPassage = (card: CanvasCard): CanvasCard => {
     const group = passageGroupOf(card);
-    const tagIds = await resolveTagIds(card.keywords);
-    return buildQuestionPayload(card, {
-      tagIds,
-      passageId: group ? passageIdByGroup.get(group) : undefined,
-    });
+    const real = group ? passageIdByGroup.get(group) : undefined;
+    return real && real !== group ? { ...card, passageGroupId: real } : card;
   };
 
-  const savable = input.cards.filter(isSavableCard);
+  const payloadFor = async (card: CanvasCard) => {
+    const group = passageGroupOf(card);
+    const { ids, complete } = await resolveTagIds(card.keywords);
+    return {
+      payload: buildQuestionPayload(card, {
+        tagIds: ids,
+        // 지문을 뗀 카드는 null을 **명시**해야 서버가 기존 연결을 끊는다.
+        passageId: group ? (passageIdByGroup.get(group) ?? null) : null,
+      }),
+      complete,
+    };
+  };
+
   const toUpdate: CanvasCard[] = [];
   const toCreate: CanvasCard[] = [];
   for (const card of savable) {
@@ -236,7 +273,10 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
     // 지문이 이번에 새로 생겼으면 문항의 passageId도 바뀌므로 반드시 다시 써야 한다.
     const group = passageGroupOf(card);
     const passageJustCreated = !!group && group in newPassageIdByGroupId;
-    if (!passageJustCreated && baseline.questions[card.id] === questionFingerprint(card)) {
+    if (
+      !passageJustCreated &&
+      baseline.questions[card.id] === questionFingerprint(withResolvedPassage(card))
+    ) {
       skippedCount += 1;
       continue;
     }
@@ -245,10 +285,11 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
 
   await mapWithLimit(toUpdate, UPDATE_CONCURRENCY, async (card) => {
     try {
-      const payload = await payloadFor(card);
+      const { payload, complete } = await payloadFor(card);
       await client.updateQuestion(card.id, payload);
       savedCount += 1;
-      baseline.questions[card.id] = questionFingerprint(card);
+      // 태그를 다 못 붙였으면 기준선을 세우지 않는다 — 다음 저장이 다시 시도해야 한다.
+      if (complete) baseline.questions[card.id] = questionFingerprint(withResolvedPassage(card));
       await registerImages(cardImageSrcs(card), { questionId: card.id });
     } catch (e) {
       failedCount += 1;
@@ -258,7 +299,7 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
 
   for (const card of toCreate) {
     try {
-      const payload = await payloadFor(card);
+      const { payload, complete } = await payloadFor(card);
       const created = await client.createQuestion({ subjectId: input.subjectId, ...payload });
       // 발행 실패를 삼키고 담기를 강행하면 백엔드가 "발행되지 않은 문항" 404를 돌려줘
       // 원인이 가려진다 — 단계별로 실패를 구분한다.
@@ -268,7 +309,11 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
       newQuestionIdByCardId[card.id] = created.id;
       // 기준선은 **새 id** 기준으로 남긴다 — 컴포넌트가 카드 id를 교체하므로
       // 다음 저장에서는 이 카드가 새 id로 찾아온다.
-      baseline.questions[created.id] = questionFingerprint({ ...card, id: created.id });
+      if (complete) {
+        baseline.questions[created.id] = questionFingerprint(
+          withResolvedPassage({ ...card, id: created.id }),
+        );
+      }
       await registerImages(cardImageSrcs(card), { questionId: created.id });
     } catch (e) {
       failedCount += 1;
@@ -288,9 +333,44 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
     notices.push({ level: 'success', message: '바뀐 내용이 없어 그대로 두었어요.' });
   }
 
-  /* 4) 문제집 메타 — 공개 설정(바뀐 경우만) + #키워드(항상 전체 교체). */
+  /* 4) 문제집 구성 — 뺀 문항과 순서.
+   *
+   * 캔버스의 🗑 버튼과 드래그는 지금까지 **화면에만** 반영됐다. 저장은 "N개 저장했어요"라고
+   * 성공을 알리지만 새로고침하면 지운 문항이 돌아오고 순서도 원래대로였다.
+   * (문항 자체를 지우는 게 아니라 이 문제집에서 빼는 것이다 — 문항은 라이브러리에 남는다.)
+   *
+   * 실패가 하나라도 있으면 둘 다 건너뛴다. 서버가 순서 API에 "빠짐없는 전체 집합"을
+   * 요구하는데, 저장 못 한 문항이 있으면 우리 목록이 서버와 다르므로 400이 되고,
+   * 그 상태에서 삭제까지 밀어붙이면 사용자가 의도하지 않은 결과가 남는다. */
+  const idOf = (c: CanvasCard) => newQuestionIdByCardId[c.id] ?? c.id;
+  const liveIds = input.cards.map(idOf).filter(isPersistedCard);
+  if (failedCount === 0 && input.compositionKnown) {
+    const live = new Set(liveIds);
+    for (const goneId of Object.keys(baseline.questions).filter((id) => !live.has(id))) {
+      try {
+        await client.removeQuestionFromWorkbook(goneId);
+        delete baseline.questions[goneId];
+      } catch (e) {
+        notices.push({ level: 'error', message: `문항을 빼지 못했어요. (${errorText(e)})` });
+      }
+    }
+    if (liveIds.length > 1) {
+      try {
+        await client.reorderWorkbookQuestions(liveIds);
+      } catch (e) {
+        notices.push({ level: 'error', message: `문항 순서를 저장하지 못했어요. (${errorText(e)})` });
+      }
+    }
+  } else if (failedCount > 0) {
+    notices.push({
+      level: 'error',
+      message: '저장에 실패한 문항이 있어 순서와 삭제는 반영하지 않았어요.',
+    });
+  }
+
+  /* 5) 문제집 메타 — 공개 설정(바뀐 경우만) + #키워드(항상 전체 교체). */
   try {
-    const workbookTagIds = await resolveTagIds(input.workbookKeywords);
+    const { ids: workbookTagIds } = await resolveTagIds(input.workbookKeywords);
     const visibility = input.isPublic ? 'PUBLIC' : 'PRIVATE';
     await client.updateWorkbook({
       tagIds: workbookTagIds,
@@ -328,11 +408,14 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
   ): Promise<void> {
     for (const storageUrl of srcs) {
       if (registered.has(storageUrl)) continue;
+      // 호출 **전에** 예약한다. 확인과 기록 사이에 await이 있으면, 같은 이미지가 두 카드에
+      // 실린 채 병렬 갱신을 타는 순간 두 워커가 나란히 통과해 중복 행이 생긴다 —
+      // 이 함수가 막겠다고 한 바로 그 중복이다.
+      registered.add(storageUrl);
       try {
         await client.registerImage({ storageUrl, ...target });
-        registered.add(storageUrl);
       } catch {
-        // 조용히 넘긴다. 다음 저장에서 다시 시도된다.
+        registered.delete(storageUrl); // 다음 저장에서 다시 시도된다
       }
     }
   }

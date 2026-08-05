@@ -31,6 +31,8 @@ function fakeClient(over: Partial<SaveClient> = {}) {
     createQuestion: 0,
     updateQuestion: 0,
     addToWorkbook: [] as string[],
+    removedFromWorkbook: [] as string[],
+    reordered: [] as string[][],
     registerImage: [] as { storageUrl: string; questionId?: string; passageId?: string }[],
     updateWorkbook: [] as any[],
   };
@@ -59,6 +61,14 @@ function fakeClient(over: Partial<SaveClient> = {}) {
       calls.addToWorkbook.push(id);
       return null;
     },
+    removeQuestionFromWorkbook: async (id) => {
+      calls.removedFromWorkbook.push(id);
+      return null;
+    },
+    reorderWorkbookQuestions: async (ids) => {
+      calls.reordered.push(ids);
+      return null;
+    },
     updateWorkbook: async (patch) => {
       calls.updateWorkbook.push(patch);
       return null;
@@ -78,6 +88,7 @@ const input = (over: Partial<Parameters<typeof runSave>[0]> = {}) => ({
   workbookKeywords: [],
   isPublic: false,
   visibilityChanged: false,
+  compositionKnown: true,
   baseline: emptyBaseline(),
   ...over,
 });
@@ -351,5 +362,212 @@ describe('runSave — 태그와 문제집 메타', () => {
     });
     await runSave(input(), client);
     expect(calls.updateWorkbook.length).toBe(1);
+  });
+});
+
+describe('runSave — 문제집 구성(순서·빼기)', () => {
+  const persisted = (id: string) => card({ id, stem: buildRichDoc(`발문 ${id}`) });
+
+  it('카드를 지우면 문제집에서도 뺀다 — 화면에서만 사라지고 새로고침하면 돌아오던 문제', async () => {
+    const a = persisted('q-a');
+    const b = persisted('q-b');
+    const first = await runSave(input({ cards: [a, b] }), fakeClient().client);
+
+    const { client, calls } = fakeClient();
+    const out = await runSave(input({ cards: [a], baseline: first.baseline }), client);
+
+    expect(calls.removedFromWorkbook).toEqual(['q-b']);
+    expect(out.baseline.questions['q-b']).toBeUndefined();
+  });
+
+  it('순서를 서버에 보낸다 — 서버가 빠짐없는 전체 집합을 요구하므로 카드 순서 그대로', async () => {
+    const a = persisted('q-a');
+    const b = persisted('q-b');
+    const first = await runSave(input({ cards: [a, b] }), fakeClient().client);
+
+    const { client, calls } = fakeClient();
+    await runSave(input({ cards: [b, a], baseline: first.baseline }), client);
+
+    expect(calls.reordered).toEqual([['q-b', 'q-a']]);
+  });
+
+  it('새로 만든 문항은 실제 id로 순서에 실린다', async () => {
+    const { client, calls } = fakeClient();
+    await runSave(input({ cards: [card({ id: 'local-1-0' }), card({ id: 'local-1-1' })] }), client);
+    expect(calls.reordered).toEqual([['q-1', 'q-2']]);
+  });
+
+  it('실패한 문항이 있으면 순서·빼기를 건너뛰고 그 사실을 알린다', async () => {
+    // 서버는 순서 API에 빠짐없는 집합을 요구한다 — 저장 못 한 문항이 있으면 400이 되고,
+    // 그 상태에서 삭제까지 밀어붙이면 의도치 않은 결과가 남는다.
+    const a = persisted('q-a');
+    const b = persisted('q-b');
+    const first = await runSave(input({ cards: [a, b] }), fakeClient().client);
+
+    const edited = { ...a, stem: buildRichDoc('고침') };
+    const { client, calls } = fakeClient({
+      updateQuestion: async () => {
+        throw new Error('서버 오류');
+      },
+    });
+    const out = await runSave(input({ cards: [edited], baseline: first.baseline }), client);
+
+    expect(calls.removedFromWorkbook).toEqual([]);
+    expect(calls.reordered).toEqual([]);
+    expect(out.notices.some((n) => /순서와 삭제는 반영하지 않/.test(n.message))).toBe(true);
+  });
+});
+
+describe('runSave — 삭제를 표현할 수 있는 페이로드', () => {
+  it('마지막 키워드를 지우면 빈 tagIds를 명시해 보낸다 — 생략하면 서버가 그대로 둔다', async () => {
+    const withTag = card({ id: 'q-1', keywords: ['미적분'] });
+    const first = await runSave(input({ cards: [withTag] }), fakeClient().client);
+
+    let sent: any = null;
+    const { client } = fakeClient({
+      updateQuestion: async (_id, payload) => {
+        sent = payload;
+        return null;
+      },
+    });
+    await runSave(input({ cards: [{ ...withTag, keywords: [] }], baseline: first.baseline }), client);
+    expect(sent.tagIds).toEqual([]);
+  });
+
+  it('지문을 떼면 passageId: null을 명시해 보낸다', async () => {
+    const withPassage = card({
+      id: 'q-1',
+      passage: buildRichDoc('지문'),
+      passageGroupId: 'passage-9',
+    });
+    const first = await runSave(input({ cards: [withPassage] }), fakeClient().client);
+
+    let sent: any = null;
+    const { client } = fakeClient({
+      updateQuestion: async (_id, payload) => {
+        sent = payload;
+        return null;
+      },
+    });
+    await runSave(
+      input({
+        cards: [{ ...withPassage, passage: null, passageGroupId: null }],
+        baseline: first.baseline,
+      }),
+      client,
+    );
+    expect(sent.passageId).toBeNull();
+  });
+});
+
+describe('runSave — 부분 실패는 동기화된 것으로 기록하지 않는다', () => {
+  it('태그를 못 만들면 기준선을 세우지 않는다 — 세우면 그 키워드가 영영 누락된다', async () => {
+    const { client } = fakeClient({
+      createKeywordTag: async () => {
+        throw new Error('태그 생성 실패');
+      },
+    });
+    const out = await runSave(input({ cards: [card({ id: 'q-1', keywords: ['미적분'] })] }), client);
+    expect(out.savedCount).toBe(1);
+    expect(out.baseline.questions['q-1']).toBeUndefined();
+  });
+
+  it('지문을 가진 새 문항은 다음 저장에서 헛 PATCH를 맞지 않는다', async () => {
+    const fresh = card({
+      id: 'local-1-0',
+      passage: buildRichDoc('지문'),
+      passageGroupId: 'local-passage-1',
+    });
+    const first = await runSave(input({ cards: [fresh] }), fakeClient().client);
+
+    // 저장 뒤 리듀서가 하는 일: 카드 id와 지문 그룹 id를 실제 id로 교체.
+    const afterSave = {
+      ...fresh,
+      id: first.newQuestionIdByCardId['local-1-0'],
+      passageGroupId: first.newPassageIdByGroupId['local-passage-1'],
+    };
+    const { client, calls } = fakeClient();
+    const out = await runSave(input({ cards: [afterSave], baseline: first.baseline }), client);
+
+    expect(calls.updateQuestion).toBe(0);
+    expect(out.skippedCount).toBe(1);
+  });
+
+  it('발문이 빈 카드의 지문은 만들지 않는다 — 어디에도 안 붙는 지문 행이 생긴다', async () => {
+    const { client, calls } = fakeClient();
+    await runSave(
+      input({
+        cards: [
+          card({
+            stem: buildRichDoc(''),
+            passage: buildRichDoc('지문'),
+            passageGroupId: 'local-passage-1',
+          }),
+        ],
+      }),
+      client,
+    );
+    expect(calls.createPassage).toBe(0);
+  });
+
+  it('기존 지문에 새로 넣은 이미지도 등록한다', async () => {
+    const withImage = {
+      type: 'doc',
+      content: [{ type: 'image', attrs: { src: 'https://cdn/p.png' } }],
+    };
+    const cards = [card({ id: 'q-1', passage: withImage, passageGroupId: 'passage-9' })];
+    const { client, calls } = fakeClient();
+    await runSave(input({ cards }), client);
+
+    expect(calls.registerImage).toContainEqual({
+      storageUrl: 'https://cdn/p.png',
+      passageId: 'passage-9',
+    });
+  });
+
+  it('같은 이미지가 여러 카드에 실려 병렬로 저장돼도 한 번만 등록한다', async () => {
+    const src = 'https://cdn/shared.png';
+    const withImage = (n: string) => ({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: n }] },
+        { type: 'image', attrs: { src } },
+      ],
+    });
+    const cards = [
+      card({ id: 'q-1', stem: withImage('1') }),
+      card({ id: 'q-2', stem: withImage('2') }),
+      card({ id: 'q-3', stem: withImage('3') }),
+      card({ id: 'q-4', stem: withImage('4') }),
+    ];
+    // 확인과 기록 사이에 await이 실제로 끼도록 지연을 준다 — 예약을 안 하면
+    // 4-병렬 워커가 나란히 통과해 중복 등록이 난다.
+    const { client, calls } = fakeClient({
+      registerImage: async (args) => {
+        calls.registerImage.push(args);
+        await new Promise((r) => setTimeout(r, 5));
+        return null;
+      },
+    });
+    await runSave(input({ cards }), client);
+
+    expect(calls.registerImage.filter((c) => c.storageUrl === src)).toHaveLength(1);
+  });
+});
+
+describe('runSave — 목록이 문제집의 전부가 아닐 때', () => {
+  it('순서·빼기를 손대지 않는다 — 반쪽 목록으로 보내면 서버가 누락 400을 준다', async () => {
+    const a = card({ id: 'q-a' });
+    const b = card({ id: 'q-b', stem: buildRichDoc('발문 b') });
+    const first = await runSave(input({ cards: [a, b] }), fakeClient().client);
+
+    const { client, calls } = fakeClient();
+    await runSave(
+      input({ cards: [a], baseline: first.baseline, compositionKnown: false }),
+      client,
+    );
+
+    expect(calls.removedFromWorkbook).toEqual([]);
+    expect(calls.reordered).toEqual([]);
   });
 });
