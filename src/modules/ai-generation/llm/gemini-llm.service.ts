@@ -47,6 +47,12 @@ const RETRY_BACKOFF_MS = 400;
 const SELF_REVIEW_TIMEOUT_MS = 60_000;
 
 /**
+ * 자기검증을 끄는 값들. 기본이 켜짐이므로 **끄는 쪽**을 명시적으로 열거한다.
+ * 빈 문자열이 여기 없는 것에 주의 — 설정하지 않은 상태는 "켜짐"이다(기본값).
+ */
+const SELF_REVIEW_OFF_VALUES = new Set(['false', '0', 'off', 'no']);
+
+/**
  * 짧은 백오프로 재시도할 가치가 있는 장애: 5xx(일시적 과부하) / 타임아웃 / 네트워크.
  */
 class RetryableLlmError extends Error {}
@@ -82,11 +88,21 @@ export class GeminiLlmService {
   /** 재현성 추적을 위해 ai_generations.model에 저장할 값 */
   readonly model: string;
   /**
-   * LLM 자기검증(#34 후속) 스위치. **기본값은 꺼짐**이고, 켜야만 2차 호출이 나간다.
+   * LLM 자기검증(#34 후속) 스위치. **기본값은 켜짐**이다(#33 도그푸딩 잔여 1).
    *
-   * 요청 파라미터가 아니라 환경변수로 둔 이유: 이 기능이 유예됐던 사유가 "호출 비용 배가"라,
-   * 켤지 말지는 최종 사용자의 취향이 아니라 **운영 비용 결정**이다. DTO·프론트·input_params
-   * 스냅샷을 건드리지 않으므로 꺼진 경로의 동작이 종전과 완전히 같음도 자명해진다.
+   * 요청 파라미터가 아니라 환경변수로 둔 이유: 켤지 말지는 최종 사용자의 취향이 아니라
+   * **운영 비용 결정**이다.
+   *
+   * 기본값을 뒤집은 근거 — "비용이 배가된다"는 원래 유예 사유가 실제와 달랐다:
+   *  - 배가되는 건 **호출 수**(배치당 1회 추가)이지 토큰이 아니다. 판정 응답은 문항당
+   *    한두 줄짜리 JSON이라 생성 출력보다 훨씬 작고, 입력도 방금 만든 문항 본문뿐이다.
+   *  - 검증이 꺼져 있으면 "품질이 미달인지"를 볼 데이터가 영영 안 쌓인다. 도그푸딩으로
+   *    판단하겠다고 미뤄 둔 항목이 도그푸딩 데이터를 만들지 않는 설정에 묶여 있었다.
+   *  - 실패는 이미 무해하게 설계돼 있다: 판정이 죽어도 문항은 그대로 저장되고
+   *    (프로세서의 selfReview catch), 판정 결과로 문항을 버리거나 재생성하지 않는다.
+   *
+   * 끄려면 `AI_SELF_REVIEW=false`(또는 0/off/no). 그 밖의 값은 켜짐으로 본다 —
+   * 오타 하나로 품질 장치가 조용히 꺼지는 쪽보다, 끄려는 의도를 명시하게 하는 쪽이 낫다.
    */
   readonly isSelfReviewEnabled: boolean;
   private readonly maxTokens: number;
@@ -113,11 +129,14 @@ export class GeminiLlmService {
     this.baseUrl =
       this.config.get<string>('GEMINI_BASE_URL') ??
       'https://generativelanguage.googleapis.com/v1beta';
-    this.isSelfReviewEnabled =
-      String(this.config.get<string>('AI_SELF_REVIEW') ?? '').toLowerCase() === 'true';
-    if (this.isSelfReviewEnabled) {
-      // 켠 사람이 비용 배가를 알고 켰는지 로그로 확인할 수 있게 한다.
-      this.logger.log(`LLM 자기검증 활성화(AI_SELF_REVIEW) — 생성 배치마다 판정 호출이 1회 추가됩니다.`);
+    this.isSelfReviewEnabled = !SELF_REVIEW_OFF_VALUES.has(
+      String(this.config.get<string>('AI_SELF_REVIEW') ?? '')
+        .trim()
+        .toLowerCase(),
+    );
+    if (!this.isSelfReviewEnabled) {
+      // 끈 것은 명시적 결정이다 — 나중에 "검수 배지가 왜 안 뜨지"를 로그에서 찾을 수 있게 남긴다.
+      this.logger.warn('LLM 자기검증 비활성화(AI_SELF_REVIEW) — 생성 결과에 검수 기록이 남지 않습니다.');
     }
   }
 

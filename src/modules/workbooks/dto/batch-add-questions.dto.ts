@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayNotEmpty, IsArray, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayNotEmpty, IsArray } from 'class-validator';
 import { QUESTION_BATCH_MAX } from '@/common/constants/question';
 import { CreateQuestionDto } from '@/modules/questions/dto/create-question.dto';
 
@@ -15,18 +14,20 @@ import { CreateQuestionDto } from '@/modules/questions/dto/create-question.dto';
  *
  * **items의 순서가 곧 문제집 순서다.** 서버가 요청 순서대로 displayOrder를 매긴다
  * (그래서 클라이언트가 순차 루프로 순서를 지킬 이유가 사라진다 — 그게 이 배치의 요점이다).
+ *
+ * ⚠️ `@ValidateNested`를 걸지 않는 이유는 `BatchUpdateQuestionsDto`와 같다 — 항목 하나의
+ * 형식 오류가 배치 전체를 400으로 만들면, 서비스 실패만 항목별로 격리해 둔 게 무의미해진다.
+ * 항목 검증은 서비스가 `validateBatchItems(items, CreateQuestionDto)`로 돌린다.
  */
 export class BatchAddQuestionsDto {
   @ApiProperty({
     description:
       `새로 만들어 담을 문항 목록(최대 ${QUESTION_BATCH_MAX}건). ` +
-      '배열 순서대로 문제집 뒤에 붙는다.',
+      '배열 순서대로 문제집 뒤에 붙는다. 항목 형식 오류는 그 항목만 실패한다.',
     type: [CreateQuestionDto],
   })
   @IsArray()
   @ArrayNotEmpty()
   @ArrayMaxSize(QUESTION_BATCH_MAX)
-  @ValidateNested({ each: true })
-  @Type(() => CreateQuestionDto)
-  items!: CreateQuestionDto[];
+  items!: unknown[];
 }

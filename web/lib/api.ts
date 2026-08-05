@@ -18,6 +18,7 @@ import type {
   CreateAiGenerationInput,
   QuestionStats,
   QuestionBatchResponse,
+  MediaBatchResponse,
   QuestionComment,
   UserQuestionAnnotation,
   AuthResponse,
@@ -554,6 +555,37 @@ export function registerMediaAsset(data: {
   return apiFetch<{ id: string; storageUrl: string }>('/media-assets', {
     method: 'POST',
     body: JSON.stringify({ assetType: 'IMAGE', ...data }),
+  });
+}
+
+/**
+ * 한 배치 요청에 실을 수 있는 미디어 등록 건수 상한.
+ *
+ * ⚠️ 백엔드 `MEDIA_BATCH_MAX`의 **사본**이다(문항 상한과 같은 관행 —
+ * `src/modules/media/media.batch.web-mirror.spec.ts`가 두 파일을 대조한다).
+ */
+export const MEDIA_BATCH_MAX = 100;
+
+/**
+ * 3단계 일괄 — 이미지 등록을 한 번에 (#33 도그푸딩 잔여 3).
+ *
+ * 문항 저장이 배치가 된 뒤 남은 왕복의 대부분이 이미지 등록이었다: 그림 20장이면
+ * `POST /media-assets`가 20번 나갔다. 결과는 **항목별**이라 하나가 실패해도 나머지는
+ * 등록되고, 등록은 멱등이라 같은 그림을 다시 보내도 행이 늘지 않는다.
+ */
+export function registerMediaAssetsBatch(
+  items: {
+    storageUrl: string;
+    assetType?: 'IMAGE';
+    questionId?: string;
+    passageId?: string;
+    widthPx?: number;
+    heightPx?: number;
+  }[],
+) {
+  return apiFetch<MediaBatchResponse>('/media-assets/batch', {
+    method: 'POST',
+    body: JSON.stringify({ items: items.map((i) => ({ assetType: 'IMAGE', ...i })) }),
   });
 }
 

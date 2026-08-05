@@ -16,6 +16,8 @@ import {
   type BatchItemResult,
   type BatchResult,
 } from '@/common/dto/batch-result';
+import { validateBatchItems } from '@/common/dto/batch-validation';
+import { CreateQuestionDto } from '@/modules/questions/dto/create-question.dto';
 import {
   AUTHOR_PUBLISH_REWARD,
   resolveAuthorRewardQuota,
@@ -374,8 +376,13 @@ export class WorkbooksService {
     )._max.displayOrder;
     let nextOrder = (max ?? -1) + 1;
 
-    const results: BatchItemResult[] = [];
-    for (const [index, item] of dto.items.entries()) {
+    // 형식 검증도 항목별이다(#33 잔여 4) — 깨진 항목 하나가 나머지를 되돌리지 않는다.
+    // 실패한 항목은 자리(displayOrder)를 **차지하지 않는다**: 담기지 않은 문항 몫으로
+    // 번호를 비워 두면 문제집 순서에 구멍이 생기고, 뒤이은 순서 저장이 그 구멍을 메우며
+    // 사용자가 보던 순서와 어긋난다.
+    const { valid, failures } = validateBatchItems(dto.items, CreateQuestionDto);
+    const results: BatchItemResult[] = [...failures];
+    for (const { index, dto: item } of valid) {
       try {
         const created = await this.prisma.$transaction(async (tx) => {
           // 생성·발행은 questions 모듈의 코드를 그대로 탄다(과목 존재·채점기준표 규칙 포함).
@@ -401,6 +408,7 @@ export class WorkbooksService {
       }
     }
 
+    results.sort((a, b) => a.index - b.index);
     return toBatchResult(results);
   }
 

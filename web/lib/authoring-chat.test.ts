@@ -1,10 +1,5 @@
-/**
- * 주의: web에는 아직 테스트 러너가 없어서 이 파일은 **실행되지 않는다**.
- * 루트 jest는 rootDir=src / testRegex=*.spec.ts 라 여기까지 오지 않는다.
- * 지금은 `tsc --noEmit`로 타입만 검증된다(@types/jest는 그래서 devDependency에 있다).
- * 러너(vitest 등)를 붙이면 그때부터 실제로 돈다 — 그 전까지 통과 여부는 보장되지 않는다.
- */
-import { parseQuestionBlocks, stripQuestionBlocks } from './authoring-chat';
+import { vi } from 'vitest';
+import { parseQuestionBlocks, stripQuestionBlocks, streamAuthoringChat } from './authoring-chat';
 
 const withBlock = [
   '좋아요, 한 문제 만들어볼게요.',
@@ -81,5 +76,95 @@ describe('parseQuestionBlocks', () => {
 describe('stripQuestionBlocks', () => {
   it('산문만 남기고 블록을 제거한다', () => {
     expect(stripQuestionBlocks(withBlock).trim()).toBe('좋아요, 한 문제 만들어볼게요.');
+  });
+});
+
+/* ── SSE 소비 (#33 도그푸딩 잔여 1 — 자기검증 프레임) ───────────────── */
+
+/** SSE 프레임 배열을 흘리는 가짜 fetch를 심고, 끝나면 되돌린다. */
+function mockSse(frames: string[], ok = true, status = 200) {
+  const encoder = new TextEncoder();
+  const body = {
+    getReader() {
+      let i = 0;
+      return {
+        read: async () =>
+          i < frames.length
+            ? { value: encoder.encode(frames[i++]), done: false }
+            : { value: undefined, done: true },
+      };
+    },
+  };
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => ({ ok, status, body: ok ? body : null })) as never;
+  return () => {
+    globalThis.fetch = original;
+  };
+}
+
+const body = { workbookId: 'w1', subjectId: 's1', message: '만들어줘' };
+
+describe('streamAuthoringChat — 검수 프레임', () => {
+  it('done 뒤에 오는 review 프레임을 받는다 — done에서 끊으면 판정을 영영 못 본다', async () => {
+    const restore = mockSse([
+      'data: {"delta":"본문"}\n\n',
+      'data: {"done":true}\n\n',
+      'event: review\ndata: {"model":"m","at":"t","verdicts":[{"index":0,"verdict":"REVISE","axes":["오답매력도"],"issues":["겹친다"]}]}\n\n',
+    ]);
+    const onDone = vi.fn();
+    const onReview = vi.fn();
+
+    await streamAuthoringChat(body, { onDelta: () => {}, onDone, onError: () => {}, onReview });
+
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onDone).toHaveBeenCalledWith('본문');
+    expect(onReview).toHaveBeenCalledTimes(1);
+    expect(onReview.mock.calls[0][0].verdicts[0]).toMatchObject({ index: 0, verdict: 'REVISE' });
+    restore();
+  });
+
+  it('판정이 오지 않고 끝나면 null로 닫는다 — 배지가 영원히 스피너로 남으면 안 된다', async () => {
+    const restore = mockSse(['data: {"delta":"본문"}\n\n', 'data: {"done":true}\n\n']);
+    const onReview = vi.fn();
+
+    await streamAuthoringChat(body, {
+      onDelta: () => {},
+      onDone: () => {},
+      onError: () => {},
+      onReview,
+    });
+
+    expect(onReview).toHaveBeenCalledWith(null);
+    restore();
+  });
+
+  it('오류로 끝난 턴은 onDone 없이 판정만 닫는다', async () => {
+    const restore = mockSse(['event: error\ndata: {"message":"실패"}\n\n']);
+    const onDone = vi.fn();
+    const onError = vi.fn();
+    const onReview = vi.fn();
+
+    await streamAuthoringChat(body, { onDelta: () => {}, onDone, onError, onReview });
+
+    expect(onError).toHaveBeenCalledWith('실패');
+    expect(onDone).not.toHaveBeenCalled();
+    expect(onReview).toHaveBeenCalledTimes(1);
+    expect(onReview).toHaveBeenCalledWith(null);
+    restore();
+  });
+
+  it('요청 자체가 실패해도 판정 기다림을 닫는다', async () => {
+    const restore = mockSse([], false, 500);
+    const onReview = vi.fn();
+
+    await streamAuthoringChat(body, {
+      onDelta: () => {},
+      onDone: () => {},
+      onError: () => {},
+      onReview,
+    });
+
+    expect(onReview).toHaveBeenCalledWith(null);
+    restore();
   });
 });

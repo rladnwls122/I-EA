@@ -18,6 +18,10 @@ export function RubricScoreCard({ score }: { score: RubricScore | null | undefin
   if (!score) return null;
 
   const percent = Math.round(score.ratio * 100);
+  const byDetail = score.byDetail ?? [];
+  const needsMoreData = score.needsMoreData ?? [];
+  // 축이 하나뿐이면 전체와 같은 숫자를 두 번 그리는 셈이라 분해를 접는다.
+  const showAxes = byDetail.length > 1;
 
   return (
     <section className="mb-6 rounded-xl border border-border bg-card p-6">
@@ -46,6 +50,44 @@ export function RubricScoreCard({ score }: { score: RubricScore | null | undefin
           </p>
         </div>
       </div>
+
+      {/*
+        분류축별 분해 (#33 도그푸딩 잔여 2).
+        전체 득점률은 "서술형이 약하다"까지만 말한다. 어디를 손볼지는 축이 말해야 하고,
+        서버가 **낮은 순**으로 정렬해 주므로 화면은 순서를 다시 정하지 않는다(첫 줄이 곧 다음 할 일).
+      */}
+      {showAxes && (
+        <ul className="mt-4 space-y-2 border-t border-border pt-4">
+          {byDetail.map((axis) => {
+            const axisPercent = Math.round(axis.ratio * 100);
+            return (
+              <li key={axis.key} className="flex items-center gap-3">
+                <span className="w-28 shrink-0 truncate text-xs text-foreground/80" title={axis.label}>
+                  {axis.label}
+                </span>
+                <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-raised">
+                  <div
+                    className="h-full rounded-full bg-purple/70 transition-[width] duration-700 ease-out motion-reduce:transition-none"
+                    style={{ width: `${axisPercent}%` }}
+                  />
+                </div>
+                <span className="w-24 shrink-0 text-right font-mono text-[11px] tabular-nums text-muted-foreground">
+                  {axisPercent}% · {axis.count}문항
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* 표본이 모자란 축 — 숨기면 "내가 푼 서술형은 어디 갔지"가 된다(약점 진단과 같은 문법). */}
+      {needsMoreData.length > 0 && (
+        <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+          표본이 적어 판정을 미룬 유형:{" "}
+          {needsMoreData.map((n) => `${n.label}(${n.count}문항)`).join(", ")} — 조금 더 풀면
+          여기에 들어와요.
+        </p>
+      )}
     </section>
   );
 }

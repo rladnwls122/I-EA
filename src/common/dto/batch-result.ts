@@ -18,6 +18,8 @@ export interface BatchItemResult {
   questionId?: string;
   /** 성공 시 — 문제집에 담긴 자리(생성 배치 전용). */
   displayOrder?: number;
+  /** 성공 시 — 등록된 미디어 id(미디어 배치 전용). 등록은 멱등이라 기존 행의 id일 수 있다. */
+  mediaId?: string;
   /** 실패 시 — 사용자에게 그대로 보여도 되는 사유. */
   error?: string;
 }

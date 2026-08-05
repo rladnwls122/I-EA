@@ -56,15 +56,19 @@ describe('GeminiLlmService — 자기검증', () => {
       )
       .mockResolvedValue(raw);
 
-  describe('옵트인 스위치', () => {
-    it('기본값은 꺼짐 — env가 없으면 자기검증을 하지 않는다', async () => {
-      expect((await makeService()).isSelfReviewEnabled).toBe(false);
+  describe('스위치 (#33 도그푸딩 잔여 1 — 기본 켬)', () => {
+    it('기본값은 켜짐 — env가 없어도 자기검증이 돈다', async () => {
+      expect((await makeService()).isSelfReviewEnabled).toBe(true);
+      expect((await makeService({ AI_SELF_REVIEW: '' })).isSelfReviewEnabled).toBe(true);
     });
 
-    it('AI_SELF_REVIEW="true"일 때만 켜진다', async () => {
-      expect((await makeService({ AI_SELF_REVIEW: 'true' })).isSelfReviewEnabled).toBe(true);
-      expect((await makeService({ AI_SELF_REVIEW: '1' })).isSelfReviewEnabled).toBe(false);
-      expect((await makeService({ AI_SELF_REVIEW: 'false' })).isSelfReviewEnabled).toBe(false);
+    it('끄려면 끄는 뜻을 명시해야 한다 — 오타로 조용히 꺼지지 않는다', async () => {
+      for (const off of ['false', 'FALSE', '0', 'off', 'no', ' false ']) {
+        expect((await makeService({ AI_SELF_REVIEW: off })).isSelfReviewEnabled).toBe(false);
+      }
+      for (const on of ['true', '1', 'yes', 'ture']) {
+        expect((await makeService({ AI_SELF_REVIEW: on })).isSelfReviewEnabled).toBe(true);
+      }
     });
 
     it('판정 모델은 생성 모델을 그대로 쓴다(결정 6 — 같은 값을 가리키는 두 번째 손잡이를 만들지 않는다)', async () => {

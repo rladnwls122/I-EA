@@ -18,16 +18,17 @@ import {
   createPassage,
   publishPassage,
   updatePassage,
-  registerMediaAsset,
+  registerMediaAssetsBatch,
+  MEDIA_BATCH_MAX,
   fetchQuestion,
   fetchSubjects,
   fetchTags,
   createTag,
   regenerateChoices,
 } from "@/lib/api";
-import type { QuestionBatchResponse } from "@/lib/types";
+import type { MediaBatchResponse, QuestionBatchResponse } from "@/lib/types";
 import { useWorkbook, useStartWorkbook } from "@/lib/hooks";
-import type { Question, RubricCriterion } from "@/lib/types";
+import type { Question, RubricCriterion, SelfReviewNote } from "@/lib/types";
 import { readRubricCriteria } from "@/lib/rubric";
 import { questionRejectReason, type ParsedQuestion } from "@/lib/authoring-chat";
 import { AuthoringChatPanel } from "./AuthoringChatPanel";
@@ -63,6 +64,18 @@ function toBatchItems(response: QuestionBatchResponse): SaveBatchItem[] {
     r.status === "ok" && r.questionId
       ? { index: r.index, questionId: r.questionId }
       : { index: r.index, error: r.error || "문항을 저장하지 못했어요." },
+  );
+}
+
+/**
+ * 미디어 배치 응답 → 저장 로직이 아는 모양. 문항과 달리 id를 저장 쪽에서 쓰지 않는다 —
+ * 필요한 건 "이 자리가 등록됐는가"뿐이다(기준선 갱신 판단).
+ */
+function toMediaBatchItems(response: MediaBatchResponse): SaveBatchItem[] {
+  return response.results.map((r) =>
+    r.status === "ok"
+      ? { index: r.index }
+      : { index: r.index, error: r.error || "이미지를 등록하지 못했어요." },
   );
 }
 
@@ -114,6 +127,15 @@ export interface CanvasCard {
   rubric?: RubricCriterion[];
   /** #키워드 — 자유 태깅. 저장 시 태그로 find-or-create 후 tagIds로 연결. */
   keywords: string[];
+  /**
+   * AI 자기검증 판정(#34) — 이 카드가 AI 제안에서 왔고 판정이 도착했을 때만 있다.
+   * 저장 시 `metadata.review`로 함께 나가 문항 상세의 검수 패널이 이어받는다.
+   *
+   * 사람이 손으로 고친 뒤에도 판정을 지우지 않는다: 판정은 "그때 AI가 이렇게 봤다"는
+   * 기록이지 현재 상태의 보증이 아니고(모델·시각이 함께 남는다), 고쳤는지 여부를
+   * 코드가 알 방법도 없다. 지워 버리면 "손봤더니 지적이 사라졌다"로 읽혀 더 나쁘다.
+   */
+  review?: SelfReviewNote;
 }
 
 /** AI 생성 설정(채팅창 밖 독립 패널) — null은 "자동"(힌트 없음, AI가 판단). */
@@ -138,7 +160,7 @@ export interface AiSettings {
  */
 type CardContent = Omit<CanvasCard, "id" | "passageGroupId">;
 
-function toCard(q: ParsedQuestion): CardContent | null {
+function toCard(q: ParsedQuestion, review?: SelfReviewNote): CardContent | null {
   const isObjective = q.questionType === "객관식";
   const toChoices = (list: string[]): CanvasChoice[] =>
     // 평문에 실린 수식 델리미터도 여기서 노드로 승격된다(buildRichDoc).
@@ -163,6 +185,7 @@ function toCard(q: ParsedQuestion): CardContent | null {
       // AI가 제안한 #키워드 — 카드에 채워두면 사용자가 그대로 두거나 수정할 수 있고,
       // 저장 시 기존 resolveTagIds 로직이 그대로 태그로 만들어 붙인다.
       keywords: q.keywords ?? [],
+      ...(review ? { review } : {}),
     };
   }
   return {
@@ -175,6 +198,7 @@ function toCard(q: ParsedQuestion): CardContent | null {
     explanation: q.explanation ? buildRichDoc(q.explanation) : buildRichDoc(""),
     points: 1,
     keywords: q.keywords ?? [],
+    ...(review ? { review } : {}),
   };
 }
 
@@ -215,6 +239,9 @@ function questionToCard(q: Question): CanvasCard {
     // 채점기준표는 주관식만 갖는다. 형태가 어긋난 값은 null이 되고, 그 경우 기준 없음으로 연다.
     rubric: isObjective ? [] : (readRubricCriteria(q.rubric) ?? []),
     keywords,
+    // 저장된 AI 검수 기록을 되살린다 — 문제집을 다시 열었을 때도 손볼 문항이 보여야 한다.
+    // (서버는 이 필드를 출제자 본인에게만 내려준다 — stripInternalReview.)
+    ...(q.metadata?.review ? { review: q.metadata.review } : {}),
   };
 }
 
@@ -390,23 +417,26 @@ export function AuthoringCanvas({
   // 검증(toCard)은 dispatch 밖에서 — StrictMode 이중 실행에도 토스트가 두 번 뜨지 않는다.
   // 실패 시 구체적 사유를 반환한다 — 채팅 패널이 스레드에 그대로 표시해, 문항이
   // "조용히 버려지는" 일을 막는다.
-  const applyQuestion = useCallback((q: ParsedQuestion, originKey: string): string | null => {
-    const reason = questionRejectReason(q);
-    const content = reason === null ? toCard(q) : null;
-    if (!content) {
-      const detail = reason ?? "문항 형식이 올바르지 않아요";
-      toast.error(`문항을 적용하지 못했어요 — ${detail}.`);
-      return detail;
-    }
-    dispatch({
-      type: "applyAiQuestion",
-      card: content,
-      target: q.target ?? "new",
-      originKey,
-      now: Date.now(),
-    });
-    return null;
-  }, []);
+  const applyQuestion = useCallback(
+    (q: ParsedQuestion, originKey: string, review?: SelfReviewNote): string | null => {
+      const reason = questionRejectReason(q);
+      const content = reason === null ? toCard(q, review) : null;
+      if (!content) {
+        const detail = reason ?? "문항 형식이 올바르지 않아요";
+        toast.error(`문항을 적용하지 못했어요 — ${detail}.`);
+        return detail;
+      }
+      dispatch({
+        type: "applyAiQuestion",
+        card: content,
+        target: q.target ?? "new",
+        originKey,
+        now: Date.now(),
+      });
+      return null;
+    },
+    [],
+  );
 
   /* ── 카드 편집 핸들러 ── */
   const startEdit = useCallback((id: string) => dispatch({ type: "startEdit", id }), []);
@@ -509,7 +539,10 @@ export function AuthoringCanvas({
       reorderWorkbookQuestions: (questionIds) =>
         reorderWorkbookQuestions(workbookId, questionIds),
       updateWorkbook: (patch) => updateWorkbook(workbookId, patch),
-      registerImage: (args) => registerMediaAsset(args),
+      imageBatchLimit: MEDIA_BATCH_MAX,
+      // 이미지 등록도 배치다(#33 잔여 3) — 그림이 많은 문제집에서 왕복의 대부분이었다.
+      registerImagesBatch: async (items) =>
+        toMediaBatchItems(await registerMediaAssetsBatch(items)),
     }),
     [workbookId],
   );

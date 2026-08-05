@@ -49,6 +49,62 @@ export interface RubricScore {
  *  - 부수적으로 SQL SUM 두 개로 끝나 앱이 답안을 끌어올 필요가 없다 — 이 지표를 컬럼으로
  *    꺼낸 이유 자체가 그것이다.
  */
+/** 축(하위요소) 하나의 합계. key/label은 bySubjectDetail·약점 진단과 같은 축 키를 쓴다. */
+export interface RubricAxisInput extends RubricScoreInput {
+  key: string;
+  label: string;
+}
+
+export interface RubricAxisScore extends RubricScore {
+  key: string;
+  label: string;
+}
+
+/** 표본이 하한에 못 미쳐 판정을 미룬 축 — "왜 안 뜨는지"를 말해 주기 위한 목록. */
+export interface RubricAxisPending {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface RubricAxisReport {
+  /** 판정된 축 — **낮은 득점률부터**. 화면의 첫 줄이 곧 다음에 손볼 곳이어야 한다. */
+  byDetail: RubricAxisScore[];
+  /** 표본 부족으로 미룬 축. 약점 진단(#37)의 needsMoreData와 같은 문법. */
+  needsMoreData: RubricAxisPending[];
+}
+
+/**
+ * 축별 합계를 득점률 리포트로 접는다 (#33 도그푸딩 잔여 2).
+ *
+ * 전체 득점률 하나만으로는 "서술형이 약하다"까지만 알 수 있고 **어느 서술형인지**를
+ * 말하지 못한다. 그런데 축을 쪼개면 표본이 축당 1~2건으로 흩어지기 쉬워서, 쪼갠 결과를
+ * 그대로 늘어놓으면 "3문항 중 1문항 = 33%" 같은 숫자가 진단처럼 보인다.
+ *
+ * 그래서 판정 규칙은 전체와 **같은 하한**(RUBRIC_SCORE_MIN_SAMPLE)을 쓰되, 하한 미달 축을
+ * 그냥 숨기지 않고 `needsMoreData`로 따로 돌려준다 — 숨기기만 하면 학습자는 자기가 푼
+ * 서술형이 어디로 갔는지 알 수 없고, 화면은 "이 축은 아직 판정 못 한다"를 말할 수 있어야 한다.
+ * (약점 진단의 needsMoreData가 같은 이유로 있다.)
+ *
+ * 정렬은 득점률 오름차순 — 같은 비율이면 표본이 많은 쪽이 먼저다(근거가 두꺼운 쪽).
+ */
+export function judgeRubricScoreByAxis(inputs: RubricAxisInput[]): RubricAxisReport {
+  const byDetail: RubricAxisScore[] = [];
+  const needsMoreData: RubricAxisPending[] = [];
+
+  for (const input of inputs) {
+    const judged = judgeRubricScore(input);
+    if (judged) byDetail.push({ key: input.key, label: input.label, ...judged });
+    else if (input.count > 0) {
+      needsMoreData.push({ key: input.key, label: input.label, count: input.count });
+    }
+  }
+
+  byDetail.sort((a, b) => a.ratio - b.ratio || b.count - a.count);
+  needsMoreData.sort((a, b) => b.count - a.count);
+  return { byDetail, needsMoreData };
+}
+
 export function judgeRubricScore(input: RubricScoreInput): RubricScore | null {
   if (input.count < RUBRIC_SCORE_MIN_SAMPLE) return null;
   // 만점 0은 정상 경로에서 나오지 않지만(rubric 검증이 배점 > 0을 강제한다), 옛 스냅샷으로

@@ -13,6 +13,7 @@ import {
   type BatchItemResult,
   type BatchResult,
 } from '@/common/dto/batch-result';
+import { validateBatchItems } from '@/common/dto/batch-validation';
 import { STATS_MIN_SAMPLE } from '@/common/constants/question';
 import { extractPlainText, PMNode } from '@/common/prosemirror/prosemirror.util';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
@@ -20,7 +21,10 @@ import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QueryQuestionDto } from './dto/query-question.dto';
 import { RegenerateChoicesDto } from './dto/regenerate-choices.dto';
-import { BatchUpdateQuestionsDto } from './dto/batch-update-question.dto';
+import {
+  BatchUpdateQuestionItemDto,
+  BatchUpdateQuestionsDto,
+} from './dto/batch-update-question.dto';
 import { maskQuestionAnswers, stripInternalReview } from './answer-masking';
 
 // Prisma 생성 클라이언트가 InputJsonValue를 표면화하지 않으므로 Json 컬럼 쓰기 시 국소 캐스팅.
@@ -287,10 +291,15 @@ export class QuestionsService {
    *
    * 순차로 돈다. 항목마다 트랜잭션이 하나씩 열리는데 병렬로 쏘면 배치 한 건이 커넥션 풀을
    * 통째로 점유한다 — 줄이려는 것은 왕복 수(HTTP)지 서버 내부 동시성이 아니다.
+   *
+   * 형식 검증도 **항목별**이다(#33 잔여 4). 전역 파이프에 맡기면 difficulty가 6인 문항
+   * 하나가 나머지 19문항까지 400 하나로 되돌린다 — 서비스 실패는 격리해 놓고 형식 실패만
+   * 전부-아니면-전무가 되는 비대칭이라, 같은 DTO·같은 옵션으로 여기서 하나씩 검증한다.
    */
   async updateBatch(userId: string, dto: BatchUpdateQuestionsDto): Promise<BatchResult> {
-    const results: BatchItemResult[] = [];
-    for (const [index, item] of dto.items.entries()) {
+    const { valid, failures } = validateBatchItems(dto.items, BatchUpdateQuestionItemDto);
+    const results: BatchItemResult[] = [...failures];
+    for (const { index, dto: item } of valid) {
       const { id, ...patch } = item;
       try {
         await this.update(id, userId, patch);
@@ -299,6 +308,9 @@ export class QuestionsService {
         results.push({ index, status: 'failed', questionId: id, error: batchItemError(e) });
       }
     }
+    // 검증 실패분을 앞에 모아 두고 처리했으므로 요청 순서로 되돌린다 — 클라이언트가
+    // index로 되짚긴 하지만, 응답을 사람이 읽을 때 자리가 뒤섞여 있으면 대조가 어렵다.
+    results.sort((a, b) => a.index - b.index);
     return toBatchResult(results);
   }
 

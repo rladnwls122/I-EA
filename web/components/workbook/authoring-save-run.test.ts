@@ -32,7 +32,11 @@ const card = (over: Partial<CanvasCard> = {}): CanvasCard => ({
  */
 function fakeClient(
   over: Partial<SaveClient> = {},
-  opts: { fail?: { create?: string; update?: string }; batchLimit?: number } = {},
+  opts: {
+    fail?: { create?: string; update?: string; image?: string };
+    batchLimit?: number;
+    imageBatchLimit?: number;
+  } = {},
 ) {
   let passageSeq = 0;
   let questionSeq = 0;
@@ -50,11 +54,15 @@ function fakeClient(
     addToWorkbook: [] as string[],
     removedFromWorkbook: [] as string[],
     reordered: [] as string[][],
+    /** 등록된 이미지(항목 기준) — 배치 안의 항목도 하나씩 센다. */
     registerImage: [] as { storageUrl: string; questionId?: string; passageId?: string }[],
+    /** 나간 이미지 배치 요청 = 왕복. 등록이 배치가 된 이유가 이 숫자다(#33 잔여 3). */
+    imageBatches: [] as unknown[][],
     updateWorkbook: [] as any[],
   };
   const client: SaveClient = {
     batchLimit: opts.batchLimit ?? 50,
+    imageBatchLimit: opts.imageBatchLimit ?? 100,
     createPassage: async () => {
       calls.createPassage += 1;
       return { id: `passage-${++passageSeq}` };
@@ -96,9 +104,13 @@ function fakeClient(
       calls.updateWorkbook.push(patch);
       return null;
     },
-    registerImage: async (args) => {
-      calls.registerImage.push(args);
-      return null;
+    registerImagesBatch: async (items) => {
+      calls.imageBatches.push(items);
+      return items.map((item, index) => {
+        if (opts.fail?.image) return { index, error: opts.fail.image };
+        calls.registerImage.push(item);
+        return { index };
+      });
     },
     ...over,
   };
@@ -346,7 +358,7 @@ describe('runSave — 이미지 등록', () => {
 
   it('등록이 실패해도 저장은 성공으로 남는다 — 이미지는 src로 이미 보인다', async () => {
     const { client } = fakeClient({
-      registerImage: async () => {
+      registerImagesBatch: async () => {
         throw new Error('등록 실패');
       },
     });
@@ -354,6 +366,71 @@ describe('runSave — 이미지 등록', () => {
 
     expect(out.failedCount).toBe(0);
     expect(out.savedCount).toBe(1);
+  });
+
+  /* 등록 배칭 (#33 도그푸딩 잔여 3) — 예전엔 이미지 장수만큼 왕복이 나갔다. */
+
+  it('이미지가 여러 장이어도 등록 왕복은 한 번이다', async () => {
+    const cards = [
+      card({ id: 'q-1', stem: withImage('https://cdn/a.png') }),
+      card({ id: 'q-2', stem: withImage('https://cdn/b.png') }),
+      card({ id: 'q-3', stem: withImage('https://cdn/c.png') }),
+    ];
+    const { client, calls } = fakeClient();
+    await runSave(input({ cards }), client);
+
+    expect(calls.registerImage).toHaveLength(3);
+    expect(calls.imageBatches).toHaveLength(1);
+  });
+
+  it('지문 이미지와 문항 이미지가 같은 배치에 실린다 — 따로 보내면 왕복이 다시 갈린다', async () => {
+    const cards = [
+      card({
+        id: 'q-1',
+        stem: withImage('https://cdn/q.png'),
+        passage: withImage('https://cdn/p.png'),
+        passageGroupId: 'local-passage-1',
+      }),
+    ];
+    const { client, calls } = fakeClient();
+    await runSave(input({ cards }), client);
+
+    expect(calls.imageBatches).toHaveLength(1);
+    expect(calls.imageBatches[0]).toHaveLength(2);
+  });
+
+  it('상한을 넘으면 나눠 보낸다', async () => {
+    const cards = Array.from({ length: 5 }, (_, i) =>
+      card({ id: `q-${i + 1}`, stem: withImage(`https://cdn/${i}.png`) }),
+    );
+    const { client, calls } = fakeClient({}, { imageBatchLimit: 2 });
+    await runSave(input({ cards }), client);
+
+    expect(calls.imageBatches.map((b) => b.length)).toEqual([2, 2, 1]);
+  });
+
+  it('등록에 실패한 이미지만 기준선에서 빠진다 — 다음 저장이 그것만 다시 시도한다', async () => {
+    const { client } = fakeClient({}, { fail: { image: '등록 거부' } });
+    const out = await runSave(
+      input({ cards: [card({ stem: withImage('https://cdn/a.png') })] }),
+      client,
+    );
+
+    expect(out.baseline.registeredImages).not.toContain('https://cdn/a.png');
+  });
+
+  it('배치 자체가 못 나가도 다음 저장에서 다시 시도된다', async () => {
+    const { client } = fakeClient({
+      registerImagesBatch: async () => {
+        throw new Error('네트워크');
+      },
+    });
+    const out = await runSave(
+      input({ cards: [card({ stem: withImage('https://cdn/a.png') })] }),
+      client,
+    );
+
+    expect(out.baseline.registeredImages).not.toContain('https://cdn/a.png');
   });
 });
 
@@ -538,7 +615,7 @@ describe('runSave — 부분 실패는 동기화된 것으로 기록하지 않�
     });
   });
 
-  it('같은 이미지가 여러 카드에 실려 병렬로 저장돼도 한 번만 등록한다', async () => {
+  it('같은 이미지가 여러 카드에 실려 있어도 한 번만 등록한다', async () => {
     const src = 'https://cdn/shared.png';
     const withImage = (n: string) => ({
       type: 'doc',
@@ -553,15 +630,9 @@ describe('runSave — 부분 실패는 동기화된 것으로 기록하지 않�
       card({ id: 'q-3', stem: withImage('3') }),
       card({ id: 'q-4', stem: withImage('4') }),
     ];
-    // 확인과 기록 사이에 await이 실제로 끼도록 지연을 준다 — 예약을 안 하면
-    // 4-병렬 등록 워커가 나란히 통과해 중복 등록이 난다.
-    const { client, calls } = fakeClient({
-      registerImage: async (args) => {
-        calls.registerImage.push(args);
-        await new Promise((r) => setTimeout(r, 5));
-        return null;
-      },
-    });
+    // 대기줄에 넣을 때 이미 본 URL을 걸러야 한다 — 안 그러면 같은 그림이 배치 한 번에
+    // 네 번 실려 나가고, 서버 멱등 처리에 기대는 모양이 된다(왕복은 줄어도 페이로드는 는다).
+    const { client, calls } = fakeClient();
     await runSave(input({ cards }), client);
 
     expect(calls.registerImage.filter((c) => c.storageUrl === src)).toHaveLength(1);

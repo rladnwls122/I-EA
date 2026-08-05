@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsUUID, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsUUID } from 'class-validator';
 import { QUESTION_BATCH_MAX } from '@/common/constants/question';
 import { UpdateQuestionDto } from './update-question.dto';
 
@@ -18,16 +17,20 @@ export class BatchUpdateQuestionItemDto extends UpdateQuestionDto {
 /**
  * 문항 일괄 갱신. 캔버스 저장이 문항 수만큼 PATCH를 쏘던 자리를 한 번으로 줄인다.
  * 결과는 **항목별**로 돌아온다(BatchItemResult) — 하나가 실패해도 나머지는 저장된다.
+ *
+ * ⚠️ `items`에 `@ValidateNested`를 걸지 않는다. 전역 파이프가 항목을 검증하면 형식이
+ * 깨진 항목 **하나가 배치 전체를 400**으로 만들어, 서비스 실패는 항목별로 격리해 놓고
+ * 형식 실패만 전부-아니면-전무가 된다. 항목 검증은 서비스가 `validateBatchItems`로
+ * 하나씩 돌리고(같은 DTO·같은 옵션), 걸린 항목만 실패로 돌려준다.
+ * 배열 자체·상한은 여기 남는다 — 그건 항목이 아니라 요청의 형태다.
  */
 export class BatchUpdateQuestionsDto {
   @ApiProperty({
-    description: `수정할 문항 목록(최대 ${QUESTION_BATCH_MAX}건)`,
+    description: `수정할 문항 목록(최대 ${QUESTION_BATCH_MAX}건). 항목 형식 오류는 그 항목만 실패한다.`,
     type: [BatchUpdateQuestionItemDto],
   })
   @IsArray()
   @ArrayNotEmpty()
   @ArrayMaxSize(QUESTION_BATCH_MAX)
-  @ValidateNested({ each: true })
-  @Type(() => BatchUpdateQuestionItemDto)
-  items!: BatchUpdateQuestionItemDto[];
+  items!: unknown[];
 }

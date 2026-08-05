@@ -83,11 +83,17 @@ export interface SaveClient {
     tagIds: string[];
     visibility?: 'PUBLIC' | 'PRIVATE';
   }): Promise<unknown>;
-  registerImage(args: {
-    storageUrl: string;
-    questionId?: string;
-    passageId?: string;
-  }): Promise<unknown>;
+  /**
+   * 한 번에 보낼 수 있는 이미지 등록 수. 문항 배치와 값이 다르다(이미지가 더 많이 나온다).
+   */
+  readonly imageBatchLimit: number;
+  /**
+   * 이미지를 한 번에 등록한다. (예전의 `POST /media-assets` × 장수.)
+   * 결과는 항목별 — 등록에 실패한 이미지만 기준선에서 빼 다음 저장에서 다시 시도한다.
+   */
+  registerImagesBatch(
+    items: { storageUrl: string; questionId?: string; passageId?: string }[],
+  ): Promise<SaveBatchItem[]>;
 }
 
 /* ── 서버와 일치하던 마지막 모습 ──────────────────────────────────── */
@@ -146,30 +152,7 @@ export interface SaveOutcome {
   failedCount: number;
 }
 
-/* ── 동시성 ──────────────────────────────────────────────────────── */
-
-/**
- * 이미지 등록에만 남은 제한 병렬. 문항 저장은 배치가 됐지만 `POST /media-assets`는
- * 이미지 하나당 한 번이라(별도 모듈이다) 여기만 겹쳐서 벽시계 시간을 줄인다.
- * 상한을 두는 이유는 서버 레이트 리밋이다.
- */
-const IMAGE_CONCURRENCY = 4;
-
-async function mapWithLimit<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    for (;;) {
-      const i = cursor++;
-      if (i >= items.length) return;
-      await fn(items[i]);
-    }
-  });
-  await Promise.all(workers);
-}
+/* ── 보조 ────────────────────────────────────────────────────────── */
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -195,6 +178,11 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
     registeredImages: [...input.baseline.registeredImages],
   };
   const registered = new Set(baseline.registeredImages);
+  /**
+   * 이번 저장에서 등록할 이미지들. 지문·문항 어느 쪽에 붙든 한 줄에 모았다가
+   * 마지막에 배치로 보낸다 — 지문 이미지만 따로 보내면 왕복이 다시 둘로 갈린다.
+   */
+  const pendingImages: { storageUrl: string; questionId?: string; passageId?: string }[] = [];
 
   // 발문이 빈 카드는 저장 대상이 아니다. 지문 루프까지 전체 카드를 돌면 어느 문항에도
   // 연결되지 않는 passage 행이 생성·발행된다.
@@ -211,7 +199,7 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
         await client.updatePassage(groupId, passage);
         baseline.passages[groupId] = fingerprint;
         // 생성 분기에만 등록이 있으면, 기존 지문에 새로 넣은 이미지는 끝내 등록되지 않는다.
-        await registerImages(collectImageSrcs(passage), { passageId: groupId });
+        queueImages(collectImageSrcs(passage), { passageId: groupId });
       } catch (e) {
         // 지문 갱신 실패는 문항을 못 잇는 실패가 아니다 — 연결은 그대로 살아 있고
         // 내용만 예전 것이다. 기준선을 갱신하지 않아 다음 저장에서 다시 시도한다.
@@ -225,7 +213,7 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
       passageIdByGroup.set(groupId, created.id);
       newPassageIdByGroupId[groupId] = created.id;
       baseline.passages[created.id] = fingerprint;
-      await registerImages(collectImageSrcs(passage), { passageId: created.id });
+      queueImages(collectImageSrcs(passage), { passageId: created.id });
     } catch (e) {
       notices.push({
         level: 'error',
@@ -329,11 +317,6 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
     toUpdate.push(card);
   }
 
-  /**
-   * 저장에 성공한 문항의 이미지 등록 대상. 배치가 돌아온 **뒤에** 한꺼번에 처리한다 —
-   * 등록은 `POST /media-assets` 한 번씩이라 문항 배치와 묶을 수 없다.
-   */
-  const imageTargets: { srcs: string[]; questionId: string }[] = [];
 
   /**
    * 페이로드를 배치 **전에** 다 만든다. 태그 해석이 비동기라 카드마다 await이 끼는데,
@@ -372,7 +355,7 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
       savedCount += 1;
       // 태그를 다 못 붙였으면 기준선을 세우지 않는다 — 다음 저장이 다시 시도해야 한다.
       if (complete) baseline.questions[card.id] = questionFingerprint(withResolvedPassage(card));
-      imageTargets.push({ srcs: cardImageSrcs(card), questionId: card.id });
+      queueImages(cardImageSrcs(card), { questionId: card.id });
     });
   }
 
@@ -408,13 +391,11 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
           withResolvedPassage({ ...card, id: r.questionId }),
         );
       }
-      imageTargets.push({ srcs: cardImageSrcs(card), questionId: r.questionId });
+      queueImages(cardImageSrcs(card), { questionId: r.questionId });
     });
   }
 
-  await mapWithLimit(imageTargets, IMAGE_CONCURRENCY, ({ srcs, questionId }) =>
-    registerImages(srcs, { questionId }),
-  );
+  await flushImages();
 
   if (failedCount > 0) {
     notices.push({
@@ -493,25 +474,47 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
   };
 
   /**
-   * 이번에 새로 들어온 이미지만 등록한다. 실패해도 저장을 실패로 만들지 않는다 —
-   * 등록은 자원 목록(media_assets)을 채우는 부수 작업이고, 이미지 자체는 문서의
-   * src로 이미 살아 있어 화면에는 정상적으로 보인다.
+   * 이번에 새로 들어온 이미지를 등록 대기줄에 넣는다 (#33 도그푸딩 잔여 3).
+   *
+   * 예전에는 여기서 곧바로 `POST /media-assets`를 불렀다(제한 병렬 4). 문항 저장이
+   * 배치가 된 뒤로는 남은 왕복의 대부분이 이 호출이었다 — 그림 20장이면 20회다.
+   * 지금은 모아 두었다가 마지막에 한 번(또는 상한만큼 나눠) 보낸다.
+   *
+   * 대기줄에 넣는 시점에 `registered`를 **미리 채운다**: 같은 그림이 여러 카드에 실려
+   * 있어도 한 번만 보내기 위해서다. 실패한 항목만 flush에서 도로 뺀다.
    */
-  async function registerImages(
+  function queueImages(
     srcs: string[],
     target: { questionId?: string; passageId?: string },
-  ): Promise<void> {
+  ): void {
     for (const storageUrl of srcs) {
       if (registered.has(storageUrl)) continue;
-      // 호출 **전에** 예약한다. 확인과 기록 사이에 await이 있으면, 같은 이미지가 두 카드에
-      // 실린 채 병렬 갱신을 타는 순간 두 워커가 나란히 통과해 중복 행이 생긴다 —
-      // 이 함수가 막겠다고 한 바로 그 중복이다.
       registered.add(storageUrl);
-      try {
-        await client.registerImage({ storageUrl, ...target });
-      } catch {
-        registered.delete(storageUrl); // 다음 저장에서 다시 시도된다
-      }
+      pendingImages.push({ storageUrl, ...target });
     }
+  }
+
+  /**
+   * 모인 이미지를 등록한다. 실패해도 저장을 실패로 만들지 않는다 — 등록은 자원 목록
+   * (media_assets)을 채우는 부수 작업이고, 이미지 자체는 문서의 src로 이미 살아 있어
+   * 화면에는 정상적으로 보인다. 실패한 것만 기준선에서 빼 다음 저장이 다시 시도한다.
+   */
+  async function flushImages(): Promise<void> {
+    for (const chunk of chunked(pendingImages, client.imageBatchLimit)) {
+      let results: SaveBatchItem[];
+      try {
+        results = await client.registerImagesBatch(chunk);
+      } catch {
+        // 배치 자체가 못 나갔다 — 이 묶음은 통째로 다음 저장에서 다시 시도한다.
+        for (const item of chunk) registered.delete(item.storageUrl);
+        continue;
+      }
+      chunk.forEach((item, i) => {
+        const r = results.find((x) => x.index === i);
+        // 결과가 없거나 실패면 등록되지 않은 것으로 본다(성공으로 치면 영영 재시도되지 않는다).
+        if (!r || r.error) registered.delete(item.storageUrl);
+      });
+    }
+    pendingImages.length = 0;
   }
 }

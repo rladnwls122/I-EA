@@ -267,13 +267,27 @@ describe('MeService.notes', () => {
  * (4) 표본 하한 미만이면 아무것도 말하지 않는다.
  */
 describe('MeService.notes — 서술형 부분점수 지표', () => {
-  async function makeService(aggregateResult: unknown) {
+  /** 축별 조회가 돌려줄 답안 행 하나(하위요소 축 + 점수). */
+  const axisRow = (detailId: string | null, name: string | null, earned: number, total: number) => ({
+    earnedPoints: earned,
+    rubricTotalPoints: total,
+    examSessionQuestion: {
+      question: { subjectDetailId: detailId, detail: name ? { name } : null },
+    },
+  });
+
+  async function makeService(aggregateResult: unknown, axisRows: unknown[] = []) {
     const aggregate = jest.fn().mockResolvedValue(aggregateResult);
+    // notes()는 examSessionAnswer.findMany를 두 번 부른다: 채점 이력(include)과
+    // 축별 득점률(select). 어느 쪽인지 본문 모양으로 갈라 답한다.
+    const findMany = jest.fn(async (args: { select?: unknown }) =>
+      args.select ? axisRows : [],
+    );
     const prisma = {
       examSessionAnswer: {
         count: jest.fn().mockResolvedValue(0),
         aggregate,
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany,
       },
       userQuestionAnnotation: { findMany: jest.fn().mockResolvedValue([]) },
       userQuestionReviewState: { findMany: jest.fn().mockResolvedValue([]) },
@@ -282,7 +296,7 @@ describe('MeService.notes — 서술형 부분점수 지표', () => {
     const module = await Test.createTestingModule({
       providers: [MeService, { provide: PrismaService, useValue: prisma }],
     }).compile();
-    return { service: module.get(MeService), aggregate };
+    return { service: module.get(MeService), aggregate, findMany };
   }
 
   it('SUM/COUNT를 DB에서 받아 평균 득점률로 접는다(답안을 앱으로 끌어오지 않는다)', async () => {
@@ -301,6 +315,8 @@ describe('MeService.notes — 서술형 부분점수 지표', () => {
       earnedPoints: 27,
       totalPoints: 40,
       ratio: 0.68, // 27/40 = 0.675 → 소수 둘째 자리
+      byDetail: [],
+      needsMoreData: [],
     });
     // 대상 선별은 "두 컬럼이 NOT NULL" + 1차 응시. 집계 자체가 DB에서 돌아야 한다.
     expect(aggregate).toHaveBeenCalledWith({
@@ -352,6 +368,106 @@ describe('MeService.notes — 서술형 부분점수 지표', () => {
           examSessionQuestion: expect.objectContaining({ question: { subjectId: 'sub1' } }),
         }),
       }),
+    );
+  });
+
+  /* 분류축별 분해 (#33 도그푸딩 잔여 2) */
+
+  it('축별로 쪼개 낮은 득점률부터 세운다 — 첫 줄이 다음에 손볼 곳이어야 한다', async () => {
+    const { service } = await makeService(
+      { _count: 6, _sum: { earnedPoints: 30, rubricTotalPoints: 60 } },
+      [
+        axisRow('d1', '문법', 2, 10),
+        axisRow('d1', '문법', 3, 10),
+        axisRow('d1', '문법', 5, 10),
+        axisRow('d2', '독해', 9, 10),
+        axisRow('d2', '독해', 8, 10),
+        axisRow('d2', '독해', 10, 10),
+      ],
+    );
+
+    const result = await service.notes('user-1');
+
+    expect(result.summary.rubricScore?.byDetail).toEqual([
+      { key: 'd1', label: '문법', count: 3, earnedPoints: 10, totalPoints: 30, ratio: 0.33 },
+      { key: 'd2', label: '독해', count: 3, earnedPoints: 27, totalPoints: 30, ratio: 0.9 },
+    ]);
+  });
+
+  it('축별 비율은 Σ획득/Σ만점이다 — 배점이 큰 문항이 더 무겁다', async () => {
+    const { service } = await makeService(
+      { _count: 3, _sum: { earnedPoints: 12, rubricTotalPoints: 44 } },
+      [axisRow('d1', '서술', 10, 20), axisRow('d1', '서술', 1, 20), axisRow('d1', '서술', 1, 4)],
+    );
+
+    const result = await service.notes('user-1');
+
+    // 답안별 비율의 평균이면 (0.5+0.05+0.25)/3 = 0.27이 된다. 배점 가중은 12/44 = 0.27...
+    // 우연히 비슷해 보이지 않게 원점수도 함께 고정한다.
+    expect(result.summary.rubricScore?.byDetail[0]).toMatchObject({
+      earnedPoints: 12,
+      totalPoints: 44,
+      ratio: 0.27,
+    });
+  });
+
+  it('표본이 하한 미만인 축은 숨기지 않고 "판정을 미룬 축"으로 알린다', async () => {
+    const { service } = await makeService(
+      { _count: 4, _sum: { earnedPoints: 20, rubricTotalPoints: 40 } },
+      [
+        axisRow('d1', '문법', 5, 10),
+        axisRow('d1', '문법', 5, 10),
+        axisRow('d1', '문법', 5, 10),
+        axisRow('d2', '독해', 5, 10),
+      ],
+    );
+
+    const result = await service.notes('user-1');
+
+    expect(result.summary.rubricScore?.byDetail.map((d) => d.key)).toEqual(['d1']);
+    expect(result.summary.rubricScore?.needsMoreData).toEqual([
+      { key: 'd2', label: '독해', count: 1 },
+    ]);
+  });
+
+  it('하위요소가 없는 문항은 미분류 축으로 모인다 — 표본이 새지 않는다', async () => {
+    const { service } = await makeService(
+      { _count: 3, _sum: { earnedPoints: 15, rubricTotalPoints: 30 } },
+      [axisRow(null, null, 5, 10), axisRow(null, null, 5, 10), axisRow(null, null, 5, 10)],
+    );
+
+    const result = await service.notes('user-1');
+
+    expect(result.summary.rubricScore?.byDetail[0]).toMatchObject({
+      key: 'UNCLASSIFIED',
+      label: '미분류',
+      count: 3,
+    });
+  });
+
+  it('전체가 하한 미달이면 축별 조회를 아예 하지 않는다 — 부분집합이라 볼 것도 없다', async () => {
+    const { service, findMany } = await makeService({
+      _count: 1,
+      _sum: { earnedPoints: 5, rubricTotalPoints: 10 },
+    });
+
+    await service.notes('user-1');
+
+    // 채점 이력 조회(include) 한 번만 나가고, 축별 조회(select)는 나가지 않는다.
+    expect(findMany.mock.calls.filter((c) => (c[0] as { select?: unknown }).select)).toHaveLength(0);
+  });
+
+  it('축별 조회는 전체 집계와 같은 where를 쓴다 — 두 숫자가 다른 모집단을 말하면 안 된다', async () => {
+    const { service, aggregate, findMany } = await makeService(
+      { _count: 3, _sum: { earnedPoints: 9, rubricTotalPoints: 30 } },
+      [axisRow('d1', '문법', 3, 10)],
+    );
+
+    await service.notes('user-1', { subjectId: 'sub1' });
+
+    const axisCall = findMany.mock.calls.find((c) => (c[0] as { select?: unknown }).select);
+    expect((axisCall?.[0] as { where: unknown }).where).toEqual(
+      (aggregate.mock.calls[0][0] as { where: unknown }).where,
     );
   });
 });

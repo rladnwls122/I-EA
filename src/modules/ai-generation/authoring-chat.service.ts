@@ -11,10 +11,12 @@ import Redis from 'ioredis';
 import { PrismaService } from '@/prisma/prisma.service';
 import { REDIS_CLIENT } from '@/redis/redis.module';
 import { KEYWORD_TAG_CATEGORY } from '@/common/constants/tag';
+import type { QuestionKind } from '@/common/constants/question';
 import { GeminiLlmService } from './llm/gemini-llm.service';
 import type { TutorTurn } from './llm/llm.types';
 import { AuthoringChatDto } from './dto/authoring-chat.dto';
 import { buildAuthoringSystemPrompt } from './authoring-chat.prompt';
+import { parseChatQuestions, toReviewInput } from './authoring-chat.review';
 
 /** 최근 유지 턴 수 상한(user/model 합산). */
 const MAX_TURNS = 20;
@@ -120,8 +122,11 @@ export class AuthoringChatService {
         );
         return;
       }
+      // 카드부터 띄운다. 검수는 **그 다음에** 붙는다 — 판정을 기다리느라 문항이 늦게 뜨면
+      // 사람이 기다리는 시간만 늘고 얻는 건 없다(어차피 다듬기 전에 읽어야 한다).
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       await this.appendTurns(userId, dto.workbookId, history, dto.message, full);
+      await this.streamSelfReview(res, dto, subject, full);
     } catch (err) {
       this.logger.warn(`출제 채팅 스트림 오류: ${(err as Error).message}`);
       res.write(
@@ -129,6 +134,70 @@ export class AuthoringChatService {
       );
     } finally {
       res.end();
+    }
+  }
+
+  /**
+   * 이번 턴이 만든 문항을 자기검증에 태우고, 결과를 `event: review` 프레임으로 흘린다
+   * (#33 도그푸딩 잔여 1 — 자기검증 기본 켬).
+   *
+   * 설계 판단 세 가지:
+   *
+   * 1. **done 뒤에 보낸다.** 카드가 먼저 떠야 한다. 판정을 기다렸다가 같이 보내면 문항이
+   *    몇 초 늦게 뜨는데, 그 사이 사용자는 아무것도 할 수 없다. 카드를 먼저 주고 배지를
+   *    나중에 채우면 읽는 동안 판정이 끝난다.
+   * 2. **실패해도 error 프레임을 보내지 않는다.** 검수는 부가 기능이라, 실패를 채팅 오류로
+   *    알리면 멀쩡히 생성된 문항이 실패한 것처럼 보인다. 못 하면 조용히 아무 배지도 안 뜬다
+   *    (프로세서의 selfReview가 문항을 그대로 저장하는 것과 같은 정신).
+   * 3. **크레딧을 더 받지 않는다.** 이 호출은 사용자가 요청한 게 아니라 우리가 품질을 위해
+   *    거는 것이다. 사용자에게 청구할 근거가 없다(레이트 리밋도 사용자 발화 기준 그대로).
+   */
+  private async streamSelfReview(
+    res: Response,
+    dto: AuthoringChatDto,
+    subject: { name: string; examCategory: string | null; examType: string | null } | null,
+    full: string,
+  ): Promise<void> {
+    if (!this.gemini.isSelfReviewEnabled) return;
+
+    const questions = parseChatQuestions(full);
+    // 문항이 없는 턴(질문·설명만 한 응답)은 판정할 것도 없다 — 호출을 아낀다.
+    if (questions.length === 0) return;
+
+    const difficulty = dto.difficulty ?? 3;
+    try {
+      const { verdicts } = await this.gemini.reviewGeneration(
+        {
+          prompt: dto.message,
+          difficulty,
+          questionCount: questions.length,
+          includePassage: questions.some((q) => q.passageText),
+          // DTO는 @IsIn(QUESTION_KINDS)로 값을 이미 좁혀 두지만 타입은 string이다.
+          questionType: dto.questionType as QuestionKind | undefined,
+          ox: dto.ox,
+          choiceCount: dto.choiceCount,
+          subjectName: subject?.name,
+          examCategory: subject?.examCategory ?? undefined,
+          examType: subject?.examType ?? undefined,
+        },
+        toReviewInput(questions, difficulty),
+      );
+      // index는 **파싱된 문항 배열의 자리**다. 프런트도 같은 파서로 같은 배열을 만들기 때문에
+      // 그 자리로 카드를 되짚는다(authoring-chat.review.ts 주석 참고).
+      res.write(
+        `event: review\ndata: ${JSON.stringify({
+          model: this.gemini.selfReviewModel,
+          at: new Date().toISOString(),
+          verdicts,
+        })}\n\n`,
+      );
+      const revised = verdicts.filter((v) => v.verdict === 'REVISE').length;
+      if (revised > 0) {
+        this.logger.log(`출제 채팅 자기검증 — ${questions.length}문항 중 ${revised}건 REVISE`);
+      }
+    } catch (err) {
+      // 판정 실패는 채팅 실패가 아니다. 배지가 안 뜨는 것으로 끝난다.
+      this.logger.warn(`출제 채팅 자기검증 실패 — 문항은 그대로 둡니다: ${(err as Error).message}`);
     }
   }
 
@@ -179,9 +248,11 @@ export class AuthoringChatService {
     if (!wb || wb.ownerId !== userId) {
       throw new ForbiddenException('본인 문제집만 편집할 수 있습니다.');
     }
+    // examType까지 읽는 이유: 자기검증 판정 프롬프트가 "어느 시험의 관행으로 볼지"를
+    // 시험 종류로 잡는다. 없으면 판정이 수능 기준으로 치우친다(생성 프롬프트와 같은 함정).
     return this.prisma.subject.findUnique({
       where: { id: subjectId },
-      select: { name: true, examCategory: true },
+      select: { name: true, examCategory: true, examType: true },
     });
   }
 

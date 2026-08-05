@@ -212,6 +212,20 @@ export interface QuestionBatchResponse {
   failedCount: number;
 }
 
+/** 미디어 일괄 등록 결과 항목 (#33 잔여 3). 등록이 멱등이라 mediaId는 기존 행의 것일 수 있다. */
+export interface MediaBatchItemResult {
+  index: number;
+  status: 'ok' | 'failed';
+  mediaId?: string;
+  error?: string;
+}
+
+export interface MediaBatchResponse {
+  results: MediaBatchItemResult[];
+  okCount: number;
+  failedCount: number;
+}
+
 // ─── AI 생성 (비동기 파이프라인) ────────────────────────────────────
 //
 // 지금 화면에서 부르는 곳은 없다 — 캔버스는 SSE 채팅(`/ai-generations/chat`)을 쓴다.
@@ -504,6 +518,19 @@ export interface RubricScore {
   totalPoints: number;
   /** earnedPoints / totalPoints (0~1, 소수 둘째 자리) */
   ratio: number;
+  /**
+   * 분류축(하위요소)별 득점률 (#33 도그푸딩 잔여 2) — **낮은 순**으로 서버가 정렬해 준다.
+   * 전체 하나로는 "서술형이 약하다"까지만 알 수 있고 어느 서술형인지는 여기서 나온다.
+   * 표본 하한(3)을 넘긴 축만 들어 있다.
+   */
+  byDetail?: RubricAxisScore[];
+  /** 표본이 모자라 판정을 미룬 축 — 숨기면 "내가 푼 서술형은 어디 갔지"가 된다. */
+  needsMoreData?: { key: string; label: string; count: number }[];
+}
+
+export interface RubricAxisScore extends RubricScore {
+  key: string;
+  label: string;
 }
 
 export interface WeaknessReport {

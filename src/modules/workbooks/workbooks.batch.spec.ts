@@ -10,9 +10,12 @@ import { CreateQuestionDto } from '@/modules/questions/dto/create-question.dto';
  * 순서·항목별 실패·소유권. 그중 하나라도 무너지면 왕복을 줄인 대가로 저장이 망가진다.
  */
 
+/** 항목 검증이 서비스 안에서 도는 자리라 subjectId는 진짜 UUID여야 한다(단건 생성과 같은 규칙). */
+const SUBJECT_ID = '22222222-2222-4222-8222-222222222222';
+
 const item = (n: number): CreateQuestionDto =>
   ({
-    subjectId: 'subj-1',
+    subjectId: SUBJECT_ID,
     questionType: '객관식',
     stem: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: `발문${n}` }] }] },
   }) as unknown as CreateQuestionDto;
@@ -26,6 +29,8 @@ async function runBatch(opts: {
   failAt?: number[];
   currentMax?: number | null;
   visibility?: string;
+  /** 항목을 직접 지정할 때(형식 검증 케이스). 없으면 count만큼 정상 항목을 만든다. */
+  items?: CreateQuestionDto[];
 }) {
   const failAt = new Set(opts.failAt ?? []);
   let seq = 0;
@@ -74,7 +79,7 @@ async function runBatch(opts: {
     questions as never,
   );
   const dto: BatchAddQuestionsDto = {
-    items: Array.from({ length: opts.count }, (_, i) => item(i)),
+    items: opts.items ?? Array.from({ length: opts.count }, (_, i) => item(i)),
   };
   const result = await service.addQuestionsBatch('wb-1', dto, 'user-1');
   return { result, tx, prisma, questions, rolledBack };
@@ -152,8 +157,30 @@ describe('WorkbooksService.addQuestionsBatch — 단건 경로의 검증을 물�
     expect(questions.createPublishedWithin).toHaveBeenCalledWith(
       expect.anything(), // 트랜잭션 클라이언트
       'user-1',
-      expect.objectContaining({ subjectId: 'subj-1' }),
+      expect.objectContaining({ subjectId: SUBJECT_ID }),
     );
+  });
+
+  /* 형식 검증도 항목별이다 (#33 잔여 4). */
+
+  it('형식이 깨진 항목은 그 자리만 실패하고 나머지는 담긴다', async () => {
+    const { result, questions } = await runBatch({
+      count: 3,
+      items: [item(0), { ...item(1), difficulty: 9 } as CreateQuestionDto, item(2)], // 난이도 1~5 밖
+    });
+
+    expect(result.results.map((r) => r.status)).toEqual(['ok', 'failed', 'ok']);
+    expect(questions.createPublishedWithin).toHaveBeenCalledTimes(2);
+    expect(result.results[1].error).toContain('difficulty');
+  });
+
+  it('형식이 깨진 항목은 자리(displayOrder)를 차지하지 않는다 — 순서에 구멍이 남으면 안 된다', async () => {
+    const { result } = await runBatch({
+      count: 3,
+      items: [{ ...item(0), difficulty: 9 } as CreateQuestionDto, item(1), item(2)],
+    });
+
+    expect(result.results.map((r) => r.displayOrder)).toEqual([undefined, 0, 1]);
   });
 
   it('questionCount는 담긴 수만큼만 오른다', async () => {

@@ -17,7 +17,11 @@ import {
 } from '@/common/constants/shop';
 import { REVIEW_STATUS } from '@/modules/exam-sessions/review-state.util';
 import { rankWeaknesses, type ReviewFailureInput } from './weakness.util';
-import { judgeRubricScore } from './rubric-score.util';
+import {
+  judgeRubricScore,
+  judgeRubricScoreByAxis,
+  type RubricAxisInput,
+} from './rubric-score.util';
 import { buildReviewQueue } from './review-queue.util';
 import { REVIEW_QUEUE_MAX_LIMIT } from './dto/query-review-queue.dto';
 
@@ -46,6 +50,16 @@ export const UNCLASSIFIED_DETAIL_LABEL = '미분류';
  * 프론트 복습 큐 상한(100) + 통계 표본으로 충분한 값. 상한 도달 시 truncated=true로 알린다.
  */
 export const NOTES_GRADED_LIMIT = 500;
+
+/**
+ * 축별 서술형 득점률을 접기 위해 끌어오는 답안 행 수 상한 (#33 도그푸딩 잔여 2).
+ *
+ * 전체 득점률(헤드라인)은 DB 집계라 상한이 없다. 여기만 상한이 있는 이유는 축별 분해가
+ * 행을 앱으로 끌어와야 하기 때문이고, 2000으로 넉넉히 잡은 이유는 대상이 "채점기준표로
+ * 채점된 서술형 답안"뿐이라 모집단 자체가 작기 때문이다 — 하루 두 문항씩 3년을 풀어야
+ * 닿는 수다. 그래도 상한을 두는 건 NOTES_GRADED_LIMIT과 같은 보험이다.
+ */
+export const RUBRIC_AXIS_LIMIT = 2000;
 
 @Injectable()
 export class MeService {
@@ -314,32 +328,76 @@ export class MeService {
     // 득점률"이 되는데, 그건 화면이 말하는 값이 아니다. **집계를 DB에서 하면** 행을 앱으로
     // 끌어오지 않으므로 상한을 걸 이유 자체가 없다 — 컬럼을 꺼낸 이유가 그것이다.
     //
-    // 분류축(하위요소)별로 쪼개지 않은 이유: 축은 questions 쪽 컬럼이라 Prisma groupBy로
-    // 묶을 수 없고(조인 컬럼 그룹화 불가), 축마다 쿼리를 돌리거나 raw SQL로 가야 한다.
-    // 게다가 서술형 표본은 축당 하한(3)을 거의 못 넘겨 대부분 판정 불가가 된다.
-    // 축별 분해가 실제로 필요해지면 그때 전용 쿼리로 낸다.
-    //
     // 두 컬럼이 NOT NULL인 답안 = 채점기준표로 채점된 답안. rubric 없는 서술형은 두 컬럼이
     // null로 남으므로(exam-sessions.service의 rubricGradingWrite) 이 조건이 곧 대상 선별이다.
-    const rubricAgg = await this.prisma.examSessionAnswer.aggregate({
-      where: {
-        earnedPoints: { not: null },
-        rubricTotalPoints: { not: null },
-        examSessionQuestion: {
-          examSession: { userId, status: 'SUBMITTED', isReview: false },
-          ...(questionWhere ? { question: questionWhere } : {}),
-        },
+    //
+    // 조건 객체를 변수로 뽑아 아래 축별 조회와 **같은 것을 쓴다**. 같은 필터를 두 벌
+    // 적어 두면 언젠가 한쪽만 고쳐져 전체 득점률과 축별 득점률이 서로 다른 모집단을 말한다.
+    const rubricWhere = {
+      earnedPoints: { not: null },
+      rubricTotalPoints: { not: null },
+      examSessionQuestion: {
+        examSession: { userId, status: 'SUBMITTED', isReview: false },
+        ...(questionWhere ? { question: questionWhere } : {}),
       },
+    } as const;
+    const rubricAgg = await this.prisma.examSessionAnswer.aggregate({
+      where: rubricWhere,
       _sum: { earnedPoints: true, rubricTotalPoints: true },
       _count: true,
     });
     // Decimal 컬럼이라 Prisma가 Decimal 객체를 돌려준다 — 응답으로 나가기 전에 숫자로 접는다
     // (JSON 직렬화가 문자열로 바꿔 놓는다). 저장소 관행: exam-sessions의 `Number(q.points)`.
-    const rubricScore = judgeRubricScore({
+    const rubricOverall = judgeRubricScore({
       count: rubricAgg._count,
       earnedPoints: Number(rubricAgg._sum.earnedPoints ?? 0),
       totalPoints: Number(rubricAgg._sum.rubricTotalPoints ?? 0),
     });
+
+    // 분류축(하위요소)별 득점률 (#33 도그푸딩 잔여 2) — 전체 하나로는 "서술형이 약하다"까지만
+    // 알 수 있고 **어느 서술형인지**를 못 말한다.
+    //
+    // 축이 questions 쪽 컬럼이라 Prisma groupBy로는 못 묶는다(조인 컬럼 그룹화 불가).
+    // 남는 선택지는 (a) 축마다 쿼리, (b) raw SQL, (c) 행을 받아 앱에서 접기였다.
+    //   (a)는 축 수만큼 쿼리가 늘고, (b)는 위 필터를 SQL로 **한 벌 더** 적어야 해서
+    //   언젠가 한쪽만 고쳐진다. (c)를 골랐다 — 대상이 "채점기준표로 채점된 서술형 답안"뿐이라
+    //   모집단 자체가 작고(한 세션에 한두 문항), 위 where 객체를 그대로 재사용할 수 있다.
+    //
+    // 전체 득점률을 이 행들로 다시 계산하지 않는 이유: 이 조회에는 상한이 있고 위 집계에는
+    // 없다. 헤드라인 숫자는 상한 밖에서 정확해야 한다 — 컬럼을 꺼낸 이유가 그것이다.
+    const rubricRows = rubricOverall
+      ? await this.prisma.examSessionAnswer.findMany({
+          where: rubricWhere,
+          take: RUBRIC_AXIS_LIMIT,
+          orderBy: { examSessionQuestion: { examSession: { submittedAt: 'desc' } } },
+          select: {
+            earnedPoints: true,
+            rubricTotalPoints: true,
+            examSessionQuestion: {
+              select: {
+                question: {
+                  select: { subjectDetailId: true, detail: { select: { name: true } } },
+                },
+              },
+            },
+          },
+        })
+      : []; // 전체가 하한 미달이면 축은 볼 것도 없다(부분집합이라 반드시 미달이다).
+
+    const rubricAxisMap = new Map<string, RubricAxisInput>();
+    for (const row of rubricRows) {
+      const q = row.examSessionQuestion.question;
+      const key = q.subjectDetailId && q.detail ? q.subjectDetailId : UNCLASSIFIED_DETAIL_KEY;
+      const label = q.subjectDetailId && q.detail ? q.detail.name : UNCLASSIFIED_DETAIL_LABEL;
+      const cur = rubricAxisMap.get(key) ?? { key, label, count: 0, earnedPoints: 0, totalPoints: 0 };
+      cur.count += 1;
+      cur.earnedPoints += Number(row.earnedPoints ?? 0);
+      cur.totalPoints += Number(row.rubricTotalPoints ?? 0);
+      rubricAxisMap.set(key, cur);
+    }
+    const rubricScore = rubricOverall
+      ? { ...rubricOverall, ...judgeRubricScoreByAxis([...rubricAxisMap.values()]) }
+      : null;
 
     // 내 주석 — byReason 통계 + 오답 문항별 주석 조인.
     // 범위 필터가 있으면 그 범위에서 채점된 문항의 주석만 센다(원인 통계도 범위를 따라간다).

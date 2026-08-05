@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { TiptapEditor } from "@/components/editor/TiptapEditor";
+import { SelfReviewChip } from "./SelfReviewChip";
 import { isRichEmpty } from "@/lib/prosemirror";
 import { buildRichDoc } from "@/lib/prosemirror-assemble";
 import { RichContent } from "@/components/editor/RichContent";
@@ -126,6 +127,9 @@ export function AuthoringCanvasCard({
             <span className="rounded bg-surface-raised px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
               {card.points}점
             </span>
+            {/* AI 검수 결과(#34) — 적용 후에도 카드에 남는다. undefined는 "판정 없음"이지
+                "기다리는 중"이 아니다(기다림은 채팅 제안 쪽에서 끝난다). */}
+            <SelfReviewChip review={card.review ?? null} />
           </div>
           {/* 모바일(<md)에서는 hover가 없어 group-hover로는 도달 불가 — 항상 노출 + 40px 탭 타깃.
               md 이상(마우스)에서는 기존 hover/focus-within 노출 동작을 유지한다. */}

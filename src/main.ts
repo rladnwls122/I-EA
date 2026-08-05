@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { TRANSFORM_OPTIONS, VALIDATOR_OPTIONS } from './common/validation-options';
 
 /** 콤마 구분 목록 env를 트리밍된 배열로. */
 function parseList(raw: string | undefined): string[] {
@@ -72,12 +73,13 @@ async function bootstrap(): Promise<void> {
   app.setGlobalPrefix('api');
 
   // 전역 검증: DTO에 선언되지 않은 속성 제거, 타입 자동 변환.
+  // 옵션은 `common/validation-options.ts`가 정본이다 — 배치 항목별 검증이 같은 값을
+  // 읽어야 "배치로만 통과하는 값"이 생기지 않는다.
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
+      ...VALIDATOR_OPTIONS,
       transform: true,
-      transformOptions: { enableImplicitConversion: true },
+      transformOptions: TRANSFORM_OPTIONS,
     }),
   );
 
