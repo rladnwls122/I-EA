@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { maskQuestionAnswers } from './answer-masking';
+import { maskQuestionAnswers, stripInternalReview } from './answer-masking';
 import { QuestionsService } from './questions.service';
 import { PrismaService } from '@/prisma/prisma.service';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
@@ -129,5 +129,46 @@ describe('GET /questions/:id/stats — isCorrect 노출 자격', () => {
   it('그 밖의 로그인 사용자에게는 기존대로 노출한다', async () => {
     const stats = await (await makeService(false)).getStats('q1', 'solver');
     expect(stats.choiceDistribution[0].isCorrect).toBe(true);
+  });
+});
+
+describe('stripInternalReview — 자기검증 기록 노출 차단', () => {
+  const withReview = {
+    id: 'q1',
+    metadata: {
+      blankIndex: 2,
+      review: { verdict: 'REVISE', issues: ['3번 선지가 정답과 의미가 겹친다'] },
+    },
+  };
+
+  it('출제자가 아니면 review를 뗀다 — 지적 사항이 소거법으로 정답을 좁힌다', () => {
+    const out = stripInternalReview(withReview);
+    expect((out.metadata as any).review).toBeUndefined();
+  });
+
+  it('나머지 metadata는 그대로 둔다 — 빈칸 번호는 응시에 필요하다', () => {
+    const out = stripInternalReview(withReview);
+    expect((out.metadata as any).blankIndex).toBe(2);
+  });
+
+  it('출제자 본인에게는 그대로 준다', () => {
+    expect(stripInternalReview(withReview, true)).toBe(withReview);
+  });
+
+  it('review만 있던 metadata는 빈 객체가 아니라 null이 된다 — "메타데이터 있음"으로 오해되지 않게', () => {
+    const out = stripInternalReview({ metadata: { review: { verdict: 'PASS' } } });
+    expect(out.metadata).toBeNull();
+  });
+
+  it('입력을 변형하지 않는다', () => {
+    stripInternalReview(withReview);
+    expect((withReview.metadata as any).review).toBeDefined();
+  });
+
+  it('metadata가 없거나 review가 없으면 원본 그대로', () => {
+    const bare = { id: 'q1', metadata: undefined };
+    expect(stripInternalReview(bare)).toBe(bare);
+    const other = { metadata: { blankIndex: 1 } };
+    expect(stripInternalReview(other)).toBe(other);
   });
 });

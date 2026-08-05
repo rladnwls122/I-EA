@@ -548,6 +548,12 @@ model ExamSessionAnswer {
   answerText            String?   @map("answer_text") @db.Text
   // 객관식/단답=자동채점, 서술형=자기채점 전까지 null
   isCorrect             Boolean?  @map("is_correct")
+  // 서술형 부분점수(#43 gap 8). 채점 근거 전체(체크한 기준 id 등)는 annotations.rubricGrading에
+  // 남고, 여기엔 **집계 가능한 숫자만** 꺼내 둔다 — Json 안에 있으면 "서술형 평균 득점률" 같은
+  // 지표를 SQL로 뽑을 수 없다(MySQL JSON 함수는 TiDB 호환 때문에 쓰지 않기로 했다).
+  // rubric 채점을 하지 않은 답안은 둘 다 null이라, 리포트가 대상 답안을 그대로 골라낼 수 있다.
+  earnedPoints          Decimal?  @map("earned_points") @db.Decimal(8, 2)
+  rubricTotalPoints     Decimal?  @map("rubric_total_points") @db.Decimal(8, 2)
   annotations           Json?
   timeSpentSec          Int?      @map("time_spent_sec")
   answeredAt            DateTime? @map("answered_at")

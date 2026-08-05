@@ -14,7 +14,7 @@ import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QueryQuestionDto } from './dto/query-question.dto';
 import { RegenerateChoicesDto } from './dto/regenerate-choices.dto';
-import { maskQuestionAnswers } from './answer-masking';
+import { maskQuestionAnswers, stripInternalReview } from './answer-masking';
 
 // Prisma 생성 클라이언트가 InputJsonValue를 표면화하지 않으므로 Json 컬럼 쓰기 시 국소 캐스팅.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -143,13 +143,16 @@ export class QuestionsService {
         ? [{ ...question.passage, label: question.passage.label }]
         : [];
 
-    const payload = {
+    // 자기검증 기록은 출제자 전용이다 — 남에게 보이면 지적 사항이 정답 힌트가 된다.
+    // 응시 중 여부와 무관하게 뗀다(그 게이팅보다 넓은 기준).
+    const isCreator = question.creatorId === userId;
+    const payload = stripInternalReview({
       ...question,
       passages,
       tags: question.questionTags.map((qt) => qt.tag),
       correctRatePercent: correctRate,
       solvedByMe: solvedCount > 0,
-    };
+    }, isCreator);
 
     return inActiveSession
       ? { ...maskQuestionAnswers(payload), maskedForActiveSession: true as const }

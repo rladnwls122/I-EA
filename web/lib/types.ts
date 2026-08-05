@@ -96,8 +96,12 @@ export interface Question {
   points: number;
   /** 문제 상태 */
   status: QuestionStatus;
-  /** 추가 메타데이터 (JSON) */
-  metadata?: any | null;
+  /**
+   * 추가 메타데이터 (JSON). AI 자기검증 기록(`review`)과 Part 6 빈칸 번호(`blankIndex`) 등.
+   * `review`는 **출제자 본인에게만** 내려온다 — 지적 사항이 정답 힌트가 되기 때문에
+   * 서버가 다른 요청자에게는 떼고 보낸다(`stripInternalReview`).
+   */
+  metadata?: (Record<string, any> & { review?: SelfReviewNote }) | null;
   /** 힌트 내용 */
   hintContent?: any | null;
 
@@ -121,6 +125,22 @@ export interface Question {
   /** 상세 조회(GET /questions/:id)에서만 내려옴 — 이 유저가 제출된 세션에서 실제로 풀었는지. */
   solvedByMe?: boolean;
   correctRatePercent?: number | null;
+}
+
+/**
+ * AI 자기검증 기록(#34) — `questions.metadata.review`. 출제자에게만 내려온다.
+ * `ERROR`는 "판정을 못 했다"는 뜻이라 통과와 구분해서 표시해야 한다.
+ */
+export interface SelfReviewNote {
+  /** 판정에 쓴 모델명. 모델이 바뀌면 옛 판정은 근거가 약해진다. */
+  model: string;
+  /** 판정 시각(ISO). */
+  at: string;
+  verdict: 'PASS' | 'REVISE' | 'ERROR';
+  /** 지적된 축(발문형식·오답매력도·난이도일관성·지문문항정합). */
+  axes?: string[];
+  /** 사람이 읽을 지적 사항. */
+  issues?: string[];
 }
 
 // ─── 문제집 ─────────────────────────────────────────────────────────

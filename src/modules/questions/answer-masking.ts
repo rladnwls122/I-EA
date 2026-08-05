@@ -52,3 +52,30 @@ export function maskQuestionAnswers<T extends MaskableQuestion>(question: T): T 
     rubric: null,
   };
 }
+
+/* ── 내부 검수 기록 ──────────────────────────────────────────────────
+ * 자기검증(#34) 결과는 `questions.metadata.review`에 남는다. 이건 정답 필드가 아니지만
+ * **정답을 흘린다** — 지적 사항이 "3번 선지가 정답과 의미가 겹친다" 같은 문장이라, 읽으면
+ * 소거법으로 정답이 좁혀진다. 응시 중 마스킹을 아무리 걸어도 이 한 줄이 우회로가 된다.
+ *
+ * 그래서 정답 마스킹과 **별개 축**으로 가린다: 출제자 본인이 아니면 언제나 뗀다.
+ * 검수 기록은 출제자에게 보여주려고 만든 것이고, 남에게는 응시 중이 아니어도 보일 이유가 없다.
+ * ──────────────────────────────────────────────────────────────────── */
+
+/**
+ * metadata에서 `review`만 떼어낸 사본. 나머지 metadata(빈칸 번호 등)는 그대로 둔다.
+ * `keep`이 true면(출제자 본인) 원본을 그대로 돌려준다 — 호출부가 분기를 갖지 않게.
+ */
+export function stripInternalReview<T extends { metadata?: unknown }>(
+  question: T,
+  keep = false,
+): T {
+  if (keep) return question;
+  const meta = question.metadata;
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return question;
+  if (!('review' in (meta as Record<string, unknown>))) return question;
+
+  const { review: _review, ...rest } = meta as Record<string, unknown>;
+  // 검수 기록만 있던 metadata는 빈 객체로 남기지 않는다 — 화면이 "메타데이터 있음"으로 오해한다.
+  return { ...question, metadata: Object.keys(rest).length > 0 ? rest : null };
+}
