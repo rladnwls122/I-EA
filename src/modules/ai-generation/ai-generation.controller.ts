@@ -60,6 +60,17 @@ export class AiGenerationController {
     return this.service.listFormatTemplates(examType);
   }
 
+  // ⚠ ':id'보다 먼저. 아래 라우트가 UUID 파이프를 달고 있어 순서가 뒤바뀌면 400이 난다.
+  @Get('review-stats')
+  @ApiOperation({
+    summary: 'AI 자기검증 판정 집계 (본인 문항, #33)',
+    description:
+      'PASS/REVISE/ERROR 건수와 REVISE 비율은 전 기간 정확. 축 분해·일자별 추이는 최근 2000건 표본.',
+  })
+  reviewStats(@CurrentUser() user: CurrentUserPayload) {
+    return this.service.getReviewStats(user.id);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: '생성 작업 상태/산출물 조회 (요청자 본인 작업만)' })
   get(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: CurrentUserPayload) {

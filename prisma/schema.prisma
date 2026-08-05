@@ -386,6 +386,12 @@ model Question {
   // 없으면(null) 기존대로 정오 2지선다 자기채점이다. 객관식은 쓰지 않는다.
   rubric Json?
 
+  // AI 자기검증 판정(#34)의 집계용 사본. 'PASS' | 'REVISE' | 'ERROR', 판정 없으면 null.
+  // 근거(축·지적 문장)의 정본은 `metadata.review`다 — 그건 Json이라 SQL로 못 묶는다.
+  // 부분점수 리포트가 earned_points를 Json 밖으로 꺼낸 것과 같은 이유로 이 한 컬럼만 꺼냈다.
+  // null('판정 안 함')과 'ERROR'('판정하려다 실패')를 뭉개지 않는다.
+  reviewVerdict String? @map("review_verdict") @db.VarChar(16)
+
   // --- 정답률 캐시 컬럼 ---
   totalSolvedCount   Int     @default(0) @map("total_solved_count")
   correctSolvedCount Int     @default(0) @map("correct_solved_count")

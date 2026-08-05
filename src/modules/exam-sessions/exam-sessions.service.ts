@@ -1041,6 +1041,26 @@ export class ExamSessionsService {
       // 하위요소(4단계) 필터 — 소속 검증은 create()가 사전에 수행한다.
       ...(f.subjectDetailId ? { subjectDetailId: f.subjectDetailId } : {}),
       ...(f.questionTypes?.length ? { questionType: { in: f.questionTypes } } : {}),
+      /**
+       * 서술형만 (#33 잔여 2). 서술형의 정의를 새로 만들지 않고 채점기(`grading.util`)가
+       * 쓰는 판정을 그대로 건다 — 주관식 + 단답 정답 없음 + 채점기준표 있음.
+       *
+       * 세 조건을 다 거는 이유: `rubric`만 보면 단답 정답이 채워진 뒤 남은 죽은 기준까지
+       * 딸려 오고(지금은 저장 시 지우지만 과거 데이터가 있다), `correctAnswerText`만 보면
+       * 기준표 없는 정오 2지선다 자기채점 문항이 섞여 득점률 축과 모집단이 어긋난다.
+       */
+      ...(f.rubricOnly
+        ? {
+            AND: [
+              // questionTypes와 함께 오면 **좁히기만** 한다. 위 spread를 덮어써 '주관식'으로
+              // 되돌리면 "객관식만"이라는 요청을 조용히 뒤집게 된다 — 모순된 조합은
+              // 새 예외가 아니라 빈 결과(문항 부족)로 답한다.
+              { questionType: '주관식' },
+              { rubric: { not: Prisma.DbNull } },
+              { OR: [{ correctAnswerText: null }, { correctAnswerText: '' }] },
+            ],
+          }
+        : {}),
       ...(difficulty ? { difficulty } : {}),
       ...(f.tagIds?.length ? { questionTags: { some: { tagId: { in: f.tagIds } } } } : {}),
     };

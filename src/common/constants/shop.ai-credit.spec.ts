@@ -4,8 +4,14 @@ import {
   resolveAiCreditQuota,
 } from '@/common/constants/shop';
 
-const TODAY = new Date('2026-08-04T09:00:00Z');
-const YESTERDAY = new Date('2026-08-03T23:59:00Z');
+/**
+ * 무료분 리셋 경계는 **로컬 자정**이다(`aiDayNum`이 getFullYear/getMonth/getDate로 센다 —
+ * 한국 사용자에게 리셋은 KST 자정이어야 한다). 그래서 픽스처도 로컬 생성자로 만든다.
+ * UTC 문자열(`'2026-08-03T23:59:00Z'`)로 두면 KST에서는 그게 이미 8월 4일 아침이라
+ * "어제"가 "오늘"이 되고, 개발자 머신에서만 두 테스트가 깨진다(CI는 UTC라 통과했다).
+ */
+const TODAY = new Date(2026, 7, 4, 9, 0, 0);
+const YESTERDAY = new Date(2026, 7, 3, 23, 59, 0);
 
 describe('resolveAiCreditQuota — AI 크레딧 소모 판정', () => {
   it('오늘 처음이면 무료분을 쓴다(크레딧 보유와 무관)', () => {

@@ -190,11 +190,13 @@ export function buildQuestionPayload(
      * AI 자기검증 판정(#34)을 문항에 남긴다 — 캔버스를 닫으면 사라지던 판정이 문항 상세의
      * 검수 패널(SelfReviewPanel)로 이어진다. 서버는 이 필드를 출제자에게만 내려준다.
      *
-     * **새 문항에만** 싣는다. metadata는 통째로 교체되는 필드라, 이미 저장된 문항에
-     * 이걸 보내면 우리가 모르는 다른 키(빈칸 번호 등)를 덮어쓴다. 교체안으로 새 판정을
-     * 받은 기존 문항은 캔버스에서 배지로만 보이고 저장되지 않는다 — 덮어쓰는 것보다 낫다.
+     * **기존 문항에도 싣는다**(#33 잔여 3). 예전엔 새 문항에만 실었다 — metadata가 통째로
+     * 교체되는 필드라 우리가 모르는 다른 키(빈칸 번호 등)를 덮어쓸까 봐였고, 그 대가로
+     * 교체안이 받은 새 판정은 캔버스를 닫으면 사라졌다. 지금은 **서버가 얕게 병합**하므로
+     * 보낸 키만 바뀐다(`question-metadata.ts`). 서버를 먼저 되돌리면 덮어쓰기가 되살아나니,
+     * 되돌릴 땐 이 줄을 먼저 되돌려야 한다.
      */
-    metadata: card.review && !isPersistedCard(card.id) ? { review: card.review } : undefined,
+    metadata: card.review ? { review: card.review } : undefined,
   };
 }
 

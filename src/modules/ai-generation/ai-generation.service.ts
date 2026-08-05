@@ -6,6 +6,7 @@ import { GeminiLlmService } from './llm/gemini-llm.service';
 import { CreateGenerationDto } from './dto/create-generation.dto';
 import { AI_GENERATION_JOB, AI_GENERATION_QUEUE, isAudioSubject } from './ai-generation.constants';
 import { getTemplate, listTemplates } from './format-templates';
+import { foldReviewRows, REVIEW_STATS_ROW_CAP } from './review-stats';
 
 @Injectable()
 export class AiGenerationService {
@@ -98,6 +99,50 @@ export class AiGenerationService {
       examTypes: t.examTypes,
       structure: t.structure,
     }));
+  }
+
+  /**
+   * 자기검증 판정 집계 (#33 잔여 1) — **요청자 본인이 만든 문항만**.
+   *
+   * 남의 품질 수치를 볼 이유가 없다. ADMIN 전역 집계가 필요해지면 그때 파라미터를 연다.
+   *
+   * 집계 대상은 `ai_generations`가 아니라 `questions`다. 자기검증은 출제 채팅(SSE)에 붙어
+   * 있고 그 경로는 생성 잡 행을 만들지 않는다 — 실사용 판정이 남는 자리는 문항뿐이다.
+   */
+  async getReviewStats(userId: string) {
+    const where = { creatorId: userId, reviewVerdict: { not: null } };
+
+    // 헤드라인은 DB가 센다 — 상한 밖에서 정확해야 하는 숫자다(컬럼을 꺼낸 이유).
+    const grouped = await this.prisma.question.groupBy({
+      by: ['reviewVerdict'],
+      where,
+      _count: { _all: true },
+    });
+
+    const counts = { PASS: 0, REVISE: 0, ERROR: 0 };
+    for (const g of grouped) {
+      const key = g.reviewVerdict as keyof typeof counts;
+      if (key in counts) counts[key] = g._count._all;
+    }
+    const reviewed = counts.PASS + counts.REVISE + counts.ERROR;
+    // 판정된 것 중 REVISE 비율. ERROR는 "판정 못 함"이라 분모에서 뺀다 —
+    // 넣으면 모델이 자주 실패한 날이 품질이 좋아진 날로 읽힌다.
+    const judged = counts.PASS + counts.REVISE;
+
+    // 축·일자 분해는 상한을 건 표본에서 접는다(축이 Json 안이라 SQL로 못 묶는다).
+    const rows = await this.prisma.question.findMany({
+      where,
+      select: { createdAt: true, reviewVerdict: true, metadata: true },
+      orderBy: { createdAt: 'desc' },
+      take: REVIEW_STATS_ROW_CAP,
+    });
+
+    return {
+      reviewed,
+      counts,
+      reviseRatio: judged > 0 ? counts.REVISE / judged : null,
+      ...foldReviewRows(rows),
+    };
   }
 
   /** 상태 폴링 + 완료 시 산출물(지문/문항 ID) 조회 */

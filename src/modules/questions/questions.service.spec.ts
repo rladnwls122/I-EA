@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { Prisma } from '@prisma/client';
 import { QuestionsService } from './questions.service';
 import { PrismaService } from '@/prisma/prisma.service';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
@@ -14,7 +15,7 @@ const doc = (text: string) => ({
  * update()를 트랜잭션 콜백까지 실행시키는 목.
  * $transaction(cb) → cb(tx)를 그대로 호출해 내부에서 어떤 쿼리가 나갔는지 관찰한다.
  */
-function buildPrisma() {
+function buildPrisma(existingMetadata: unknown = null) {
   const tx = {
     questionChoiceStat: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     question: {
@@ -31,6 +32,7 @@ function buildPrisma() {
         choices: [{ id: 'c1', content: doc('보기 1'), isCorrect: true }],
         explanation: null,
         correctAnswerText: null,
+        metadata: existingMetadata,
       }),
     },
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
@@ -96,5 +98,53 @@ describe('QuestionsService.update — 선지 수정 시 통계 리셋', () => {
     await service.update('q1', 'user-1', { choices: [] } as unknown as UpdateQuestionDto);
 
     expect(tx.questionChoiceStat.deleteMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * metadata는 주인이 여럿인 필드다(빈칸 번호·OX 표시·자기검증 기록).
+ * 통째로 교체하면 캔버스가 판정 하나를 저장할 때 지문 빈칸 번호가 함께 사라진다 —
+ * 그래서 예전엔 기존 문항에 판정을 아예 안 실었고, 교체안의 판정이 저장되지 않았다.
+ */
+describe('QuestionsService.update — metadata 병합과 판정 집계 컬럼', () => {
+  it('보낸 키만 덮어쓰고 남의 키는 남긴다', async () => {
+    const { prisma, tx } = buildPrisma({ blankIndex: 3 });
+    const service = await makeService(prisma);
+
+    await service.update('q1', 'user-1', {
+      metadata: { review: { verdict: 'REVISE', axes: ['오답매력도'] } },
+    } as unknown as UpdateQuestionDto);
+
+    const data = tx.question.update.mock.calls[0][0].data;
+    expect(data.metadata).toEqual({
+      blankIndex: 3,
+      review: { verdict: 'REVISE', axes: ['오답매력도'] },
+    });
+    // 근거(Json)와 집계 컬럼은 **같은 쓰기**에서 채워진다.
+    expect(data.reviewVerdict).toBe('REVISE');
+  });
+
+  it('metadata가 안 오면 컬럼도 판정도 건드리지 않는다', async () => {
+    const { prisma, tx } = buildPrisma({ blankIndex: 3 });
+    const service = await makeService(prisma);
+
+    await service.update('q1', 'user-1', { stem: doc('발문만') } as unknown as UpdateQuestionDto);
+
+    const data = tx.question.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('metadata');
+    expect(data).not.toHaveProperty('reviewVerdict');
+  });
+
+  it('마지막 키까지 지우면 컬럼을 null로 되돌린다 (빈 객체를 남기지 않는다)', async () => {
+    const { prisma, tx } = buildPrisma({ blankIndex: 3 });
+    const service = await makeService(prisma);
+
+    await service.update('q1', 'user-1', {
+      metadata: { blankIndex: null },
+    } as unknown as UpdateQuestionDto);
+
+    const data = tx.question.update.mock.calls[0][0].data;
+    expect(data.metadata).toBe(Prisma.DbNull);
+    expect(data.reviewVerdict).toBeNull();
   });
 });

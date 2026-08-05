@@ -26,6 +26,7 @@ import {
   BatchUpdateQuestionsDto,
 } from './dto/batch-update-question.dto';
 import { maskQuestionAnswers, stripInternalReview } from './answer-masking';
+import { mergeMetadata, readReviewVerdict } from './question-metadata';
 
 // Prisma 생성 클라이언트가 InputJsonValue를 표면화하지 않으므로 Json 컬럼 쓰기 시 국소 캐스팅.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -240,6 +241,9 @@ export class QuestionsService {
       // []를 똑같이 "정오 2지선다 자기채점"으로 다루게 하려면 저장 형태를 하나로 모아야 한다.
       ...(dto.rubric?.length ? { rubric: dto.rubric as JsonWritable } : {}),
       ...(dto.metadata ? { metadata: dto.metadata as JsonWritable } : {}),
+      // 자기검증 판정의 집계용 사본. 근거는 metadata.review에 남고 이 컬럼은 SQL이 읽는다 —
+      // 둘을 반드시 같은 쓰기에서 채운다(갈라지면 한쪽만 갱신되는 날이 온다).
+      ...(dto.metadata ? { reviewVerdict: readReviewVerdict(dto.metadata) } : {}),
       ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
       difficulty: dto.difficulty ?? 3,
       points: dto.points ?? 1,
@@ -344,6 +348,16 @@ export class QuestionsService {
         })
       : undefined;
 
+    /**
+     * metadata는 **덮어쓰지 않고 병합한다**(결정 3, 2026-08-05).
+     * 주인이 여럿인 필드라(빈칸 번호·OX 표시·자기검증 기록), 통째로 교체하면 캔버스가
+     * 판정 하나를 저장할 때 지문 빈칸 번호가 함께 사라진다. "먼저 읽어서 합쳐 보내라"를
+     * 클라이언트 규약으로 두면 지키지 않는 클라이언트가 하나 생기는 순간 데이터가 지워진다.
+     * 키를 지우고 싶으면 값 `null`을 보낸다.
+     */
+    const mergedMetadata =
+      dto.metadata !== undefined ? mergeMetadata(existing.metadata, dto.metadata) : undefined;
+
     // 선지를 건드리면 누적 통계가 오염된다(선지 id는 문항 로컬 문자열이라
     // 재배열/교체 시 "3번에 낚였다"가 다른 선지를 가리키게 된다).
     // 규칙: choices가 본문에 오면 집계 캐시를 전부 리셋한다.
@@ -372,7 +386,12 @@ export class QuestionsService {
           ...(dto.rubric !== undefined
             ? { rubric: dto.rubric.length ? (dto.rubric as JsonWritable) : Prisma.DbNull }
             : {}),
-          ...(dto.metadata !== undefined ? { metadata: dto.metadata as JsonWritable } : {}),
+          ...(mergedMetadata !== undefined
+            ? {
+                metadata: (mergedMetadata ?? Prisma.DbNull) as JsonWritable,
+                reviewVerdict: readReviewVerdict(mergedMetadata),
+              }
+            : {}),
           ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
           ...(dto.difficulty !== undefined ? { difficulty: dto.difficulty } : {}),
           ...(dto.points !== undefined ? { points: dto.points } : {}),
@@ -549,6 +568,8 @@ export class QuestionsService {
         // 이번 요청에 안 실린 쪽의 현재 값이 필요하다.
         questionType: true,
         rubric: true,
+        // 병합 대상. update()가 metadata를 덮어쓰지 않고 합치려면 기존 값이 필요하다.
+        metadata: true,
       },
     });
     if (!q) throw new NotFoundException('문제를 찾을 수 없습니다.');
