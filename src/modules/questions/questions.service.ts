@@ -7,6 +7,12 @@ import {
 import { Prisma, QuestionStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { PaginatedResult } from '@/common/dto/pagination.dto';
+import {
+  batchItemError,
+  toBatchResult,
+  type BatchItemResult,
+  type BatchResult,
+} from '@/common/dto/batch-result';
 import { STATS_MIN_SAMPLE } from '@/common/constants/question';
 import { extractPlainText, PMNode } from '@/common/prosemirror/prosemirror.util';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
@@ -14,6 +20,7 @@ import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QueryQuestionDto } from './dto/query-question.dto';
 import { RegenerateChoicesDto } from './dto/regenerate-choices.dto';
+import { BatchUpdateQuestionsDto } from './dto/batch-update-question.dto';
 import { maskQuestionAnswers, stripInternalReview } from './answer-masking';
 
 // Prisma 생성 클라이언트가 InputJsonValue를 표면화하지 않으므로 Json 컬럼 쓰기 시 국소 캐스팅.
@@ -206,30 +213,93 @@ export class QuestionsService {
     this.assertRubricAllowed(dto);
 
     return this.prisma.question.create({
-      data: {
-        creatorId,
-        subjectId: dto.subjectId,
-        passageId: dto.passageId ?? null,
-        questionType: dto.questionType,
-        stem: dto.stem as JsonWritable,
-        ...(dto.choices ? { choices: dto.choices as JsonWritable } : {}),
-        ...(dto.explanation ? { explanation: dto.explanation as JsonWritable } : {}),
-        ...(dto.correctAnswerText !== undefined ? { correctAnswerText: dto.correctAnswerText } : {}),
-        // 빈 배열은 "기준 없음"이라 컬럼에 넣지 않는다 — 읽는 쪽(readRubric)이 null과
-        // []를 똑같이 "정오 2지선다 자기채점"으로 다루게 하려면 저장 형태를 하나로 모아야 한다.
-        ...(dto.rubric?.length ? { rubric: dto.rubric as JsonWritable } : {}),
-        ...(dto.metadata ? { metadata: dto.metadata as JsonWritable } : {}),
-        ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
-        difficulty: dto.difficulty ?? 3,
-        points: dto.points ?? 1,
-        status: 'DRAFT',
-        searchText: this.buildSearchText(dto),
-        ...(dto.tagIds?.length
-          ? { questionTags: { create: dto.tagIds.map((tagId) => ({ tagId })) } }
-          : {}),
-      },
+      data: { ...this.buildCreateData(creatorId, dto), status: 'DRAFT' },
       select: { id: true, status: true, createdAt: true },
     });
+  }
+
+  /**
+   * 단건 생성과 배치 생성이 **같은 행 모양**을 쓰도록 모아 둔 곳. status만 호출부가 정한다.
+   * 두 경로가 각자 data를 조립하면 필드 하나가 한쪽에만 추가되는 식으로 조용히 갈라진다.
+   */
+  private buildCreateData(creatorId: string, dto: CreateQuestionDto) {
+    return {
+      creatorId,
+      subjectId: dto.subjectId,
+      passageId: dto.passageId ?? null,
+      questionType: dto.questionType,
+      stem: dto.stem as JsonWritable,
+      ...(dto.choices ? { choices: dto.choices as JsonWritable } : {}),
+      ...(dto.explanation ? { explanation: dto.explanation as JsonWritable } : {}),
+      ...(dto.correctAnswerText !== undefined ? { correctAnswerText: dto.correctAnswerText } : {}),
+      // 빈 배열은 "기준 없음"이라 컬럼에 넣지 않는다 — 읽는 쪽(readRubric)이 null과
+      // []를 똑같이 "정오 2지선다 자기채점"으로 다루게 하려면 저장 형태를 하나로 모아야 한다.
+      ...(dto.rubric?.length ? { rubric: dto.rubric as JsonWritable } : {}),
+      ...(dto.metadata ? { metadata: dto.metadata as JsonWritable } : {}),
+      ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
+      difficulty: dto.difficulty ?? 3,
+      points: dto.points ?? 1,
+      searchText: this.buildSearchText(dto),
+      ...(dto.tagIds?.length
+        ? { questionTags: { create: dto.tagIds.map((tagId) => ({ tagId })) } }
+        : {}),
+    };
+  }
+
+  /**
+   * 문항을 곧바로 PUBLISHED로 만든다. 배치 담기(`POST /workbooks/:id/questions/batch`)가
+   * **자기 트랜잭션 안에서** 부르는 생성 경로다 (#41 Phase 3 마감).
+   *
+   * 단건 경로의 "생성(DRAFT) → 발행" 두 왕복을 한 번으로 줄인 것이지 발행을 건너뛴 게 아니다.
+   * publish()가 create()에 더하는 규칙은 소유권 확인 하나인데, 여기서 만드는 문항의 작성자는
+   * 요청자 본인이라 그 검사가 항상 참이다. 나머지 검증(과목 존재·채점기준표 규칙·search_text)은
+   * create()와 **같은 코드**를 탄다 — 배치가 검증 우회로가 되면 안 된다.
+   *
+   * tx를 받는 이유: 문항 생성과 문제집 담기가 한 항목의 원자 단위여야 하기 때문이다.
+   * relationMode="prisma"(TiDB — DB에 FK가 없다)라 담기가 실패해도 DB가 문항을 정리해 주지
+   * 않는다. 같은 트랜잭션에 넣어 롤백으로 지운다 — 안 그러면 어느 문제집에도 안 담긴
+   * 발행 문항이 조용히 쌓이고, 그건 사용자에게 보이지도 않는 쓰레기다.
+   */
+  async createPublishedWithin(
+    tx: Prisma.TransactionClient,
+    creatorId: string,
+    dto: CreateQuestionDto,
+  ): Promise<{ id: string }> {
+    await this.assertSubjectExists(dto.subjectId, tx);
+    this.assertRubricAllowed(dto);
+
+    return tx.question.create({
+      data: {
+        ...this.buildCreateData(creatorId, dto),
+        status: 'PUBLISHED',
+        publishedAt: new Date(),
+      },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * 문항 일괄 갱신 (#41 Phase 3 마감). 캔버스 저장이 문항 수만큼 PATCH를 쏘던 자리다.
+   *
+   * 항목마다 단건 `update()`를 **그대로** 부른다. 배치용 쓰기 경로를 따로 만들면
+   * 소유권·채점기준표 규칙·선지 변경 시 통계 리셋이 한쪽에만 남는 날이 온다.
+   * update()가 이미 자기 트랜잭션을 열므로 원자 단위는 자연히 **항목별**이다.
+   *
+   * 순차로 돈다. 항목마다 트랜잭션이 하나씩 열리는데 병렬로 쏘면 배치 한 건이 커넥션 풀을
+   * 통째로 점유한다 — 줄이려는 것은 왕복 수(HTTP)지 서버 내부 동시성이 아니다.
+   */
+  async updateBatch(userId: string, dto: BatchUpdateQuestionsDto): Promise<BatchResult> {
+    const results: BatchItemResult[] = [];
+    for (const [index, item] of dto.items.entries()) {
+      const { id, ...patch } = item;
+      try {
+        await this.update(id, userId, patch);
+        results.push({ index, status: 'ok', questionId: id });
+      } catch (e) {
+        results.push({ index, status: 'failed', questionId: id, error: batchItemError(e) });
+      }
+    }
+    return toBatchResult(results);
   }
 
   /** 부분 수정 — 작성자 본인만. 태그가 오면 전체 교체(set) 방식. */
@@ -439,8 +509,12 @@ export class QuestionsService {
 
   // --- 내부 헬퍼 -------------------------------------------------------
 
-  private async assertSubjectExists(subjectId: string): Promise<void> {
-    const subject = await this.prisma.subject.findUnique({
+  /** 배치 생성은 자기 트랜잭션 안에서 확인해야 하므로 클라이언트를 갈아 끼울 수 있게 둔다. */
+  private async assertSubjectExists(
+    subjectId: string,
+    client: Prisma.TransactionClient = this.prisma,
+  ): Promise<void> {
+    const subject = await client.subject.findUnique({
       where: { id: subjectId },
       select: { id: true },
     });

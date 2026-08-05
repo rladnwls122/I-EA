@@ -35,4 +35,20 @@ export type WorkbookVisibility = (typeof WORKBOOK_VISIBILITIES)[number];
  */
 export const STATS_MIN_SAMPLE = 10;
 
+/**
+ * 문항 배치 엔드포인트 한 요청의 항목 수 상한 (#41 Phase 3 마감).
+ *
+ * 상한 없는 배치는 트랜잭션 타임아웃과 페이로드 폭주로 돌아온다 —
+ * SESSION_MAX_QUESTIONS·NOTES_GRADED_LIMIT과 같은 판단이다. 배치는 항목마다
+ * 트랜잭션을 하나씩 순차로 열기 때문에 한 요청의 처리 시간이 항목 수에 비례한다.
+ *
+ * 50인 이유: 캔버스 한 화면의 현실적 문항 수(20~30) 위이면서, 문항 하나가
+ * ProseMirror JSON(발문·선지·해설)을 통째로 싣는다는 점을 감안한 페이로드 크기다.
+ * 이보다 많으면 클라이언트가 나눠 보낸다(순서를 지켜 순차로).
+ *
+ * ⚠️ 프런트가 같은 값으로 나눠 보내야 한다 — `web/lib/api.ts`의 사본과
+ * `question.batch.web-mirror.spec.ts`가 대조한다.
+ */
+export const QUESTION_BATCH_MAX = 50;
+
 // 태그 카테고리는 tag.ts로 옮겼다 — 정본 목록과 한곳에 있어야 드리프트를 막는다.

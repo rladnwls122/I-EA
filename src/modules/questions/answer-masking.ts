@@ -75,7 +75,10 @@ export function stripInternalReview<T extends { metadata?: unknown }>(
   if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return question;
   if (!('review' in (meta as Record<string, unknown>))) return question;
 
-  const { review: _review, ...rest } = meta as Record<string, unknown>;
+  // 구조분해로 빼면 쓰지 않는 바인딩이 남아 lint에 걸린다 — 키를 빼는 게 목적이니 필터가 곧다.
+  const rest = Object.fromEntries(
+    Object.entries(meta as Record<string, unknown>).filter(([key]) => key !== 'review'),
+  );
   // 검수 기록만 있던 metadata는 빈 객체로 남기지 않는다 — 화면이 "메타데이터 있음"으로 오해한다.
   return { ...question, metadata: Object.keys(rest).length > 0 ? rest : null };
 }

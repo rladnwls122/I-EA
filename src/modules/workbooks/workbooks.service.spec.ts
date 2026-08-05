@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { WorkbooksService } from './workbooks.service';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ExamSessionsService } from '@/modules/exam-sessions/exam-sessions.service';
+import { QuestionsService } from '@/modules/questions/questions.service';
 import { QueryWorkbookDto } from './dto/workbook.dto';
 
 const D = (n: string | number) => new Prisma.Decimal(n);
@@ -20,6 +21,8 @@ async function listOnce(row: { attemptCount: number; scoreSumPercent: Prisma.Dec
       { provide: PrismaService, useValue: prisma },
       // 이 테스트들은 세션을 만들지 않지만 생성자가 요구한다.
       { provide: ExamSessionsService, useValue: {} },
+      // 배치 담기(addQuestionsBatch)가 주입받는다 — 이 테스트들은 배치를 타지 않는다.
+      { provide: QuestionsService, useValue: {} },
     ],
   }).compile();
   const service = module.get(WorkbooksService);
@@ -51,6 +54,8 @@ async function addQuestionOnce(displayOrder: number | undefined, currentMax: num
       { provide: PrismaService, useValue: prisma },
       // 이 테스트들은 세션을 만들지 않지만 생성자가 요구한다.
       { provide: ExamSessionsService, useValue: {} },
+      // 배치 담기(addQuestionsBatch)가 주입받는다 — 이 테스트들은 배치를 타지 않는다.
+      { provide: QuestionsService, useValue: {} },
     ],
   }).compile();
   const service = module.get(WorkbooksService);
@@ -104,6 +109,9 @@ describe('WorkbooksService — 문제집 #키워드 태그(workbookTags)', () =>
         WorkbooksService,
         { provide: PrismaService, useValue: prisma },
         { provide: ExamSessionsService, useValue: {} },
+        { provide: QuestionsService, useValue: {} },
+      // 배치 담기(addQuestionsBatch)가 주입받는다 — 이 테스트들은 배치를 타지 않는다.
+      { provide: QuestionsService, useValue: {} },
       ],
     }).compile();
     const service = module.get(WorkbooksService);
@@ -135,6 +143,9 @@ describe('WorkbooksService — 문제집 #키워드 태그(workbookTags)', () =>
         WorkbooksService,
         { provide: PrismaService, useValue: prisma },
         { provide: ExamSessionsService, useValue: {} },
+        { provide: QuestionsService, useValue: {} },
+      // 배치 담기(addQuestionsBatch)가 주입받는다 — 이 테스트들은 배치를 타지 않는다.
+      { provide: QuestionsService, useValue: {} },
       ],
     }).compile();
     const service = module.get(WorkbooksService);
@@ -165,6 +176,9 @@ describe('WorkbooksService — 문제집 #키워드 태그(workbookTags)', () =>
         WorkbooksService,
         { provide: PrismaService, useValue: prisma },
         { provide: ExamSessionsService, useValue: {} },
+        { provide: QuestionsService, useValue: {} },
+      // 배치 담기(addQuestionsBatch)가 주입받는다 — 이 테스트들은 배치를 타지 않는다.
+      { provide: QuestionsService, useValue: {} },
       ],
     }).compile();
     const service = module.get(WorkbooksService);

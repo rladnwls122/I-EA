@@ -21,15 +21,32 @@ const card = (over: Partial<CanvasCard> = {}): CanvasCard => ({
   ...over,
 });
 
-/** 호출을 다 세는 가짜 서버. 실패시키고 싶은 메서드만 override 한다. */
-function fakeClient(over: Partial<SaveClient> = {}) {
+/**
+ * 호출을 다 세는 가짜 서버.
+ *
+ * 실패를 만드는 방법이 둘이고, 둘이 서로 다른 상황이다:
+ *   - `opts.fail` — 배치는 **항목별로** 성패를 돌려준다. 서버가 그 항목을 거부한 경우.
+ *   - 메서드 override — 배치 요청 자체가 못 나갔다(네트워크·400). 묶음 전체가 실패다.
+ *
+ * `createBatches`/`updateBatches`는 **왕복 수**를 세는 자리다 — 이 모듈이 줄이려던 게 그거다.
+ */
+function fakeClient(
+  over: Partial<SaveClient> = {},
+  opts: { fail?: { create?: string; update?: string }; batchLimit?: number } = {},
+) {
   let passageSeq = 0;
   let questionSeq = 0;
   const calls = {
     createPassage: 0,
     updatePassage: 0,
+    /** 만들어진 문항 수(항목 기준). 배치 안의 항목도 하나씩 센다. */
     createQuestion: 0,
+    /** 갱신된 문항 수(항목 기준). */
     updateQuestion: 0,
+    /** 나간 배치 요청 = 왕복. */
+    createBatches: [] as unknown[][],
+    updateBatches: [] as { id: string; payload: any }[][],
+    /** 문제집에 담긴 순서 — 배치에 실린 순서가 그대로 문제집 순서다. */
     addToWorkbook: [] as string[],
     removedFromWorkbook: [] as string[],
     reordered: [] as string[][],
@@ -37,6 +54,7 @@ function fakeClient(over: Partial<SaveClient> = {}) {
     updateWorkbook: [] as any[],
   };
   const client: SaveClient = {
+    batchLimit: opts.batchLimit ?? 50,
     createPassage: async () => {
       calls.createPassage += 1;
       return { id: `passage-${++passageSeq}` };
@@ -48,18 +66,23 @@ function fakeClient(over: Partial<SaveClient> = {}) {
     },
     listKeywordTags: async () => [],
     createKeywordTag: async (name) => ({ id: `tag-${name}` }),
-    createQuestion: async () => {
-      calls.createQuestion += 1;
-      return { id: `q-${++questionSeq}` };
+    createQuestionsBatch: async (payloads) => {
+      calls.createBatches.push(payloads);
+      return payloads.map((_, index) => {
+        if (opts.fail?.create) return { index, error: opts.fail.create };
+        calls.createQuestion += 1;
+        const id = `q-${++questionSeq}`;
+        calls.addToWorkbook.push(id);
+        return { index, questionId: id };
+      });
     },
-    updateQuestion: async () => {
-      calls.updateQuestion += 1;
-      return null;
-    },
-    publishQuestion: async () => null,
-    addQuestionToWorkbook: async (id) => {
-      calls.addToWorkbook.push(id);
-      return null;
+    updateQuestionsBatch: async (items) => {
+      calls.updateBatches.push(items as { id: string; payload: any }[]);
+      return items.map((item, index) => {
+        if (opts.fail?.update) return { index, error: opts.fail.update };
+        calls.updateQuestion += 1;
+        return { index, questionId: item.id };
+      });
     },
     removeQuestionFromWorkbook: async (id) => {
       calls.removedFromWorkbook.push(id);
@@ -113,19 +136,33 @@ describe('runSave — 새 문항 생성', () => {
     expect(calls.addToWorkbook).toEqual(['q-1', 'q-2', 'q-3', 'q-4', 'q-5']);
   });
 
-  it('발행이 실패하면 담기를 강행하지 않는다 — 백엔드 404로 원인이 가려진다', async () => {
-    const { client, calls } = fakeClient({
-      publishQuestion: async () => {
-        throw new Error('발행 권한 없음');
-      },
-    });
+  it('서버가 거부한 항목은 문제집에 담기지 않고, 그 사유가 그대로 올라온다', async () => {
+    // 예전에는 생성·발행·담기가 세 번의 왕복이라 "발행 실패인데 담기를 강행"할 수 있었다.
+    // 지금은 셋이 서버에서 한 항목의 원자 단위라 항목이 실패하면 담기지도 않는다 —
+    // 프런트가 확인할 것은 그 사실이 실패로 세어지고 사유가 보이는가다.
+    const { client, calls } = fakeClient({}, { fail: { create: '발행 권한 없음' } });
     const out = await runSave(input(), client);
 
     expect(calls.addToWorkbook).toEqual([]);
     expect(out.failedCount).toBe(1);
+    expect(out.newQuestionIdByCardId).toEqual({});
     expect(out.notices.some((n) => n.level === 'error' && /발행 권한 없음/.test(n.message))).toBe(
       true,
     );
+  });
+
+  it('배치 요청 자체가 못 나가면 그 묶음의 문항이 전부 실패로 세어진다', async () => {
+    const { client, calls } = fakeClient({
+      createQuestionsBatch: async () => {
+        throw new Error('네트워크 오류');
+      },
+    });
+    const cards = [card({ id: 'local-1-0' }), card({ id: 'local-1-1' })];
+    const out = await runSave(input({ cards }), client);
+
+    expect(out.failedCount).toBe(2);
+    expect(out.savedCount).toBe(0);
+    expect(calls.addToWorkbook).toEqual([]);
   });
 
   it('내용이 없는 카드(빈 발문)는 건너뛴다', async () => {
@@ -164,11 +201,7 @@ describe('runSave — 변경 감지', () => {
 
   it('저장이 실패한 문항의 기준선은 갱신하지 않는다 — 다음 저장에서 다시 시도해야 한다', async () => {
     const persisted = card({ id: 'q-existing' });
-    const { client } = fakeClient({
-      updateQuestion: async () => {
-        throw new Error('서버 오류');
-      },
-    });
+    const { client } = fakeClient({}, { fail: { update: '서버 오류' } });
     const seeded: SaveBaseline = { ...emptyBaseline(), questions: { 'q-existing': 'stale' } };
     const out = await runSave(input({ cards: [persisted], baseline: seeded }), client);
 
@@ -355,11 +388,7 @@ describe('runSave — 태그와 문제집 메타', () => {
   });
 
   it('문항 저장이 실패해도 문제집 메타 반영은 시도한다', async () => {
-    const { client, calls } = fakeClient({
-      createQuestion: async () => {
-        throw new Error('문항 서버 오류');
-      },
-    });
+    const { client, calls } = fakeClient({}, { fail: { create: '문항 서버 오류' } });
     await runSave(input(), client);
     expect(calls.updateWorkbook.length).toBe(1);
   });
@@ -405,11 +434,7 @@ describe('runSave — 문제집 구성(순서·빼기)', () => {
     const first = await runSave(input({ cards: [a, b] }), fakeClient().client);
 
     const edited = { ...a, stem: buildRichDoc('고침') };
-    const { client, calls } = fakeClient({
-      updateQuestion: async () => {
-        throw new Error('서버 오류');
-      },
-    });
+    const { client, calls } = fakeClient({}, { fail: { update: '서버 오류' } });
     const out = await runSave(input({ cards: [edited], baseline: first.baseline }), client);
 
     expect(calls.removedFromWorkbook).toEqual([]);
@@ -423,15 +448,9 @@ describe('runSave — 삭제를 표현할 수 있는 페이로드', () => {
     const withTag = card({ id: 'q-1', keywords: ['미적분'] });
     const first = await runSave(input({ cards: [withTag] }), fakeClient().client);
 
-    let sent: any = null;
-    const { client } = fakeClient({
-      updateQuestion: async (_id, payload) => {
-        sent = payload;
-        return null;
-      },
-    });
+    const { client, calls } = fakeClient();
     await runSave(input({ cards: [{ ...withTag, keywords: [] }], baseline: first.baseline }), client);
-    expect(sent.tagIds).toEqual([]);
+    expect(calls.updateBatches[0][0].payload.tagIds).toEqual([]);
   });
 
   it('지문을 떼면 passageId: null을 명시해 보낸다', async () => {
@@ -442,13 +461,7 @@ describe('runSave — 삭제를 표현할 수 있는 페이로드', () => {
     });
     const first = await runSave(input({ cards: [withPassage] }), fakeClient().client);
 
-    let sent: any = null;
-    const { client } = fakeClient({
-      updateQuestion: async (_id, payload) => {
-        sent = payload;
-        return null;
-      },
-    });
+    const { client, calls } = fakeClient();
     await runSave(
       input({
         cards: [{ ...withPassage, passage: null, passageGroupId: null }],
@@ -456,7 +469,7 @@ describe('runSave — 삭제를 표현할 수 있는 페이로드', () => {
       }),
       client,
     );
-    expect(sent.passageId).toBeNull();
+    expect(calls.updateBatches[0][0].payload.passageId).toBeNull();
   });
 });
 
@@ -541,7 +554,7 @@ describe('runSave — 부분 실패는 동기화된 것으로 기록하지 않�
       card({ id: 'q-4', stem: withImage('4') }),
     ];
     // 확인과 기록 사이에 await이 실제로 끼도록 지연을 준다 — 예약을 안 하면
-    // 4-병렬 워커가 나란히 통과해 중복 등록이 난다.
+    // 4-병렬 등록 워커가 나란히 통과해 중복 등록이 난다.
     const { client, calls } = fakeClient({
       registerImage: async (args) => {
         calls.registerImage.push(args);
@@ -572,11 +585,139 @@ describe('runSave — 목록이 문제집의 전부가 아닐 때', () => {
   });
 });
 
+describe('runSave — 왕복 수', () => {
+  const many = (n: number, id: (i: number) => string) =>
+    Array.from({ length: n }, (_, i) => card({ id: id(i), stem: buildRichDoc(`발문${i}`) }));
+
+  it('20문항 첫 저장의 생성 왕복은 1회다 — 예전엔 문항당 3회(생성·발행·담기)라 60회였다', async () => {
+    const { client, calls } = fakeClient();
+    await runSave(input({ cards: many(20, (i) => `local-1-${i}`) }), client);
+
+    expect(calls.createBatches).toHaveLength(1);
+    expect(calls.createBatches[0]).toHaveLength(20);
+    expect(calls.createQuestion).toBe(20);
+  });
+
+  it('20문항 중 5개를 고치면 갱신 왕복은 1회다 — 예전엔 5회였다', async () => {
+    const cards = many(20, (i) => `q-${i}`);
+    const first = await runSave(input({ cards }), fakeClient().client);
+
+    const edited = cards.map((c, i) => (i < 5 ? { ...c, stem: buildRichDoc(`고침${i}`) } : c));
+    const { client, calls } = fakeClient();
+    const out = await runSave(input({ cards: edited, baseline: first.baseline }), client);
+
+    expect(calls.updateBatches).toHaveLength(1);
+    expect(calls.updateBatches[0]).toHaveLength(5);
+    expect(out.savedCount).toBe(5);
+    expect(out.skippedCount).toBe(15);
+  });
+
+  it('바뀐 게 없으면 배치를 아예 보내지 않는다', async () => {
+    const cards = many(3, (i) => `q-${i}`);
+    const first = await runSave(input({ cards }), fakeClient().client);
+
+    const { client, calls } = fakeClient();
+    await runSave(input({ cards, baseline: first.baseline }), client);
+    expect(calls.updateBatches).toHaveLength(0);
+    expect(calls.createBatches).toHaveLength(0);
+  });
+});
+
+describe('runSave — 배치 상한', () => {
+  it('상한을 넘으면 나눠 보내되 담기는 순서를 지킨다 — 순서가 곧 문제집 순서다', async () => {
+    const cards = Array.from({ length: 5 }, (_, i) =>
+      card({ id: `local-1-${i}`, stem: buildRichDoc(`발문${i}`) }),
+    );
+    const { client, calls } = fakeClient({}, { batchLimit: 2 });
+    await runSave(input({ cards }), client);
+
+    expect(calls.createBatches.map((b) => b.length)).toEqual([2, 2, 1]);
+    expect(calls.addToWorkbook).toEqual(['q-1', 'q-2', 'q-3', 'q-4', 'q-5']);
+    expect(calls.reordered).toEqual([['q-1', 'q-2', 'q-3', 'q-4', 'q-5']]);
+  });
+
+  it('갱신도 상한만큼 나눠 보낸다', async () => {
+    const cards = Array.from({ length: 5 }, (_, i) =>
+      card({ id: `q-${i}`, stem: buildRichDoc(`발문${i}`) }),
+    );
+    const { client, calls } = fakeClient({}, { batchLimit: 2 });
+    await runSave(input({ cards }), client);
+    expect(calls.updateBatches.map((b) => b.length)).toEqual([2, 2, 1]);
+  });
+});
+
+describe('runSave — 배치의 항목별 실패', () => {
+  /** 지정한 자리만 실패로 돌려주는 서버. 배치의 존재 이유가 걸린 지점이다. */
+  const failingAt = (failIndexes: number[]) => {
+    const added: string[] = [];
+    let seq = 0;
+    const client = fakeClient({
+      createQuestionsBatch: async (payloads) =>
+        payloads.map((_, index) => {
+          if (failIndexes.includes(index)) return { index, error: `${index}번 거부` };
+          const id = `q-${++seq}`;
+          added.push(id);
+          return { index, questionId: id };
+        }),
+    }).client;
+    return { client, added };
+  };
+
+  it('한 항목이 실패해도 나머지는 저장된다 — 전부 실패로 뭉개면 정밀도가 사라진다', async () => {
+    const cards = Array.from({ length: 3 }, (_, i) =>
+      card({ id: `local-1-${i}`, stem: buildRichDoc(`발문${i}`) }),
+    );
+    const { client, added } = failingAt([1]);
+    const out = await runSave(input({ cards }), client);
+
+    expect(out.savedCount).toBe(2);
+    expect(out.failedCount).toBe(1);
+    expect(added).toEqual(['q-1', 'q-2']);
+    // 실패한 카드만 id를 못 받는다 — 다음 저장에서 다시 생성된다.
+    expect(out.newQuestionIdByCardId).toEqual({ 'local-1-0': 'q-1', 'local-1-2': 'q-2' });
+  });
+
+  it('실패한 항목의 기준선만 갱신하지 않는다', async () => {
+    const cards = [card({ id: 'q-a' }), card({ id: 'q-b', stem: buildRichDoc('발문 b') })];
+    const { client } = fakeClient({
+      updateQuestionsBatch: async (items) =>
+        items.map((item, index) =>
+          index === 1 ? { index, error: '거부' } : { index, questionId: item.id },
+        ),
+    });
+    const out = await runSave(input({ cards }), client);
+
+    expect(out.baseline.questions['q-a']).toBeDefined();
+    expect(out.baseline.questions['q-b']).toBeUndefined();
+  });
+
+  it('응답에 없는 항목은 실패로 센다 — 성공으로 치면 기준선이 박혀 영영 어긋난다', async () => {
+    const cards = [card({ id: 'q-a' }), card({ id: 'q-b', stem: buildRichDoc('발문 b') })];
+    const { client } = fakeClient({
+      // 서버가 두 번째 항목의 결과를 빠뜨렸다.
+      updateQuestionsBatch: async (items) => [{ index: 0, questionId: items[0].id }],
+    });
+    const out = await runSave(input({ cards }), client);
+
+    expect(out.failedCount).toBe(1);
+    expect(out.baseline.questions['q-b']).toBeUndefined();
+  });
+
+  it('실패한 항목이 있으면 순서·빼기는 그대로 건너뛴다', async () => {
+    const cards = Array.from({ length: 3 }, (_, i) =>
+      card({ id: `local-1-${i}`, stem: buildRichDoc(`발문${i}`) }),
+    );
+    const { client } = failingAt([0]);
+    const out = await runSave(input({ cards }), client);
+    expect(out.notices.some((n) => /순서와 삭제는 반영하지 않/.test(n.message))).toBe(true);
+  });
+});
+
 describe('runSave — 병렬 갱신 경로의 태그 중복 생성', () => {
   it('여러 카드가 같은 새 키워드를 쓰면 태그를 한 번만 만든다', async () => {
-    // 앞의 "같은 키워드는 태그를 한 번만" 케이스는 로컬 카드(=순차 생성 경로)만 태워서
-    // 경합이 실제로 있는 **병렬 갱신 경로**(mapWithLimit)를 지나지 않았다. 저장된 카드로
-    // 갱신 경로를 태우고, 해석과 기록 사이에 await이 끼도록 지연을 준다.
+    // 앞의 "같은 키워드는 태그를 한 번만" 케이스는 카드가 하나뿐이라 경합 자체가 없었다.
+    // 배치가 되면서 페이로드(=태그 해석)를 카드 전부에 대해 한꺼번에 만들게 됐으므로,
+    // 해석과 기록 사이에 await이 끼는 상황을 지연으로 실제로 만든다.
     const cards = ['q-1', 'q-2', 'q-3', 'q-4'].map((id) =>
       card({ id, stem: buildRichDoc(`발문 ${id}`), keywords: ['새키워드'] }),
     );

@@ -8,7 +8,14 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ExamSessionsService } from '@/modules/exam-sessions/exam-sessions.service';
+import { QuestionsService } from '@/modules/questions/questions.service';
 import { PaginatedResult } from '@/common/dto/pagination.dto';
+import {
+  batchItemError,
+  toBatchResult,
+  type BatchItemResult,
+  type BatchResult,
+} from '@/common/dto/batch-result';
 import {
   AUTHOR_PUBLISH_REWARD,
   resolveAuthorRewardQuota,
@@ -21,6 +28,7 @@ import {
   QueryWorkbookDto,
   UpdateWorkbookDto,
 } from './dto/workbook.dto';
+import { BatchAddQuestionsDto } from './dto/batch-add-questions.dto';
 
 /** 카드 목록에 싣는 소유자 정보(민감 정보 제외). */
 const OWNER_SELECT = { id: true, nickname: true } as const;
@@ -62,6 +70,8 @@ export class WorkbooksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly examSessions: ExamSessionsService,
+    // 배치 담기가 문항 생성·발행을 직접 구현하지 않고 questions 모듈 코드를 그대로 부른다.
+    private readonly questions: QuestionsService,
   ) {}
 
   // --- 탐색 -----------------------------------------------------------
@@ -325,6 +335,73 @@ export class WorkbooksService {
       }
       throw e;
     }
+  }
+
+  /**
+   * 문항 일괄 생성 + 발행 + 담기 (#41 Phase 3 마감).
+   *
+   * 캔버스 저장의 가장 큰 덩어리였다 — 새 문항 하나당 생성·발행·담기 세 왕복이라
+   * 20문항 첫 저장이 그것만으로 60회였다. 한 번으로 줄인다.
+   *
+   * ── 순서 ─────────────────────────────────────────────────────────────
+   * items 순서가 곧 문제집 순서다. 시작 순번(맨 뒤)을 한 번만 구하고 성공한 항목에만
+   * 다음 번호를 준다 — 중간 항목이 실패해도 남은 항목의 순서가 밀리지 않고 구멍도 안 생긴다.
+   * 클라이언트가 순서를 지키려고 문항을 하나씩 순차로 담던 이유가 여기서 사라진다.
+   *
+   * ── 트랜잭션 경계 ────────────────────────────────────────────────────
+   * **항목별**이다. 전체를 한 트랜잭션으로 묶으면 20문항 중 1개가 규칙에 걸렸다는 이유로
+   * 나머지 19개를 되돌리게 되고, 그러면 "실패한 문항만 다음 저장에서 다시 시도한다"는
+   * 프런트의 정밀도가 통째로 사라진다. 대신 한 항목 안에서는 생성·담기·집계가 원자적이다 —
+   * relationMode="prisma"(TiDB, FK 없음)라 담기가 실패했을 때 DB가 문항을 치워 주지 않으므로,
+   * 같은 트랜잭션에 넣어 롤백으로 지운다.
+   *
+   * 상한(QUESTION_BATCH_MAX)은 DTO가 건다. 상한 없는 배치는 트랜잭션 타임아웃과
+   * 페이로드 폭주로 돌아온다.
+   */
+  async addQuestionsBatch(
+    workbookId: string,
+    dto: BatchAddQuestionsDto,
+    userId: string,
+  ): Promise<BatchResult> {
+    const workbook = await this.assertOwner(workbookId, userId);
+
+    // 맨 뒤 자리를 한 번만 읽는다. 항목마다 aggregate를 돌리면 배치가 N+1이 된다.
+    const max = (
+      await this.prisma.workbookQuestion.aggregate({
+        where: { workbookId },
+        _max: { displayOrder: true },
+      })
+    )._max.displayOrder;
+    let nextOrder = (max ?? -1) + 1;
+
+    const results: BatchItemResult[] = [];
+    for (const [index, item] of dto.items.entries()) {
+      try {
+        const created = await this.prisma.$transaction(async (tx) => {
+          // 생성·발행은 questions 모듈의 코드를 그대로 탄다(과목 존재·채점기준표 규칙 포함).
+          const question = await this.questions.createPublishedWithin(tx, userId, item);
+          await tx.workbookQuestion.create({
+            data: { workbookId, questionId: question.id, displayOrder: nextOrder },
+          });
+          await tx.workbook.update({
+            where: { id: workbookId },
+            data: { questionCount: { increment: 1 } },
+          });
+          // 이미 공개된 문제집에 담기는 그 즉시 "발행"과 같다 — 단건 addQuestion과 같은 규칙.
+          // 여기서 만든 문항의 저자는 요청자 본인이다.
+          if (workbook.visibility === 'PUBLIC') {
+            await this.awardPublishReward(tx, userId, workbookId, new Date());
+          }
+          return question.id;
+        });
+        results.push({ index, status: 'ok', questionId: created, displayOrder: nextOrder });
+        nextOrder += 1;
+      } catch (e) {
+        results.push({ index, status: 'failed', error: batchItemError(e) });
+      }
+    }
+
+    return toBatchResult(results);
   }
 
   async removeQuestion(workbookId: string, questionId: string, userId: string) {

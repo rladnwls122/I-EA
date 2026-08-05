@@ -17,6 +17,7 @@ import type {
   AiGenerationCreated,
   CreateAiGenerationInput,
   QuestionStats,
+  QuestionBatchResponse,
   QuestionComment,
   UserQuestionAnnotation,
   AuthResponse,
@@ -295,6 +296,30 @@ export function regenerateChoices(
   });
 }
 
+/**
+ * 한 배치 요청에 실을 수 있는 문항 수 상한.
+ *
+ * ⚠️ 백엔드 `QUESTION_BATCH_MAX`의 **사본**이다. 값이 갈라지면 조용하지 않다 —
+ * 여기가 더 크면 저장이 통째로 400을 맞고, 더 작으면 왕복이 필요 이상으로 늘어난다.
+ * `src/common/constants/question.batch.web-mirror.spec.ts`가 두 파일을 대조한다.
+ */
+export const QUESTION_BATCH_MAX = 50;
+
+/**
+ * 문항 일괄 갱신 — 문항 수만큼 PATCH를 쏘던 자리를 한 번으로 줄인다 (#41 Phase 3 마감).
+ *
+ * 항목별 결과가 돌아온다. 하나가 실패해도 나머지는 저장되므로, 호출부는
+ * `results[].status`를 항목마다 봐야 한다(전체 성공 여부로 뭉개면 안 된다).
+ */
+export function updateQuestionsBatch(
+  items: ({ id: string } & Record<string, unknown>)[],
+) {
+  return apiFetch<QuestionBatchResponse>('/questions/batch', {
+    method: 'PATCH',
+    body: JSON.stringify({ items }),
+  });
+}
+
 /** 문제 통계 조회 */
 export function fetchQuestionStats(id: string) {
   return apiFetch<QuestionStats>(`/questions/${id}/stats`);
@@ -407,6 +432,26 @@ export function addQuestionToWorkbook(
   );
 }
 
+/**
+ * 문항을 한 번에 만들어 발행하고 문제집에 담는다 (#41 Phase 3 마감).
+ *
+ * 단건 경로는 문항 하나당 세 번(생성·발행·담기) 나갔다 — 20문항 첫 저장이면 60회다.
+ * **items 순서가 곧 문제집 순서다**(서버가 그 순서로 displayOrder를 매긴다).
+ * 항목별 결과가 돌아오고, 실패한 항목은 문항 행까지 롤백돼 유령 문항을 남기지 않는다.
+ */
+export function addQuestionsToWorkbookBatch(
+  workbookId: string,
+  items: Record<string, unknown>[],
+) {
+  return apiFetch<QuestionBatchResponse>(
+    `/workbooks/${workbookId}/questions/batch`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    },
+  );
+}
+
 /** 문제집에서 문제 제거 */
 export function removeQuestionFromWorkbook(
   workbookId: string,
@@ -420,15 +465,21 @@ export function removeQuestionFromWorkbook(
   );
 }
 
-/** 문제집 문제 순서 변경 */
+/**
+ * 문제집 문제 순서 변경 — 전체 순서를 통째로 보낸다(서버가 빠짐없는 집합을 요구한다).
+ *
+ * 메서드·경로가 서버와 어긋나 있었다(`PATCH .../questions/reorder` vs 실제
+ * `PUT .../questions/order`). 캔버스 저장은 이 실패를 삼키고 "순서를 저장하지 못했어요"
+ * 토스트만 띄우게 돼 있어서, 드래그로 바꾼 순서가 조용히 반영되지 않고 있었다.
+ */
 export function reorderWorkbookQuestions(
   workbookId: string,
   questionIds: string[],
 ) {
   return apiFetch<void>(
-    `/workbooks/${workbookId}/questions/reorder`,
+    `/workbooks/${workbookId}/questions/order`,
     {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify({ questionIds }),
     },
   );

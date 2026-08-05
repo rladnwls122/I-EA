@@ -6,7 +6,7 @@ describe('WorkbooksService.awardForkReward', () => {
       user: { update: jest.fn().mockResolvedValue({ coins: 55 }) },
       coinHistory: { create: jest.fn().mockResolvedValue({}) },
     } as any;
-    const svc = new WorkbooksService({} as any, {} as any);
+    const svc = new WorkbooksService({} as any, {} as any, {} as any);
     await (svc as any).awardForkReward(tx, 'owner1', 'forkwb1', () => 0); // 5코인
 
     expect(tx.user.update).toHaveBeenCalledWith(

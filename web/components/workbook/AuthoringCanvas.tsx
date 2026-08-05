@@ -9,10 +9,9 @@ import { Button } from "@/components/ui/button";
 import { extractPlainText, blocksToDoc } from "@/lib/prosemirror";
 import { buildRichDoc } from "@/lib/prosemirror-assemble";
 import {
-  createQuestion,
-  updateQuestion,
-  publishQuestion,
-  addQuestionToWorkbook,
+  QUESTION_BATCH_MAX,
+  addQuestionsToWorkbookBatch,
+  updateQuestionsBatch,
   removeQuestionFromWorkbook,
   reorderWorkbookQuestions,
   updateWorkbook,
@@ -26,6 +25,7 @@ import {
   createTag,
   regenerateChoices,
 } from "@/lib/api";
+import type { QuestionBatchResponse } from "@/lib/types";
 import { useWorkbook, useStartWorkbook } from "@/lib/hooks";
 import type { Question, RubricCriterion } from "@/lib/types";
 import { readRubricCriteria } from "@/lib/rubric";
@@ -44,6 +44,7 @@ import {
 import {
   runSave,
   type SaveBaseline,
+  type SaveBatchItem,
   type SaveClient,
 } from "./authoring-save-run";
 import {
@@ -51,6 +52,19 @@ import {
   initialCanvasState,
   sharedWith as sharedWithIn,
 } from "./authoring-canvas.reducer";
+
+/**
+ * 배치 응답을 저장 로직이 쓰는 모양으로 옮긴다. 실패 항목에 사유가 비어 있는 일은
+ * 없어야 하지만, 비어 있어도 **성공으로 읽히면 안 된다** — 그 문항의 기준선이
+ * 박혀 버리면 다음 저장이 건너뛴다. 그래서 사유를 채워서라도 실패로 남긴다.
+ */
+function toBatchItems(response: QuestionBatchResponse): SaveBatchItem[] {
+  return response.results.map((r) =>
+    r.status === "ok" && r.questionId
+      ? { index: r.index, questionId: r.questionId }
+      : { index: r.index, error: r.error || "문항을 저장하지 못했어요." },
+  );
+}
 
 /**
  * 선지 하나 — 본문 + 선지별 해설(공개 여부 토글 가능). 둘 다 ProseMirror doc이다.
@@ -477,15 +491,20 @@ export function AuthoringCanvas({
    */
   const saveClient = useMemo<SaveClient>(
     () => ({
+      batchLimit: QUESTION_BATCH_MAX,
       createPassage: (content) => createPassage(content),
       publishPassage: (id) => publishPassage(id),
       updatePassage: (id, content) => updatePassage(id, content),
       listKeywordTags: () => fetchTags(KEYWORD_TAG_CATEGORY),
       createKeywordTag: (name) => createTag(name, KEYWORD_TAG_CATEGORY),
-      createQuestion: (payload) => createQuestion(payload as any),
-      updateQuestion: (id, payload) => updateQuestion(id, payload as any),
-      publishQuestion: (id) => publishQuestion(id),
-      addQuestionToWorkbook: (questionId) => addQuestionToWorkbook(workbookId, { questionId }),
+      // 배치 응답을 저장 로직이 아는 모양(SaveBatchItem)으로만 옮긴다 —
+      // 상태 문자열 같은 전송 형식은 이 경계 밖으로 내보내지 않는다.
+      createQuestionsBatch: async (payloads) =>
+        toBatchItems(await addQuestionsToWorkbookBatch(workbookId, payloads as any)),
+      updateQuestionsBatch: async (items) =>
+        toBatchItems(
+          await updateQuestionsBatch(items.map((it) => ({ id: it.id, ...(it.payload as any) }))),
+        ),
       removeQuestionFromWorkbook: (questionId) => removeQuestionFromWorkbook(workbookId, questionId),
       reorderWorkbookQuestions: (questionIds) =>
         reorderWorkbookQuestions(workbookId, questionIds),
