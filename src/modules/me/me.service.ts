@@ -16,7 +16,9 @@ import {
   ShopItemKey,
 } from '@/common/constants/shop';
 import { REVIEW_STATUS } from '@/modules/exam-sessions/review-state.util';
-import { rankWeaknesses } from './weakness.util';
+import { rankWeaknesses, type ReviewFailureInput } from './weakness.util';
+import { buildReviewQueue } from './review-queue.util';
+import { REVIEW_QUEUE_MAX_LIMIT } from './dto/query-review-queue.dto';
 
 export interface WrongStat {
   key: string;
@@ -365,6 +367,29 @@ export class MeService {
       }
     }
 
+    // 복습 실패율(#37) — "복습에서도 또 틀림"(X→X). 상태 테이블은 현재 값만 들고 있어
+    // 셀 수 없던 신호라 전이 이력(user_question_review_transitions)을 따로 읽는다.
+    // 조회 대상을 위에서 축을 확정한 문항(detailKeyByQuestion)으로 한정하는 이유가 둘이다:
+    //   (1) 축을 모르는 전이는 어차피 집계에 못 쓴다. (2) 범위 필터와 상한(500)이 그대로 따라와
+    //       유저 전체 이력이 무한정 딸려오지 않는다.
+    // fromStatus = X인 행만 가져온다 — 분모가 "X 상태에서 일어난 전이 전부"이기 때문.
+    const axisQuestionIds = [...detailKeyByQuestion.keys()];
+    const reviewFailureByDetail = new Map<string, ReviewFailureInput>();
+    if (axisQuestionIds.length > 0) {
+      const xTransitions = await this.prisma.userQuestionReviewTransition.findMany({
+        where: { userId, fromStatus: REVIEW_STATUS.X, questionId: { in: axisQuestionIds } },
+        select: { questionId: true, correct: true },
+      });
+      for (const t of xTransitions) {
+        const axisKey = detailKeyByQuestion.get(t.questionId);
+        if (!axisKey) continue;
+        const cur = reviewFailureByDetail.get(axisKey) ?? { fromX: 0, failed: 0 };
+        cur.fromX += 1;
+        if (!t.correct) cur.failed += 1;
+        reviewFailureByDetail.set(axisKey, cur);
+      }
+    }
+
     const wrongQuestions = wrongList.map((w) => {
       const anns = annByQuestion.get(w.questionId) ?? [];
       return {
@@ -399,8 +424,9 @@ export class MeService {
          * 약점 진단(#37) — 하위요소 축 기준 상위 3개 + 표본 부족 축.
          * 여기서 계산해 내려주는 이유: 집계가 이미 이 요청 안에 다 있어 추가 쿼리가 없고,
          * 표본 하한·점수식 같은 진단 규칙을 화면마다 다르게 구현하지 않게 하려는 것.
+         * 복습 실패율도 이미 접어 둔 집계 형태로만 넘긴다 — weakness.util은 DB를 모른다.
          */
-        weakness: rankWeaknesses([...detailMap.values()], reasonsByDetail),
+        weakness: rankWeaknesses([...detailMap.values()], reasonsByDetail, 3, reviewFailureByDetail),
       },
       wrongQuestions,
       // 채점 이력이 조회 상한(NOTES_GRADED_LIMIT)에 걸려 잘렸는지(#39 B-3).
@@ -433,6 +459,80 @@ export class MeService {
       }),
     ]);
     return { due, ungraded };
+  }
+
+  /**
+   * 복습 큐 — 지금 풀어야 할 문항 id를 급한 순으로.
+   *
+   * 원래 프런트가 `/me/notes` 전량을 받아 조립했다. 그 응답은 채점 이력 상한 500에 잘려서
+   * (#39 B-3), **오래 푼 사용자일수록 복습해야 할 문항이 큐에서 조용히 빠졌다.**
+   * 응답에 `truncated`를 실어 경고는 했지만 경고가 누락을 고치지는 못한다.
+   *
+   * 큐가 봐야 하는 건 채점 이력이 아니라 복습 상태다. 상태 테이블을 직접 읽으면 상한과
+   * 무관하게 정확하고, due 배지(`reviewSummary`)와 데이터 출처도 하나가 된다.
+   * 조립 규칙은 순수 함수(`buildReviewQueue`)에 있다.
+   */
+  async reviewQueue(
+    userId: string,
+    query: {
+      examType?: string;
+      examCategory?: string;
+      subjectId?: string;
+      limit?: number;
+      includeMastered?: boolean;
+    } = {},
+  ) {
+    const questionWhere = this.buildQuestionScope(query);
+    const includeMastered = query.includeMastered ?? false;
+    const limit = query.limit ?? REVIEW_QUEUE_MAX_LIMIT;
+
+    // O(처음부터 맞음)는 애초에 복습 대상이 아니라 DB에서 걷어낸다 — 큐 규칙과 같은 판단이지만,
+    // 여기서 빼야 상한을 넘길 만큼 큰 사용자에서도 불필요한 행을 나르지 않는다.
+    // MASTERED는 토글에 따라 필요할 수 있어 남긴다.
+    const rows = await this.prisma.userQuestionReviewState.findMany({
+      where: {
+        userId,
+        status: includeMastered
+          ? { not: REVIEW_STATUS.O }
+          : { notIn: [REVIEW_STATUS.O, REVIEW_STATUS.MASTERED] },
+        ...(questionWhere ? { question: questionWhere } : {}),
+      },
+      select: { questionId: true, status: true, nextReviewAt: true },
+      // 정렬의 정본은 buildReviewQueue다. 여기 orderBy는 "예정일이 이른 것부터"라는
+      // 같은 방향을 미리 줘서, 아래 slice가 급한 것을 자르지 않게 하는 보험이다.
+      orderBy: [{ nextReviewAt: 'asc' }],
+    });
+
+    const questionIds = buildReviewQueue(rows, { includeMastered, now: new Date() });
+    return {
+      questionIds: questionIds.slice(0, limit),
+      /** 상한을 넘은 잔여분 — 화면이 "남은 N문항은 다음 복습에서" 안내에 쓴다. */
+      remaining: Math.max(0, questionIds.length - limit),
+    };
+  }
+
+  /**
+   * 시험·대분류·세부과목 3단 범위를 Question where 절로. 값이 없으면 undefined(조건 생략).
+   * 오답노트와 복습 큐가 같은 규약을 써야 사용자가 보는 범위와 복습 범위가 어긋나지 않는다.
+   */
+  private buildQuestionScope(filter: {
+    examType?: string;
+    examCategory?: string;
+    subjectId?: string;
+  }) {
+    const subjectWhere =
+      filter.examType || filter.examCategory
+        ? {
+            ...(filter.examType ? { examType: filter.examType } : {}),
+            ...(filter.examCategory ? { examCategory: filter.examCategory } : {}),
+          }
+        : undefined;
+    return filter.subjectId || subjectWhere
+      ? {
+          ...(filter.subjectId ? { subjectId: filter.subjectId } : {}),
+          ...(subjectWhere ? { subject: subjectWhere } : {}),
+        }
+      : undefined;
   }
 
   /** 지갑 — 코인·XP부스터·인벤토리(보호권/힌트)·코스메틱 보유·칭호·이름색·미개봉 상자 수. */

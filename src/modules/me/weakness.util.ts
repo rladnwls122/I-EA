@@ -22,6 +22,28 @@ export const WEAKNESS_MIN_SAMPLE = 5;
 /** 처방이 갈리는 지점 — 이 축의 오답 원인 중 '실수' 비중이 이 값 이상이면 훈련 부족으로 본다. */
 export const DRILL_REASON_RATIO = 0.5;
 
+/**
+ * 복습 실패율을 판정하는 최소 표본(= X 상태에서 일어난 전이 수).
+ *
+ * 위 WEAKNESS_MIN_SAMPLE(5)보다 낮게 잡는 이유: 이 분모는 "틀린 문항을 다시 푼 횟수"라
+ * 정답률 표본보다 구조적으로 훨씬 작다. 5로 맞추면 대부분의 축이 영원히 판정 불가가 되어
+ * 신호가 사장된다. 그래도 1~2회로 "또 틀리는 유형"이라 단정하는 건 오진이라 3을 하한으로 둔다
+ * — 초안의 "최소 표본 규칙"과 같은 정신이고, 하한 미만이면 아무것도 말하지 않는다.
+ */
+export const REVIEW_FAILURE_MIN_SAMPLE = 3;
+
+/** 이 비율 이상이면 "복습해도 안 잡히는" 축으로 라벨을 붙인다(절반 이상 재오답). */
+export const REVIEW_FAILURE_RATIO = 0.5;
+
+/**
+ * 복습 실패율이 점수에 실을 수 있는 최대 가산율.
+ *
+ * 재복습이 100% 실패하는 축은 같은 오답률의 다른 축보다 위로 와야 하지만, 분모가 3부터
+ * 인정되는 보조 신호라 주신호(오답률 × log표본)를 뒤집을 만큼 세게 주면 안 된다.
+ * 최대 1.5배는 log(1+표본) 격차 안에서 순위를 조정하는 정도다.
+ */
+export const REVIEW_FAILURE_WEIGHT = 0.5;
+
 /** 약점의 성격. 처방이 다르므로 라벨을 나눈다. */
 export type WeaknessKind = 'CONCEPT' | 'DRILL';
 
@@ -32,6 +54,39 @@ export interface WeaknessStatInput {
   total: number;
   /** 틀린 수. */
   wrong: number;
+}
+
+/**
+ * 축별 복습 전이 집계 — 서비스가 전이 이력을 접어서 넘긴다(이 파일은 DB를 모른다).
+ * 분모는 **X 상태에서 일어난 전이 전부**, 분자는 그중 또 틀린 전이(X→X)다.
+ */
+export interface ReviewFailureInput {
+  /** X 상태에서 일어난 전이 수(분모). */
+  fromX: number;
+  /** 그중 또 틀린 전이 수(분자, X→X). */
+  failed: number;
+}
+
+/**
+ * 복습 실패율 판정 결과. 하한 미달이면 아예 null이라 화면이 "판정 불가"를 구분할 필요가 없다.
+ *
+ * `kind`(개념/훈련)와 **별개 축**으로 둔다. kind는 "왜 틀렸나"(오개념 vs 실수)를 말하고
+ * 이 값은 "다시 풀려도 고쳐지나"를 말한다 — 직교한다. 실수가 잦은(DRILL) 축이 재복습에도
+ * 실패할 수 있고 그 반대도 성립한다. kind에 세 번째 값으로 합치면 기존 라벨이 소리 없이
+ * 사라지고(회귀), 처방도 뭉개진다.
+ */
+export interface ReviewFailure {
+  /** 분모 — X 상태에서 일어난 전이 수. 화면에 병기해야 오해가 없다. */
+  total: number;
+  /** 분자 — 그중 또 틀린 전이 수. */
+  failed: number;
+  /** failed / total, 소수 둘째 자리 반올림. */
+  ratio: number;
+  /**
+   * 비율이 REVIEW_FAILURE_RATIO 이상 = "한 번 더 풀어도 안 되는" 축.
+   * 처방이 다르다 — 더 풀리는 게 아니라 개념을 다시 세우고 접근법 자체를 바꿔야 한다.
+   */
+  stuck: boolean;
 }
 
 export interface Weakness {
@@ -50,6 +105,11 @@ export interface Weakness {
   kind: WeaknessKind;
   /** 이 축에서 가장 많이 찍힌 오답 원인(있을 때만). */
   dominantReason: { code: string; label: string; count: number } | null;
+  /**
+   * 복습 실패율(#37) — 전이 표본이 하한 미만이면 null(판정 안 함).
+   * kind와 겹치지 않는 별개 축이다(ReviewFailure 주석 참조).
+   */
+  reviewFailure: ReviewFailure | null;
 }
 
 export interface WeaknessReport {
@@ -73,16 +133,33 @@ export function weaknessScore(total: number, wrong: number): number {
 }
 
 /**
+ * X 상태에서의 전이 집계를 복습 실패율 판정으로 접는다. 하한 미달이면 null(판정 안 함).
+ */
+export function judgeReviewFailure(input: ReviewFailureInput | undefined): ReviewFailure | null {
+  if (!input || input.fromX < REVIEW_FAILURE_MIN_SAMPLE) return null;
+  const ratio = Math.round((input.failed / input.fromX) * 100) / 100;
+  return {
+    total: input.fromX,
+    failed: input.failed,
+    ratio,
+    stuck: ratio >= REVIEW_FAILURE_RATIO,
+  };
+}
+
+/**
  * 축별 통계와 (선택) 축별 오답 원인 분포로 약점 순위를 만든다.
  *
- * @param stats        분류축 통계(bySubjectDetail 등)
- * @param reasonsByKey 축 key → { reasonCode: count }. 없으면 전부 CONCEPT으로 본다.
- * @param limit        상위 몇 개까지 돌려줄지
+ * @param stats            분류축 통계(bySubjectDetail 등)
+ * @param reasonsByKey     축 key → { reasonCode: count }. 없으면 전부 CONCEPT으로 본다.
+ * @param limit            상위 몇 개까지 돌려줄지
+ * @param reviewFailureByKey 축 key → X 상태 전이 집계. 없으면 복습 실패율은 판정하지 않는다.
+ *   (limit 뒤에 붙인 이유: 앞에 끼우면 기존 호출부의 3번째 인자 의미가 조용히 바뀐다.)
  */
 export function rankWeaknesses(
   stats: WeaknessStatInput[],
   reasonsByKey: Map<string, Map<string, number>> = new Map(),
   limit = 3,
+  reviewFailureByKey: Map<string, ReviewFailureInput> = new Map(),
 ): WeaknessReport {
   const needsMoreData: WeaknessReport['needsMoreData'] = [];
   const scored: Weakness[] = [];
@@ -103,20 +180,33 @@ export function rankWeaknesses(
     if (stat.wrong === 0) continue;
 
     const reasons = reasonsByKey.get(stat.key);
+    const reviewFailure = judgeReviewFailure(reviewFailureByKey.get(stat.key));
     scored.push({
       key: stat.key,
       label: stat.label,
       total: stat.total,
       wrong: stat.wrong,
       accuracyPercent: Math.round(((stat.total - stat.wrong) / stat.total) * 1000) / 10,
-      score: weaknessScore(stat.total, stat.wrong),
+      // 복습 실패율은 기존 점수식을 대체하지 않고 **가산**으로만 얹는다.
+      // 신호가 없거나(하한 미달) 실패율이 0인 축은 배수가 정확히 1이라 기존 순위와 동일하다.
+      score: weaknessScore(stat.total, stat.wrong) * reviewFailureBoost(reviewFailure),
       kind: classifyKind(reasons),
       dominantReason: dominantReasonOf(reasons),
+      reviewFailure,
     });
   }
 
   scored.sort((a, b) => b.score - a.score || b.wrong - a.wrong);
   return { weaknesses: scored.slice(0, limit), needsMoreData };
+}
+
+/**
+ * 복습 실패율을 점수 배수(1 ~ 1+REVIEW_FAILURE_WEIGHT)로 바꾼다.
+ * 판정 불가면 1 — "모른다"가 "괜찮다"로도 "나쁘다"로도 새면 안 된다.
+ */
+function reviewFailureBoost(rf: ReviewFailure | null): number {
+  if (!rf) return 1;
+  return 1 + REVIEW_FAILURE_WEIGHT * rf.ratio;
 }
 
 /**

@@ -60,6 +60,8 @@ describe('MeService.notes', () => {
           { questionId: 'q2', status: 'O', consecutiveCorrect: 1, nextReviewAt: null },
         ]),
       },
+      // 복습 실패율(#37) 원천 — 이 케이스는 전이 이력이 없다.
+      userQuestionReviewTransition: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
     const module = await Test.createTestingModule({
       providers: [MeService, { provide: PrismaService, useValue: prisma }],
@@ -156,6 +158,7 @@ describe('MeService.notes', () => {
       },
       userQuestionAnnotation: { findMany: jest.fn().mockResolvedValue([]) },
       userQuestionReviewState: { findMany: jest.fn().mockResolvedValue([]) },
+      userQuestionReviewTransition: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService;
     const module = await Test.createTestingModule({
       providers: [MeService, { provide: PrismaService, useValue: prisma }],
@@ -180,6 +183,68 @@ describe('MeService.notes', () => {
 
     expect(result.truncated).toBe(false);
     expect(result.summary.solved).toBe(NOTES_GRADED_LIMIT);
+  });
+
+  /**
+   * 복습 실패율(#37) — 전이 이력을 축(하위요소)별로 접어 weakness.util에 넘기는 경로.
+   * 순수 함수는 DB를 모르므로, "어느 문항이 어느 축인가"를 붙이는 책임이 여기 있다.
+   */
+  it('X 상태 전이 이력을 축별로 접어 복습 실패율로 내려준다', async () => {
+    // d1 축에 6문항(표본 하한 5 통과), 그중 4개 오답.
+    const rows = Array.from({ length: 6 }, (_, i) => ({
+      isCorrect: i >= 4,
+      examSessionQuestion: {
+        examSessionId: 's1',
+        questionId: `q${i}`,
+        question: {
+          subjectId: 'sub1',
+          questionType: '객관식',
+          subject: { name: '문학' },
+          subjectDetailId: 'd1',
+          detail: { name: '문서이해' },
+          questionTags: [],
+        },
+      },
+    }));
+    const transitionFindMany = jest.fn().mockResolvedValue([
+      // X에서 또 틀림(X→X) 3건 + X에서 맞힘 1건 → 3/4.
+      { questionId: 'q0', correct: false },
+      { questionId: 'q1', correct: false },
+      { questionId: 'q2', correct: false },
+      { questionId: 'q3', correct: true },
+      // 축을 알 수 없는 문항(1차 응시 이력 밖)은 집계에서 조용히 버린다.
+      { questionId: 'q-unknown', correct: false },
+    ]);
+    const prisma = {
+      examSessionAnswer: {
+        count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue(rows),
+      },
+      userQuestionAnnotation: { findMany: jest.fn().mockResolvedValue([]) },
+      userQuestionReviewState: { findMany: jest.fn().mockResolvedValue([]) },
+      userQuestionReviewTransition: { findMany: transitionFindMany },
+    } as unknown as PrismaService;
+    const module = await Test.createTestingModule({
+      providers: [MeService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    const service = module.get(MeService);
+
+    const result = await service.notes('user-1');
+
+    expect(result.summary.weakness?.weaknesses[0]).toMatchObject({
+      key: 'd1',
+      reviewFailure: { total: 4, failed: 3, ratio: 0.75, stuck: true },
+    });
+    // 분모는 "X 상태에서 일어난 전이"라 fromStatus=X만 읽어야 하고,
+    // 조회 범위는 축이 확정된 문항으로 제한해 유저 전체 이력이 딸려오지 않게 한다.
+    expect(transitionFindMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+        fromStatus: 'X',
+        questionId: { in: ['q0', 'q1', 'q2', 'q3', 'q4', 'q5'] },
+      },
+      select: { questionId: true, correct: true },
+    });
   });
 });
 
@@ -251,5 +316,69 @@ describe('MeService.activeSession', () => {
   it('진행 중 세션이 없으면 null을 반환한다', async () => {
     const service = await makeService(null);
     expect(await service.activeSession('user-1')).toBeNull();
+  });
+});
+
+describe('MeService.reviewQueue', () => {
+  const build = (rows: any[]) => {
+    const findMany = jest.fn().mockResolvedValue(rows);
+    const prisma = { userQuestionReviewState: { findMany } } as unknown as PrismaService;
+    return { service: new MeService(prisma), findMany };
+  };
+
+  it('복습 상태를 직접 읽는다 — 채점 이력 상한(500)과 무관하게 큐가 완전해야 한다', async () => {
+    const past = new Date(Date.now() - 86_400_000);
+    const { service, findMany } = build([
+      { questionId: 'q1', status: 'X', nextReviewAt: past },
+      { questionId: 'q2', status: 'TRIANGLE', nextReviewAt: null },
+    ]);
+
+    const out = await service.reviewQueue('u1');
+
+    expect(out.questionIds).toEqual(['q1', 'q2']); // 도래분 → 기록 없음 순
+    expect(out.remaining).toBe(0);
+    // 오답노트(examSessionAnswer)를 거치지 않는다.
+    expect(findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('O는 DB에서 걷어낸다 — 복습 대상이 아닌 행을 나르지 않는다', async () => {
+    const { service, findMany } = build([]);
+    await service.reviewQueue('u1');
+    expect(findMany.mock.calls[0][0].where.status).toEqual({ notIn: ['O', 'MASTERED'] });
+  });
+
+  it('마스터 포함 토글이면 MASTERED는 남기고 O만 뺀다', async () => {
+    const { service, findMany } = build([]);
+    await service.reviewQueue('u1', { includeMastered: true });
+    expect(findMany.mock.calls[0][0].where.status).toEqual({ not: 'O' });
+  });
+
+  it('범위 필터를 문항 조건으로 옮긴다 — 화면이 보는 범위와 복습 범위가 같아야 한다', async () => {
+    const { service, findMany } = build([]);
+    await service.reviewQueue('u1', { examType: '수능', subjectId: 'sub1' });
+    expect(findMany.mock.calls[0][0].where.question).toEqual({
+      subjectId: 'sub1',
+      subject: { examType: '수능' },
+    });
+  });
+
+  it('범위가 없으면 문항 조건 자체를 걸지 않는다', async () => {
+    const { service, findMany } = build([]);
+    await service.reviewQueue('u1');
+    expect(findMany.mock.calls[0][0].where.question).toBeUndefined();
+  });
+
+  it('상한을 넘으면 급한 순으로 자르고 잔여 수를 알린다', async () => {
+    const rows = Array.from({ length: 5 }, (_, i) => ({
+      questionId: `q${i}`,
+      status: 'X',
+      nextReviewAt: new Date(Date.now() - (5 - i) * 86_400_000),
+    }));
+    const { service } = build(rows);
+
+    const out = await service.reviewQueue('u1', { limit: 2 });
+
+    expect(out.questionIds).toEqual(['q0', 'q1']); // 가장 오래 밀린 둘
+    expect(out.remaining).toBe(3);
   });
 });
