@@ -78,6 +78,8 @@ export class AuthoringChatService {
       questionType: dto.questionType,
       ox: dto.ox,
       difficulty: dto.difficulty,
+      choiceCount: dto.choiceCount,
+      includePassage: dto.includePassage,
       currentQuestions: dto.currentQuestions,
       existingKeywords: await this.fetchExistingKeywords(dto.subjectId),
     });

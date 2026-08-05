@@ -188,7 +188,6 @@ export function fetchQuestion(id: string) {
   return apiFetch<Question>(`/questions/${id}`);
 }
 
-/** 지문(본문) 상세 — content(ProseMirror) 포함 */
 /** 지문 생성 — content는 ProseMirror doc JSON. */
 export function createPassage(content: any) {
   return apiFetch<Passage>('/passages', {
@@ -202,8 +201,16 @@ export function publishPassage(id: string) {
   return apiFetch<Passage>(`/passages/${id}/publish`, { method: 'POST' });
 }
 
-export function fetchPassage(id: string) {
-  return apiFetch<Passage>(`/passages/${id}`);
+/**
+ * 지문 수정 — 이미 저장된 지문의 내용만 갈아 끼운다.
+ * 이게 없어서 캔버스 저장이 매번 `createPassage`를 불렀고, 기존 문제집을 열어 저장할
+ * 때마다 같은 지문이 하나씩 복제됐다(#41 Phase 3).
+ */
+export function updatePassage(id: string, content: any) {
+  return apiFetch<Passage>(`/passages/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ content }),
+  });
 }
 
 /** 문제 생성 */
@@ -269,24 +276,6 @@ export function publishQuestion(id: string) {
 /** 문제 통계 조회 */
 export function fetchQuestionStats(id: string) {
   return apiFetch<QuestionStats>(`/questions/${id}/stats`);
-}
-
-/**
- * 선택지 재생성 (AI) — 동기 호출.
- * 요청은 RegenerateChoicesDto와 1:1 (stemText, choiceCount=정답 포함 전체 선지 수, difficulty?).
- * 응답은 정답 1개를 포함한 선지 전체 집합(각 {content, isCorrect}).
- */
-export function regenerateChoices(
-  id: string,
-  data: { stemText: string; choiceCount: number; difficulty?: number },
-) {
-  return apiFetch<{
-    choices: { content: string; isCorrect: boolean; explanation?: string }[];
-    persisted: boolean;
-  }>(`/questions/${id}/choices/regenerate`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
 }
 
 // ─── 문제집 ─────────────────────────────────────────────────────────
@@ -423,7 +412,11 @@ export function reorderWorkbookQuestions(
   );
 }
 
-// ─── AI 생성 ────────────────────────────────────────────────────────
+// ─── AI 생성 (비동기 파이프라인) ────────────────────────────────────
+//
+// 캔버스는 SSE 채팅을 쓰므로 지금 이 두 함수를 부르는 화면은 없다. 그래도 남긴다 —
+// `POST /ai-generations`가 시험별 형식 템플릿(#43)이 얹힌 정본 생성 경로이고,
+// 서버 DTO와 1:1로 맞춘 계약이라 지웠다 되살리면 같은 걸 다시 쓰게 된다(types.ts 주석 참고).
 
 /** AI 문제 생성 요청 (비동기, BullMQ 큐) */
 export function createAiGeneration(data: CreateAiGenerationInput) {

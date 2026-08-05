@@ -13,6 +13,10 @@ interface PromptCtx {
   ox?: boolean;
   /** 난이도 1(쉬움)~5(어려움). */
   difficulty?: number;
+  /** 객관식 선지 개수. 없으면 시험별 관행에 맡긴다. ox가 true면 무시된다. */
+  choiceCount?: number;
+  /** 지문 동반 여부. undefined면 모델이 문항 성격에 따라 판단한다. */
+  includePassage?: boolean;
   currentQuestions?: CurrentQuestionRef[];
   /** 기존 #키워드 풀 — 개념별 통계가 모이도록 LLM이 재사용하게 유도한다. */
   existingKeywords?: string[];
@@ -59,6 +63,17 @@ export function buildAuthoringSystemPrompt(ctx: PromptCtx): string {
   }
   if (ctx.difficulty) {
     constraints.push(`난이도: 5단계 중 ${ctx.difficulty} (1=매우 쉬움, 5=매우 어려움)에 맞추세요.`);
+  }
+  // OX는 선지가 2개로 이미 정해져 있다 — 개수 지시가 겹치면 모델이 둘 사이에서 흔들린다.
+  if (ctx.choiceCount && !ctx.ox) {
+    constraints.push(`객관식 선지는 정확히 ${ctx.choiceCount}개로 만드세요.`);
+  }
+  if (ctx.includePassage !== undefined) {
+    constraints.push(
+      ctx.includePassage
+        ? `모든 문항에 passage(지문)를 채우세요 — 지문 없이는 풀 수 없는 문항이어야 합니다.`
+        : `passage(지문)는 넣지 마세요 — 발문만으로 풀리는 문항으로 만드세요.`,
+    );
   }
 
   return [

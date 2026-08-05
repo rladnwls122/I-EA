@@ -138,7 +138,12 @@ export interface WorkbookQuestion {
   question?: Question;
 }
 
-// ─── AI 생성 ────────────────────────────────────────────────────────
+// ─── AI 생성 (비동기 파이프라인) ────────────────────────────────────
+//
+// 지금 화면에서 부르는 곳은 없다 — 캔버스는 SSE 채팅(`/ai-generations/chat`)을 쓴다.
+// 그래도 남긴다: `POST /ai-generations`는 시험별 형식 템플릿(#43)·출력 언어·선지 개수가
+// 얹혀 있는 **정본 생성 경로**이고, 백엔드가 지금도 그 위에서 자라고 있다.
+// 이 타입들은 서버 DTO와 1:1로 맞춰 둔 계약이라, 지웠다가 다시 쓰려면 같은 걸 또 쓰게 된다.
 
 /** AI 생성 상태 */
 export type AiGenerationStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
@@ -192,7 +197,7 @@ export interface AiGeneration {
 
 // ─── 지문(본문) ─────────────────────────────────────────────────────
 
-/** GET /passages/:id 응답 */
+/** /passages 응답(생성·발행) — 문항 상세의 passage 관계도 같은 형태다. */
 export interface Passage {
   id: string;
   title?: string | null;

@@ -9,7 +9,7 @@ import {
   uniquePassages,
   validateSave,
 } from './authoring-save';
-import { buildRichDoc, buildRichBlocks } from '@/lib/prosemirror';
+import { buildRichDoc, buildRichBlocks } from '@/lib/prosemirror-assemble';
 import type { CanvasCard } from './AuthoringCanvas';
 
 const card = (over: Partial<CanvasCard> = {}): CanvasCard => ({
@@ -17,6 +17,7 @@ const card = (over: Partial<CanvasCard> = {}): CanvasCard => ({
   type: '객관식',
   stem: buildRichDoc('발문'),
   passage: null,
+  passageGroupId: null,
   choices: [
     { text: '선지1', explanation: '', showExplanation: false },
     { text: '선지2', explanation: '', showExplanation: false },
@@ -83,26 +84,39 @@ describe('passageKey / uniquePassages — 지문 공유', () => {
     expect(passageKey(card({ passage: buildRichDoc('   ') }))).toBeNull();
   });
 
-  it('같은 지문은 한 번만 생성 대상이 된다', () => {
-    const shared = buildRichDoc('공유 지문');
+  it('같은 세트는 한 번만 생성 대상이 된다', () => {
     const out = uniquePassages([
-      card({ passage: shared }),
-      card({ passage: buildRichDoc('공유 지문') }),
-      card({ passage: buildRichDoc('다른 지문') }),
+      card({ passage: buildRichDoc('(가) 지문'), passageGroupId: 'g1' }),
+      card({ passage: buildRichDoc('(가) 지문'), passageGroupId: 'g1' }),
+      card({ passage: buildRichDoc('다른 지문'), passageGroupId: 'g2' }),
     ]);
-    expect(out.map((p) => p.key)).toEqual(['공유 지문', '다른 지문']);
+    expect(out.map((p) => p.groupId)).toEqual(['g1', 'g2']);
   });
 
   it('지문 없는 카드는 목록에 들어가지 않는다', () => {
     expect(uniquePassages([card({ passage: null }), card({ passage: null })])).toEqual([]);
   });
 
-  it('알려진 한계: 한 글자만 달라도 다른 지문으로 갈린다', () => {
+  it('한 글자만 달라도 같은 세트면 하나로 본다 — 평문 일치로 판정하던 시절의 한계 제거', () => {
     const out = uniquePassages([
-      card({ passage: buildRichDoc('지문 A') }),
-      card({ passage: buildRichDoc('지문 A.') }),
+      card({ passage: buildRichDoc('지문 A'), passageGroupId: 'g1' }),
+      card({ passage: buildRichDoc('지문 A.'), passageGroupId: 'g1' }),
+    ]);
+    expect(out).toHaveLength(1);
+  });
+
+  it('평문이 같아도 세트가 다르면 따로 만든다 — 우연히 묶이던 한계 제거', () => {
+    const out = uniquePassages([
+      card({ passage: buildRichDoc('흔한 지문'), passageGroupId: 'g1' }),
+      card({ passage: buildRichDoc('흔한 지문'), passageGroupId: 'g2' }),
     ]);
     expect(out).toHaveLength(2);
+  });
+
+  it('그룹 id가 없으면(유입 전) 저장 대상이 아니다 — 지문 없는 것과 같이 취급', () => {
+    expect(uniquePassages([card({ passage: buildRichDoc('지문'), passageGroupId: null })])).toEqual(
+      [],
+    );
   });
 });
 
@@ -212,10 +226,13 @@ describe('buildQuestionPayload', () => {
     expect(p.choices[1].explanation).toBeUndefined();
   });
 
-  it('tagIds·passageId는 값이 있을 때만 필드로 넣는다', () => {
+  it('tagIds·passageId는 비어 있어도 반드시 싣는다 — 생략하면 삭제를 표현할 수 없다', () => {
+    // 백엔드 PATCH는 필드가 없으면 "안 건드림"으로 읽는다. 예전처럼 빈 값을 생략하면
+    // 마지막 키워드를 지우거나 지문을 떼도 서버에는 그대로 남고, 변경 감지가 그 상태를
+    // "동기화됨"으로 기준선에 박아 다음 저장에서도 건너뛴다.
     const bare = buildQuestionPayload(card(), { tagIds: [] }) as any;
-    expect('tagIds' in bare).toBe(false);
-    expect('passageId' in bare).toBe(false);
+    expect(bare.tagIds).toEqual([]);
+    expect(bare.passageId).toBeNull();
 
     const full = buildQuestionPayload(card(), { tagIds: ['t1'], passageId: 'p1' }) as any;
     expect(full.tagIds).toEqual(['t1']);

@@ -7,7 +7,8 @@ import { IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'cl
  *
  * stemText는 "저장된" 발문이 아니라 에디터에 떠 있는 현재 텍스트다.
  * 출제자가 지문을 고친 직후 저장 없이 누르는 버튼이므로 클라이언트가 실어 보낸다.
- * 수식은 평문(x^2 - 2x = 0)으로 온다 — KaTeX는 전면 제외다.
+ * 수식은 $...$ LaTeX 델리미터가 든 평문으로 온다(#35) — 조립(buildRichDoc)이 math 노드로
+ * 승격한다. 여기만 평문을 받던 시절에는 발문은 렌더되고 재생성된 선지만 안 되는 문항이 나왔다.
  */
 export class RegenerateChoicesDto {
   @ApiProperty({ description: '현재 에디터의 발문 평문', maxLength: 5000 })

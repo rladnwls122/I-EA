@@ -52,7 +52,7 @@ d('실제 Gemini 호출 — regenerateChoices', () => {
     );
   }, 30_000);
 
-  it('KaTeX/LaTeX 문법이 섞이지 않는다 (수식은 평문)', async () => {
+  it('수식은 $...$ LaTeX 델리미터로 온다 (조립이 math 노드로 승격할 수 있게)', async () => {
     const result = await llm.regenerateChoices({
       stemText: '함수 f(x) = x^3 - 3x 의 극댓값은?',
       choiceCount: 4,
@@ -64,8 +64,11 @@ d('실제 Gemini 호출 — regenerateChoices', () => {
 
     expect(result.choices).toHaveLength(4);
     const all = result.choices.map((c) => c.content).join(' ');
-    // 요구서: KaTeX 전면 제외. 프롬프트가 이를 강제하는지 확인.
-    expect(all).not.toMatch(/\$\$?|\\frac|\\begin\{|\\left|\\right|\\cdot/);
+    // #35 이전에는 "KaTeX 전면 제외"라 평문을 강제했다. 이제 조립(buildRichDoc)이 델리미터를
+    // 보고 math 노드로 승격하므로, 여기가 평문으로 오면 발문만 렌더되고 선지는 안 되는
+    // 반쪽 문항이 된다. 유니코드 흉내(²·√·½)도 함께 막혔는지 본다.
+    expect(all).toMatch(/\$[^$]+\$/);
+    expect(all).not.toMatch(/[²³√½×÷]/);
 
     console.log('\n[미적분] 생성된 선지:');
     result.choices.forEach((c, i) =>

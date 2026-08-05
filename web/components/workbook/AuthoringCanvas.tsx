@@ -1,43 +1,52 @@
 "use client";
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { KEYWORD_TAG_CATEGORY } from "@/lib/tag-categories";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Loader2, PencilLine, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import {
-  buildRichDoc,
-  extractPlainText,
-  blocksToDoc,
-} from "@/lib/prosemirror";
+import { extractPlainText, blocksToDoc } from "@/lib/prosemirror";
+import { buildRichDoc } from "@/lib/prosemirror-assemble";
 import {
   createQuestion,
   updateQuestion,
   publishQuestion,
   addQuestionToWorkbook,
+  removeQuestionFromWorkbook,
+  reorderWorkbookQuestions,
   updateWorkbook,
   createPassage,
   publishPassage,
+  updatePassage,
+  registerMediaAsset,
   fetchQuestion,
   fetchSubjects,
   fetchTags,
   createTag,
 } from "@/lib/api";
 import { useWorkbook } from "@/lib/hooks";
-import type { Tag, Question } from "@/lib/types";
+import type { Question } from "@/lib/types";
 import { questionRejectReason, type ParsedQuestion } from "@/lib/authoring-chat";
 import { AuthoringChatPanel } from "./AuthoringChatPanel";
 import { AuthoringCanvasCard } from "./AuthoringCanvasCard";
 import {
-  buildQuestionPayload,
-  isPersistedCard,
-  isSavableCard,
-  newLocalCardId,
-  normalizeKeywords,
-  passageKey,
+  cardImageSrcs,
+  collectImageSrcs,
+  passageFingerprint,
+  questionFingerprint,
   uniquePassages,
   validateSave,
 } from "./authoring-save";
+import {
+  runSave,
+  type SaveBaseline,
+  type SaveClient,
+} from "./authoring-save-run";
+import {
+  canvasReducer,
+  initialCanvasState,
+  sharedWith as sharedWithIn,
+} from "./authoring-canvas.reducer";
 
 /** 선지 하나 — 본문 + 선지별 해설(공개 여부 토글 가능). */
 export interface CanvasChoice {
@@ -46,22 +55,31 @@ export interface CanvasChoice {
   /** 선지별 해설 공개 여부 — 저장 시 choices Json에 함께 실린다. */
   showExplanation: boolean;
   /**
-   * 불러온 선지의 원본 노드(rich). 카드 UI는 선지를 아직 평문 `<input>`으로 편집하지만,
-   * 다른 경로(/studio/editor 등)에서 서식이 들어간 선지를 캔버스에서 열었다가 저장하면
-   * `buildRichDoc(평문)`으로 덮여 서식이 사라진다. 사용자가 그 선지의 텍스트를 실제로
-   * 고치지 않았다면 원본을 그대로 돌려보내 파괴를 막는다(#41 Phase 1).
-   * 선지 자체를 rich 편집으로 바꾸는 건 Phase 2 이후 과제다.
+   * 불러온 선지의 원본 노드(rich). 카드 UI는 선지를 아직 평문 `<input>`으로 편집하므로,
+   * 서식이 실린 선지를 열었다가 저장하면 `buildRichDoc(평문)`으로 덮여 서식이 사라진다.
+   * 편집기가 캔버스로 일원화된 뒤에도(#41 Phase 3) 서식 유입 경로는 남는다 — AI 생성분,
+   * 그리고 이전 편집기 시절에 저장된 문항이 그렇다. 사용자가 그 선지의 텍스트를 실제로
+   * 고치지 않았다면 원본을 그대로 돌려보내 파괴를 막는다.
+   * 선지 자체를 rich 편집으로 바꾸면 이 방어는 필요 없어진다.
    */
   sourceContent?: any;
   sourceExplanation?: any;
 }
 
-/** 좌측 캔버스 카드(경량 Draft — QuestionEditor의 Draft에서 편집에 쓰는 필드만). */
+/** 좌측 캔버스 카드 — 편집에 쓰는 필드만 담은 경량 문항 모델. */
 export interface CanvasCard {
   id: string;
   type: "객관식" | "주관식";
   stem: any;
   passage: any | null;
+  /**
+   * 어느 지문세트에 속하는가. 저장된 문항은 실제 passage id를, 아직 저장 안 된 지문은
+   * `local-passage-` id를 갖는다. 지문이 없으면 null.
+   *
+   * 예전에는 "지문 평문이 같으면 같은 지문"이었다. 한 글자만 고쳐도 세트가 깨져 지문이
+   * 복제됐고, 남남인 문항의 지문이 우연히 같으면 한쪽을 고칠 때 다른 쪽까지 바뀌었다(#41 Phase 3).
+   */
+  passageGroupId: string | null;
   choices: CanvasChoice[];
   correct: number;
   answerText: string;
@@ -72,14 +90,18 @@ export interface CanvasCard {
   keywords: string[];
 }
 
-/** 문항 #키워드용 태그 카테고리 — 과목/유형 등 큐레이션 태그와 구분. */
-
-
-/** AI 생성 설정(채팅창 밖 독립 패널) — null 유형은 "자동"(힌트 없음). */
+/** AI 생성 설정(채팅창 밖 독립 패널) — null은 "자동"(힌트 없음, AI가 판단). */
 export interface AiSettings {
   questionType: "객관식" | "주관식" | "OX" | null;
   count: number;
   difficulty: number;
+  /**
+   * 객관식 선지 개수. null이면 시험별 관행(수능·내신·한능검 5지 / 공무원·토익 4지)을
+   * AI가 알아서 따른다. OX일 때는 무시된다(항상 2지).
+   */
+  choiceCount: number | null;
+  /** 지문을 함께 만들지. null이면 AI가 문항 성격에 따라 판단한다. */
+  includePassage: boolean | null;
 }
 
 /**
@@ -88,7 +110,9 @@ export interface AiSettings {
  * 임의로 0번을 정답 확정하지 않고 카드 생성을 거부한다(F4).
  * 거부 조건의 단일 출처는 questionRejectReason(사유 문자열까지 제공) — 여기와 어긋나면 안 된다.
  */
-function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
+type CardContent = Omit<CanvasCard, "id" | "passageGroupId">;
+
+function toCard(q: ParsedQuestion): CardContent | null {
   const isObjective = q.questionType === "객관식";
   const toChoices = (list: string[]): CanvasChoice[] =>
     list.map((text) => ({ text, explanation: "", showExplanation: false }));
@@ -97,7 +121,6 @@ function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
     const choices = q.choices ?? [];
     const correct = q.correctIndex as number; // questionRejectReason 통과 = number & 범위 내
     return {
-      id,
       type: q.questionType,
       stem: buildRichDoc(q.stem),
       passage: q.passage ? buildRichDoc(q.passage) : null,
@@ -112,7 +135,6 @@ function toCard(q: ParsedQuestion, id: string): CanvasCard | null {
     };
   }
   return {
-    id,
     type: q.questionType,
     stem: buildRichDoc(q.stem),
     passage: q.passage ? buildRichDoc(q.passage) : null,
@@ -162,6 +184,9 @@ function questionToCard(q: Question): CanvasCard {
     type: isObjective ? "객관식" : "주관식",
     stem: q.stem ?? buildRichDoc(""),
     passage: q.passage?.content ?? null,
+    // 서버가 준 실제 passage id가 곧 지문세트 id다 — 평문을 맞춰 보지 않아도
+    // 같은 지문을 쓰는 문항끼리 저절로 묶인다.
+    passageGroupId: q.passage?.id ?? null,
     choices: isObjective ? choices : [],
     correct: isObjective ? (correct >= 0 ? correct : 0) : -1,
     answerText: q.correctAnswerText ?? "",
@@ -173,6 +198,28 @@ function questionToCard(q: Question): CanvasCard {
   };
 }
 
+/**
+ * 불러온 카드들의 "서버와 일치하던 모습" — 저장이 무엇을 건너뛸 수 있는지의 근거.
+ *
+ * `registeredImages`에 불러온 이미지를 전부 넣는 이유: 이미 문서에 있던 이미지는
+ * 등록됐거나(정상) 등록 기능이 없던 시절의 것인데, 어느 쪽이든 다시 등록하면
+ * media_assets에 중복 행만 쌓인다. 등록 대상은 "이번에 새로 들어온 것"뿐이다.
+ */
+function baselineOf(cards: CanvasCard[]): SaveBaseline {
+  const questions: Record<string, string> = {};
+  const passages: Record<string, string> = {};
+  const images: string[] = [];
+  for (const c of cards) {
+    questions[c.id] = questionFingerprint(c);
+    images.push(...cardImageSrcs(c));
+  }
+  for (const { groupId, passage } of uniquePassages(cards)) {
+    passages[groupId] = passageFingerprint(passage);
+    images.push(...collectImageSrcs(passage));
+  }
+  return { questions, passages, registeredImages: images };
+}
+
 export function AuthoringCanvas({
   workbookId,
   initialSubjectId,
@@ -181,8 +228,10 @@ export function AuthoringCanvas({
   /** 문제집 만들기(Step 1)에서 고른 과목 — URL로 넘어온다. 있으면 최우선. */
   initialSubjectId?: string;
 }) {
-  const [cards, setCards] = useState<CanvasCard[]>([]);
-  const [subjectId, setSubjectId] = useState<string>(initialSubjectId ?? "");
+  /* ── 문서 상태 — 저장하면 서버로 가는 것들은 전부 리듀서 한곳에서 전이한다.
+   * (모바일 탭·제목 편집 같은 화면 전용 상태는 아래에 useState로 남긴다.) ── */
+  const [doc, dispatch] = useReducer(canvasReducer, initialSubjectId, initialCanvasState);
+  const { cards, subjectId, isPublic, workbookKeywords, editingId } = doc;
   const [saving, setSaving] = useState(false);
 
   /* ── AI 생성 설정 — 채팅창 밖 독립 패널(우측 상단)이 조작 ── */
@@ -190,45 +239,22 @@ export function AuthoringCanvas({
     questionType: null,
     count: 1,
     difficulty: 3,
+    choiceCount: null,
+    includePassage: null,
   });
-
-  /* ── 문제집 공개 설정 — 최종 검토(저장) 시 함께 반영 ── */
-  const [isPublic, setIsPublic] = useState(false);
 
   /* ── 문제집 #키워드 — 문항 키워드와 별개로 문제집 전체에 붙는 태그.
    * (오답노트 통계는 문항 키워드가 담당, 이건 문제집 탐색/분류용.) ── */
-  const [workbookKeywords, setWorkbookKeywords] = useState<string[]>([]);
   const [workbookKeywordInput, setWorkbookKeywordInput] = useState("");
   const addWorkbookKeyword = useCallback(() => {
     setWorkbookKeywordInput((raw) => {
-      const name = raw.trim().replace(/^#/, "");
-      if (!name) return "";
-      setWorkbookKeywords((prev) =>
-        prev.some((k) => k.toLowerCase() === name.toLowerCase()) ? prev : [...prev, name],
-      );
+      if (raw.trim()) dispatch({ type: "addWorkbookKeyword", name: raw });
       return "";
     });
-  }, []);
-  const removeWorkbookKeyword = useCallback((name: string) => {
-    setWorkbookKeywords((prev) => prev.filter((k) => k !== name));
   }, []);
 
   /* ── 드래그&드롭 순서 변경 ── */
   const dragIndex = useRef<number | null>(null);
-  const moveCard = useCallback((from: number, to: number) => {
-    setCards((prev) => {
-      if (from === to || from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    });
-  }, []);
-
-  /* ── 카드 편집 모드 (한 번에 하나) ── */
-  const [editingId, setEditingId] = useState<string | null>(null);
-  // 편집 시작 시점의 지문 평문 — 완료 시 같은 지문을 쓰던 다른 카드에 전파하기 위한 기준.
-  const editPassageSnapshot = useRef<string | null>(null);
 
   /* ── ✨AI → 채팅 프리필 ── */
   const [chatPrefill, setChatPrefill] = useState<string | null>(null);
@@ -255,14 +281,14 @@ export function AuthoringCanvas({
     const existingSubjectId = workbook.questions.find((q) => q.question?.subject?.id)
       ?.question?.subject?.id;
     if (existingSubjectId) {
-      setSubjectId(existingSubjectId);
+      dispatch({ type: "setSubject", subjectId: existingSubjectId });
       return;
     }
     // 빈 문제집 — 최후의 fallback으로만 목록 첫 번째를 쓴다.
     let cancelled = false;
     fetchSubjects()
       .then((list) => {
-        if (!cancelled && list[0]) setSubjectId((prev) => prev || list[0].id);
+        if (!cancelled && list[0]) dispatch({ type: "setSubject", subjectId: list[0].id });
       })
       .catch(() => toast.error("과목 목록을 불러오지 못했습니다."));
     return () => {
@@ -273,14 +299,14 @@ export function AuthoringCanvas({
   /* ── 기존 문항 복원 ──
    * "수정"으로 열면 원래 담긴 문항을 캔버스에 그대로 되살린다(한 번만).
    * 문제집 목록 응답엔 선지/지문/해설이 없으므로 문항별 상세를 따로 불러온다.
-   * 실패하면 hydratedRef를 세우지 않아 다음 재조회에서 다시 시도한다(데이터 유실 방지). */
-  const hydratedRef = useRef(false);
+   * 실패하면 questionsHydrated를 세우지 않아 다음 재조회에서 다시 시도한다(데이터 유실 방지). */
+  const questionsHydrated = doc.questionsHydrated;
   useEffect(() => {
-    if (hydratedRef.current) return;
+    if (questionsHydrated) return;
     const wqs = workbook?.questions;
     if (!wqs) return; // 아직 로딩 중
     if (wqs.length === 0) {
-      hydratedRef.current = true; // 새 문제집 — 복원할 것 없음
+      dispatch({ type: "hydrateQuestionsEmpty" }); // 새 문제집 — 복원할 것 없음
       return;
     }
     let cancelled = false;
@@ -288,9 +314,8 @@ export function AuthoringCanvas({
       try {
         const details = await Promise.all(wqs.map((wq) => fetchQuestion(wq.questionId)));
         if (cancelled) return;
-        // 이미 사용자가 카드를 넣었으면 덮어쓰지 않는다.
-        setCards((prev) => (prev.length === 0 ? details.map(questionToCard) : prev));
-        hydratedRef.current = true; // 성공했을 때만 완료 표시
+        const restored = details.map(questionToCard);
+        dispatch({ type: "hydrateQuestions", cards: restored, baseline: baselineOf(restored) });
       } catch (e) {
         console.error("기존 문항 불러오기 실패:", e);
         toast.error("기존 문항을 불러오지 못했어요. 새로고침 해주세요.");
@@ -299,22 +324,21 @@ export function AuthoringCanvas({
     return () => {
       cancelled = true;
     };
-  }, [workbook]);
+  }, [workbook, questionsHydrated]);
 
   /* ── 문제집 #키워드 + 공개 설정 복원 — 한 번만 채운다.
    * isPublic은 원래 workbook.visibility에서 채워지지 않아, 이미 공개인 문제집을
    * "수정"으로 열고 그대로 저장하면 토글 기본값(false=비공개)이 강제 반영돼
-   * 조용히 비공개로 되돌아가는 버그가 있었다 — 태그 저장과 같은 저장 경로를
-   * 손보는 김에 같이 고친다(별도 커밋 사유로 기록). ── */
-  const tagsHydratedRef = useRef(false);
+   * 조용히 비공개로 되돌아가는 버그가 있었다. ── */
   useEffect(() => {
-    if (tagsHydratedRef.current || !workbook) return;
-    tagsHydratedRef.current = true;
-    const names = (workbook.tags ?? [])
-      .filter((t) => t.category === KEYWORD_TAG_CATEGORY)
-      .map((t) => t.name);
-    if (names.length) setWorkbookKeywords(names);
-    setIsPublic(workbook.visibility === "PUBLIC");
+    if (!workbook) return;
+    dispatch({
+      type: "hydrateMeta",
+      keywords: (workbook.tags ?? [])
+        .filter((t) => t.category === KEYWORD_TAG_CATEGORY)
+        .map((t) => t.name),
+      isPublic: workbook.visibility === "PUBLIC",
+    });
   }, [workbook]);
 
   const commitTitle = async () => {
@@ -330,99 +354,46 @@ export function AuthoringCanvas({
     }
   };
 
-  /* ── 지문 공유 그룹: passage 평문 → 카드 인덱스들 ── */
-  const passageGroups = useMemo(() => {
-    const map = new Map<string, number[]>();
-    cards.forEach((c, i) => {
-      const key = passageKey(c);
-      if (!key) return;
-      const list = map.get(key) ?? [];
-      list.push(i);
-      map.set(key, list);
-    });
-    return map;
-  }, [cards]);
-
   /** i번 카드와 지문을 공유하는 다른 카드들의 1-기반 번호. */
-  const sharedWith = useCallback(
-    (i: number): number[] => {
-      const key = passageKey(cards[i]);
-      if (!key) return [];
-      return (passageGroups.get(key) ?? []).filter((j) => j !== i).map((j) => j + 1);
-    },
-    [cards, passageGroups],
-  );
+  const sharedWith = useCallback((i: number): number[] => sharedWithIn(cards, i), [cards]);
+
+  // 지문 편집을 세트 전체에 반영한 사실은 리듀서가 세어 두고, 알림만 여기서 띄운다.
+  useEffect(() => {
+    if (doc.propagatedTo === 0) return;
+    toast.success(`지문을 공유하는 ${doc.propagatedTo}개 문항에 함께 반영했어요.`);
+    dispatch({ type: "noticeShown" });
+  }, [doc.propagatedTo]);
 
   // 채팅 제안 → 좌측 반영. target이 replace:N이면 그 자리 교체, 아니면 append.
-  // 검증(toCard)과 부수효과(toast)는 상태 업데이터 밖에서 — StrictMode 이중 실행 중복 방지.
+  // 검증(toCard)은 dispatch 밖에서 — StrictMode 이중 실행에도 토스트가 두 번 뜨지 않는다.
   // 실패 시 구체적 사유를 반환한다 — 채팅 패널이 스레드에 그대로 표시해, 문항이
   // "조용히 버려지는" 일을 막는다.
-  const applyQuestion = useCallback((q: ParsedQuestion): string | null => {
+  const applyQuestion = useCallback((q: ParsedQuestion, originKey: string): string | null => {
     const reason = questionRejectReason(q);
-    const probe = reason === null ? toCard(q, "probe") : null;
-    if (!probe) {
+    const content = reason === null ? toCard(q) : null;
+    if (!content) {
       const detail = reason ?? "문항 형식이 올바르지 않아요";
       toast.error(`문항을 적용하지 못했어요 — ${detail}.`);
       return detail;
     }
-    setCards((prev) => {
-      const m = /^replace:(\d+)$/.exec(q.target ?? "new");
-      if (m) {
-        const idx = Number(m[1]) - 1;
-        if (idx >= 0 && idx < prev.length) {
-          const copy = [...prev];
-          copy[idx] = { ...probe, id: prev[idx].id };
-          return copy;
-        }
-      }
-      return [...prev, { ...probe, id: newLocalCardId(prev.length) }];
+    dispatch({
+      type: "applyAiQuestion",
+      card: content,
+      target: q.target ?? "new",
+      originKey,
+      now: Date.now(),
     });
     return null;
   }, []);
 
   /* ── 카드 편집 핸들러 ── */
-  const startEdit = useCallback(
-    (id: string) => {
-      const card = cards.find((c) => c.id === id);
-      editPassageSnapshot.current = card ? passageKey(card) : null;
-      setEditingId(id);
-    },
-    [cards],
-  );
-
-  const updateCard = useCallback((id: string, patch: Partial<CanvasCard>) => {
-    setCards((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
-  }, []);
-
-  /** 편집 완료 — 지문이 바뀌었고 같은 지문을 쓰던 카드가 있으면 함께 반영. */
-  const finishEdit = useCallback(() => {
-    const id = editingId;
-    const before = editPassageSnapshot.current;
-    setEditingId(null);
-    editPassageSnapshot.current = null;
-    if (!id || !before) return;
-
-    // 편집 중 변경은 updateCard가 이미 cards에 반영했으므로 여기 cards가 최신이다.
-    const edited = cards.find((c) => c.id === id);
-    if (!edited) return;
-    if (passageKey(edited) === before) return; // 지문 안 바뀜
-
-    const targets = cards.filter((c) => c.id !== id && passageKey(c) === before);
-    if (targets.length === 0) return;
-    setCards((prev) =>
-      prev.map((c) =>
-        c.id !== id && passageKey(c) === before ? { ...c, passage: edited.passage } : c,
-      ),
-    );
-    toast.success(`지문을 공유하는 ${targets.length}개 문항에 함께 반영했어요.`);
-  }, [editingId, cards]);
-
-  const removeCard = useCallback(
-    (id: string) => {
-      if (editingId === id) setEditingId(null);
-      setCards((prev) => prev.filter((c) => c.id !== id));
-    },
-    [editingId],
+  const startEdit = useCallback((id: string) => dispatch({ type: "startEdit", id }), []);
+  const finishEdit = useCallback(() => dispatch({ type: "finishEdit" }), []);
+  const removeCard = useCallback((id: string) => dispatch({ type: "removeCard", id }), []);
+  const updateCard = useCallback(
+    (id: string, patch: Partial<CanvasCard>) =>
+      dispatch({ type: "updateCard", id, patch, now: Date.now() }),
+    [],
   );
 
   /** ✨AI — 채팅 입력창에 "문제 N 수정: " 프리필. 모바일에선 채팅 탭으로도 전환. */
@@ -432,10 +403,10 @@ export function AuthoringCanvas({
   }, []);
 
   const addManualCard = useCallback(() => {
-    setCards((prev) => [
-      ...prev,
-      {
-        id: newLocalCardId(prev.length),
+    dispatch({
+      type: "addManualCard",
+      now: Date.now(),
+      card: {
         type: "객관식",
         stem: buildRichDoc(""),
         passage: null,
@@ -450,8 +421,32 @@ export function AuthoringCanvas({
         points: 1,
         keywords: [],
       },
-    ]);
+    });
   }, []);
+
+  /**
+   * runSave가 쓰는 서버 호출 묶음. 이 어댑터가 유일한 네트워크 경계라, 저장 로직은
+   * 테스트에서 가짜 구현을 끼워 넣는 것만으로 전부 확인된다.
+   */
+  const saveClient = useMemo<SaveClient>(
+    () => ({
+      createPassage: (content) => createPassage(content),
+      publishPassage: (id) => publishPassage(id),
+      updatePassage: (id, content) => updatePassage(id, content),
+      listKeywordTags: () => fetchTags(KEYWORD_TAG_CATEGORY),
+      createKeywordTag: (name) => createTag(name, KEYWORD_TAG_CATEGORY),
+      createQuestion: (payload) => createQuestion(payload as any),
+      updateQuestion: (id, payload) => updateQuestion(id, payload as any),
+      publishQuestion: (id) => publishQuestion(id),
+      addQuestionToWorkbook: (questionId) => addQuestionToWorkbook(workbookId, { questionId }),
+      removeQuestionFromWorkbook: (questionId) => removeQuestionFromWorkbook(workbookId, questionId),
+      reorderWorkbookQuestions: (questionIds) =>
+        reorderWorkbookQuestions(workbookId, questionIds),
+      updateWorkbook: (patch) => updateWorkbook(workbookId, patch),
+      registerImage: (args) => registerMediaAsset(args),
+    }),
+    [workbookId],
+  );
 
   const handleSave = async () => {
     // 사전검증은 순수 규칙이라 authoring-save로 뺐다(테스트 대상).
@@ -466,115 +461,24 @@ export function AuthoringCanvas({
     }
     setSaving(true);
     try {
-      // 1) 지문 영속화 — 같은 지문(평문 일치)은 한 번만 생성해 passageId를 공유한다.
-      const passageIdByKey = new Map<string, string>();
-      for (const { key, passage } of uniquePassages(cards)) {
-        try {
-          const p = await createPassage(passage);
-          await publishPassage(p.id).catch(() => null); // 발행 실패는 담기에 치명적이지 않음
-          passageIdByKey.set(key, p.id);
-        } catch (e) {
-          console.error("지문 저장 실패:", e);
-          toast.error("일부 지문 저장에 실패했어요 — 해당 문항은 지문 없이 저장됩니다.");
-        }
-      }
-
-      // 2) #키워드 → 태그 find-or-create. 같은 이름은 한 번만 조회/생성해 재사용.
-      const existingTags = await fetchTags(KEYWORD_TAG_CATEGORY).catch(() => [] as Tag[]);
-      const tagIdByName = new Map<string, string>(
-        existingTags.map((t) => [t.name.trim().toLowerCase(), t.id]),
+      // 순서·실패 처리는 runSave가 갖는다. 여기 남는 건 "서버로 나가는 문"(saveClient)과
+      // 결과를 화면에 옮기는 일뿐이다 — 저장 규칙을 고칠 때 이 컴포넌트를 열 일이 없다.
+      const outcome = await runSave(
+        {
+          cards,
+          subjectId,
+          workbookKeywords,
+          isPublic,
+          visibilityChanged: !!workbook && workbook.visibility !== (isPublic ? "PUBLIC" : "PRIVATE"),
+          compositionKnown: doc.compositionKnown,
+          baseline: doc.baseline,
+        },
+        saveClient,
       );
-      const resolveTagIds = async (keywords: string[]): Promise<string[]> => {
-        const ids: string[] = [];
-        // 공백·중복 정리는 순수 규칙 — 여기서 걸러야 같은 태그를 두 번 만들지 않는다.
-        for (const name of normalizeKeywords(keywords)) {
-          const key = name.toLowerCase();
-          let id = tagIdByName.get(key);
-          if (!id) {
-            try {
-              const created = await createTag(name, KEYWORD_TAG_CATEGORY);
-              id = created.id;
-              tagIdByName.set(key, id);
-            } catch (e) {
-              console.error(`키워드 태그 생성 실패(${name}):`, e);
-              continue; // 이 키워드만 건너뛰고 나머지는 계속
-            }
-          }
-          ids.push(id);
-        }
-        return ids;
-      };
-
-      // 3) 문항 영속화 — 기존 문항(실제 id)은 갱신, 새 문항(local-)은 생성+발행+담기.
-      //    한 카드의 내용 페이로드는 생성/갱신이 동일하므로 한 번에 만든다.
-      //    발행 실패를 삼키고 담기를 강행하면 백엔드가 "발행되지 않은 문항" 404를
-      //    돌려줘 원인이 가려진다 — 단계별로 실패를 구분해 서버 메시지를 그대로 보여준다.
-      const buildContentPayload = (c: CanvasCard, tagIds: string[]) => {
-        const key = passageKey(c);
-        return buildQuestionPayload(c, {
-          tagIds,
-          passageId: key ? passageIdByKey.get(key) : undefined,
-        });
-      };
-
-      let failed = 0;
-      let lastError = "";
-      // local- 카드 id → 새로 만들어진 실제 question id. 저장 뒤 카드 id를 교체해
-      // 같은 세션에서 다시 저장해도 중복 생성되지 않게 한다.
-      const newIdByCardId = new Map<string, string>();
-      for (const c of cards) {
-        // 텍스트가 아니라 내용 유무로 판정한다 — 이미지만 있는 발문(Phase 2)을
-        // 빈 카드로 보고 조용히 건너뛰지 않게.
-        if (!isSavableCard(c)) continue;
-        try {
-          const tagIds = await resolveTagIds(c.keywords);
-          const payload = buildContentPayload(c, tagIds);
-          if (isPersistedCard(c.id)) {
-            // 기존 문항 — 새로 만들지 않고 그 자리에서 갱신(중복 방지). 이미 발행/담긴 상태.
-            await updateQuestion(c.id, payload as any);
-          } else {
-            const created = await createQuestion({ subjectId, ...payload } as any);
-            await publishQuestion(created.id); // 실패 시 담기 강행하지 않고 이 문항을 실패 처리
-            await addQuestionToWorkbook(workbookId, { questionId: created.id });
-            newIdByCardId.set(c.id, created.id);
-          }
-        } catch (e) {
-          failed += 1;
-          lastError = e instanceof Error ? e.message : String(e);
-          console.error("문항 저장 실패:", e);
-        }
-      }
-
-      // 새로 만든 문항의 실제 id로 카드 id를 교체 — 같은 세션에서 다시 저장해도
-      // 중복 생성되지 않게 한다. (저장은 절대 문항을 삭제하지 않는다 — 추가/갱신만.)
-      if (newIdByCardId.size > 0) {
-        setCards((prev) =>
-          prev.map((c) => (newIdByCardId.has(c.id) ? { ...c, id: newIdByCardId.get(c.id)! } : c)),
-        );
-      }
-
-      if (failed > 0) {
-        toast.error(`${failed}개 문항 저장에 실패했어요.${lastError ? ` (${lastError})` : ""}`);
-      } else {
-        toast.success(`${cards.length}개 문항을 문제집에 저장했어요.`);
-      }
-
-      // 4) 문제집 메타 반영 — 공개 설정(바뀐 경우만) + #키워드(항상 전체 교체).
-      //    문항 키워드와 같은 tagIdByName 캐시를 써서 겹치는 이름이면 태그를 재사용한다.
-      const targetVisibility = isPublic ? "PUBLIC" : "PRIVATE";
-      const visibilityChanged = !!workbook && workbook.visibility !== targetVisibility;
-      try {
-        const workbookTagIds = await resolveTagIds(workbookKeywords);
-        await updateWorkbook(workbookId, {
-          tagIds: workbookTagIds,
-          ...(visibilityChanged ? { visibility: targetVisibility } : {}),
-        });
-        if (visibilityChanged) {
-          toast.success(isPublic ? "문제집을 공개로 전환했어요." : "문제집을 비공개로 유지해요.");
-        }
-      } catch (e) {
-        console.error("문제집 설정 변경 실패:", e);
-        toast.error("문제집 설정 변경에 실패했어요.");
+      dispatch({ type: "saveSucceeded", outcome });
+      for (const n of outcome.notices) {
+        if (n.level === "error") toast.error(n.message);
+        else toast.success(n.message);
       }
     } finally {
       setSaving(false);
@@ -668,7 +572,7 @@ export function AuthoringCanvas({
               type="button"
               role="switch"
               aria-checked={isPublic}
-              onClick={() => setIsPublic((v) => !v)}
+              onClick={() => dispatch({ type: "setPublic", isPublic: !isPublic })}
               className="flex items-center gap-2 text-xs text-muted-foreground"
               title="저장 시 문제집 공개 여부"
             >
@@ -704,7 +608,7 @@ export function AuthoringCanvas({
               #{k}
               <button
                 type="button"
-                onClick={() => removeWorkbookKeyword(k)}
+                onClick={() => dispatch({ type: "removeWorkbookKeyword", name: k })}
                 aria-label={`#${k} 삭제`}
                 className="text-primary/70 hover:text-primary"
               >
@@ -739,7 +643,8 @@ export function AuthoringCanvas({
                 e.preventDefault(); // drop 허용
               }}
               onDrop={() => {
-                if (dragIndex.current !== null) moveCard(dragIndex.current, i);
+                if (dragIndex.current !== null)
+                  dispatch({ type: "moveCard", from: dragIndex.current, to: i });
                 dragIndex.current = null;
               }}
               onDragEnd={() => {

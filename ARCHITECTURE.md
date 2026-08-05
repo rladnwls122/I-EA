@@ -21,7 +21,7 @@
 │   └── redis/          # Redis 및 BullMQ 설정
 ├── web/                # Frontend (Next.js 14 App Router)
 │   ├── app/            # 페이지 라우팅 및 레이아웃
-│   │   ├── studio/     # 문항 출제 스튜디오
+│   │   ├── edit/       # 저작 캔버스 (문항 출제 — 정본 편집기)
 │   │   ├── workbook/   # 문제집 및 응시 화면
 │   │   └── notes/      # 오답노트 및 학습 분석
 │   ├── components/     # 재사용 가능한 UI 컴포넌트 (shadcn/ui)

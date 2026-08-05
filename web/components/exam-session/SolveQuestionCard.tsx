@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useDebounce, useSubmitAnswer } from "@/lib/hooks";
-import { extractPlainText } from "@/lib/prosemirror";
+import { RichContent } from "@/components/editor/RichContent";
 import { sessionPassages } from "@/lib/session-passages";
 import type { SessionQuestionItem } from "@/lib/types";
 
@@ -69,13 +69,14 @@ export function SolveQuestionCard({
           {p.label && (
             <p className="mb-1.5 text-xs font-semibold text-muted-foreground">{p.label}</p>
           )}
-          <p className="whitespace-pre-wrap">{extractPlainText(p.content)}</p>
+          <RichContent value={p.content} />
         </div>
       ))}
 
-      <p className="mb-4 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-        {extractPlainText(item.snapshot.stem)}
-      </p>
+      <RichContent
+        value={item.snapshot.stem}
+        className="mb-4 text-sm leading-relaxed text-foreground"
+      />
 
       {isObjective ? (
         <div className="space-y-2">
@@ -103,7 +104,7 @@ export function SolveQuestionCard({
                 >
                   {i + 1}
                 </span>
-                <span className="flex-1">{extractPlainText(c.content)}</span>
+                <RichContent value={c.content} className="flex-1" />
                 {selected && (
                   <Check size={16} className="flex-none text-primary" aria-hidden="true" />
                 )}

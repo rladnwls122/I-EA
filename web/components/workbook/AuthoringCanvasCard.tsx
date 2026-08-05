@@ -15,7 +15,8 @@ import {
   X,
 } from "lucide-react";
 import { TiptapEditor } from "@/components/editor/TiptapEditor";
-import { buildRichDoc, isRichEmpty } from "@/lib/prosemirror";
+import { isRichEmpty } from "@/lib/prosemirror";
+import { buildRichDoc } from "@/lib/prosemirror-assemble";
 import { RichContent } from "@/components/editor/RichContent";
 import type { CanvasCard, CanvasChoice } from "./AuthoringCanvas";
 
@@ -298,6 +299,8 @@ export function AuthoringCanvasCard({
             onChange={(json) => onChange({ passage: json })}
             placeholder="지문(본문)을 입력하세요."
             allowImages
+            allowMath
+            allowTables
           />
         </div>
       ) : (
@@ -318,6 +321,8 @@ export function AuthoringCanvasCard({
           onChange={(json) => onChange({ stem: json })}
           placeholder="문항의 발문을 입력하세요."
           allowImages
+          allowMath
+          allowTables
         />
       </div>
 
@@ -441,6 +446,8 @@ export function AuthoringCanvasCard({
         onChange={(json) => onChange({ explanation: json })}
         placeholder="해설을 입력하세요 (선택)."
         allowImages
+        allowMath
+        allowTables
       />
 
       {/* #키워드 — 자유 태깅. 저장 시 태그로 자동 등록/연결된다. */}
