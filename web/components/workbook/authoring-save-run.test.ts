@@ -571,3 +571,25 @@ describe('runSave — 목록이 문제집의 전부가 아닐 때', () => {
     expect(calls.reordered).toEqual([]);
   });
 });
+
+describe('runSave — 병렬 갱신 경로의 태그 중복 생성', () => {
+  it('여러 카드가 같은 새 키워드를 쓰면 태그를 한 번만 만든다', async () => {
+    // 앞의 "같은 키워드는 태그를 한 번만" 케이스는 로컬 카드(=순차 생성 경로)만 태워서
+    // 경합이 실제로 있는 **병렬 갱신 경로**(mapWithLimit)를 지나지 않았다. 저장된 카드로
+    // 갱신 경로를 태우고, 해석과 기록 사이에 await이 끼도록 지연을 준다.
+    const cards = ['q-1', 'q-2', 'q-3', 'q-4'].map((id) =>
+      card({ id, stem: buildRichDoc(`발문 ${id}`), keywords: ['새키워드'] }),
+    );
+    let created = 0;
+    const { client } = fakeClient({
+      createKeywordTag: async (name) => {
+        created += 1;
+        await new Promise((r) => setTimeout(r, 5));
+        return { id: `tag-${name}` };
+      },
+    });
+    await runSave(input({ cards }), client);
+
+    expect(created).toBe(1);
+  });
+});

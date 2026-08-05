@@ -197,11 +197,16 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
     }
   }
 
-  /* 2) #키워드 → 태그 find-or-create. 목록은 한 번만 받아 이름으로 재사용한다. */
-  const tagIdByName = new Map<string, string>();
+  /* 2) #키워드 → 태그 find-or-create. 목록은 한 번만 받아 이름으로 재사용한다.
+   *
+   * 값이 아니라 **약속(Promise)**을 담는다. 값을 담으면 "조회 → await 생성 → 기록" 사이에
+   * 다른 워커가 끼어들어(갱신은 4-병렬이다) 같은 태그를 인원수만큼 만든다. 약속을 먼저
+   * 꽂아 두면 뒤따라온 워커는 이미 나가 있는 그 호출을 기다린다.
+   * 실패한 약속(null)도 그대로 남긴다 — 한 번 실패한 이름을 카드 수만큼 다시 때리지 않는다. */
+  const tagIdByName = new Map<string, Promise<string | null>>();
   try {
     for (const t of await client.listKeywordTags()) {
-      tagIdByName.set(t.name.trim().toLowerCase(), t.id);
+      tagIdByName.set(t.name.trim().toLowerCase(), Promise.resolve(t.id));
     }
   } catch {
     // 목록을 못 받아도 저장을 막지 않는다 — 아래에서 전부 새로 만들려 시도한다.
@@ -218,15 +223,19 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
     let complete = true;
     for (const name of normalizeKeywords(keywords)) {
       const key = name.toLowerCase();
-      let id = tagIdByName.get(key);
+      let pending = tagIdByName.get(key);
+      if (!pending) {
+        // 예약을 await **전에** 꽂는다 — 이게 이 함수의 유일한 경합 방어다.
+        pending = client
+          .createKeywordTag(name)
+          .then((t) => t.id)
+          .catch(() => null);
+        tagIdByName.set(key, pending);
+      }
+      const id = await pending;
       if (!id) {
-        try {
-          id = (await client.createKeywordTag(name)).id;
-          tagIdByName.set(key, id);
-        } catch {
-          complete = false; // 이 키워드만 건너뛰고 나머지는 계속
-          continue;
-        }
+        complete = false; // 이 키워드만 건너뛰고 나머지는 계속
+        continue;
       }
       ids.push(id);
     }
