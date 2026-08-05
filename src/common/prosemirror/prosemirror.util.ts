@@ -116,6 +116,112 @@ function tokenizeInlineMath(line: string): PMNode[] {
   return out;
 }
 
+// =====================================================================
+// 지문 내장 빈칸 마커 (#43 gap 9 — 토익 Part 6)
+//
+// Part 6는 지문 하나에 번호 붙은 빈칸이 여러 개 있고 각 빈칸이 독립된 문항이다.
+// 스키마는 Passage 1 : Question N이라 "이 문항이 지문의 몇 번 빈칸인지"를 담을 자리가
+// 없다 — 그래서 **평문 안의 마커**를 규약으로 삼는다.
+//
+// 규약이 두 겹인 이유:
+//   - `[[n]]`  = LLM이 방출하는 **입력 문법**. 타이핑이 단순하고 모델이 헷갈릴 여지가 없다.
+//   - `___(n)___` = 우리가 저장/표시하는 **정본 형태**. 학습자에게 그대로 빈칸으로 읽히고,
+//     응시 화면(SolveQuestionCard)이 이 형태를 파싱해 "빈칸 n" 배지를 띄운다.
+// 조립 시점에 한 번 정규화하고(normalizeBlankMarkers) 그 뒤로는 정본 형태만 돈다.
+//
+// **노드로 승격하지 않는다**(수식과 다른 판단). 근거:
+//   1. 수식은 KaTeX 렌더가 필요해서 노드가 **불가피**했다. 빈칸은 밑줄과 번호뿐이라
+//      평문 텍스트 런으로 100% 표현된다 — 노드로 얻는 게 없다.
+//   2. 노드로 만들면 sanitize 화이트리스트 + RichContent + TiptapEditor(커스텀 Node 확장,
+//      수식과 달리 공식 확장이 없다) + web/lib/prosemirror 락스텝이 필요하다. 그중 하나라도
+//      모르는 노드를 만나면 Tiptap은 그 노드를 **조용히 버린다** — 빈칸이 사라진 지문은
+//      아예 못 푸는 문항이 된다. 이 저장소가 피하는 실패 모드다.
+//   3. 평문이면 에디터·결과 화면·검색·튜터 프롬프트 어디서도 소실되지 않는다(추가 작업 0).
+//
+// `$...$` 수식 델리미터와의 비충돌:
+//   - 마커 문자 집합은 `[`,`]`,`(`,`)`,`_`,숫자뿐이라 `$`를 만들지도 소비하지도 않는다.
+//     반대로 수식 토크나이저는 `$`가 없으면 아예 돌지 않는다(splitBlockMath/tokenizeInlineMath 조기 반환).
+//   - 그래도 LaTeX 본문 안의 `[[1]]`(예: 행렬 표기)까지 건드리지 않도록, 정규화는
+//     **렌더 가능한 수식 구간을 건너뛴다**. 렌더 불가라 어차피 평문으로 강등될 구간은
+//     건너뛰지 않는다 — 강등 후 평문이 될 텍스트에 마커가 살아 있으면 안 되기 때문.
+// =====================================================================
+
+/** LLM이 방출하는 빈칸 마커 입력 문법. 번호는 1부터. */
+const BLANK_INPUT_RE = /\[\[(\d{1,2})\]\]/g;
+
+/** 저장·표시되는 정본 형태. 프런트(web/lib/blank-markers.ts)와 **락스텝**으로 유지한다. */
+const BLANK_CANONICAL_RE = /___\((\d{1,2})\)___/g;
+
+/** 번호 n의 정본 마커 문자열. */
+export function blankMarker(n: number): string {
+  return `___(${n})___`;
+}
+
+/**
+ * 수식 구간(렌더 가능한 `$$...$$` / `$...$`)을 건너뛰며 나머지 텍스트에만 fn을 적용한다.
+ * 수식 판정 규칙을 그대로 재사용하므로, 토크나이저가 나중에 볼 문자열과 같은 시야를 갖는다.
+ */
+function mapOutsideMath(text: string, fn: (segment: string) => string): string {
+  if (!text.includes('$')) return fn(text);
+
+  const out: string[] = [];
+  let last = 0;
+  const scan = (re: RegExp) => {
+    re.lastIndex = 0;
+    return re;
+  };
+  // 별행 수식을 먼저 잘라내고(여러 줄에 걸칠 수 있다), 남은 조각에서 인라인 수식을 본다.
+  let m: RegExpExecArray | null;
+  const blockRe = scan(BLOCK_MATH_RE);
+  while ((m = blockRe.exec(text)) !== null) {
+    if (!isRenderableLatex(m[1].trim())) continue; // 강등될 구간 — 평문 취급
+    out.push(mapInlineOutsideMath(text.slice(last, m.index), fn), m[0]);
+    last = m.index + m[0].length;
+  }
+  out.push(mapInlineOutsideMath(text.slice(last), fn));
+  return out.join('');
+}
+
+function mapInlineOutsideMath(text: string, fn: (segment: string) => string): string {
+  if (!text.includes('$')) return fn(text);
+  const out: string[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  INLINE_MATH_RE.lastIndex = 0;
+  while ((m = INLINE_MATH_RE.exec(text)) !== null) {
+    if (!isRenderableLatex(m[1].trim())) continue;
+    out.push(fn(text.slice(last, m.index)), m[0]);
+    last = m.index + m[0].length;
+  }
+  out.push(fn(text.slice(last)));
+  return out.join('');
+}
+
+/**
+ * LLM 입력 문법(`[[n]]`)을 정본 마커(`___(n)___`)로 바꾼다.
+ * 마커가 없는 텍스트(기존 전 경로)는 **문자 하나도 바뀌지 않는다**.
+ */
+export function normalizeBlankMarkers(text: string): string {
+  if (!text.includes('[[')) return text;
+  return mapOutsideMath(text, (seg) =>
+    seg.replace(BLANK_INPUT_RE, (_, n: string) => blankMarker(Number(n))),
+  );
+}
+
+/**
+ * 텍스트에 등장하는 빈칸 번호를 **등장 순서대로** 돌려준다(입력 문법·정본 형태 모두 인식).
+ * 검증(지문의 빈칸 집합 == 문항 집합)과 프런트 배지 파싱이 같은 함수를 쓴다.
+ */
+export function findBlankMarkers(text: string): number[] {
+  const found: Array<{ at: number; n: number }> = [];
+  for (const re of [BLANK_INPUT_RE, BLANK_CANONICAL_RE]) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) found.push({ at: m.index, n: Number(m[1]) });
+  }
+  return found.sort((a, b) => a.at - b.at).map((f) => f.n);
+}
+
 /**
  * 평문 텍스트를 doc 노드로 변환한다.
  * - 줄바꿈(\n)은 문단(paragraph) 분리로 취급

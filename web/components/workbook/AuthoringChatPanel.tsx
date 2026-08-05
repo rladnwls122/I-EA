@@ -155,14 +155,14 @@ export function AuthoringChatPanel({
       const explanation = extractPlainText(c.explanation).trim();
       const answer =
         c.type === "객관식"
-          ? c.choices[c.correct]?.text.trim() || undefined
+          ? extractPlainText(c.choices[c.correct]?.content).trim() || undefined
           : c.answerText.trim() || undefined;
       return {
         index: i + 1,
         questionType: c.type,
         stem: extractPlainText(c.stem).slice(0, 4000),
         ...(c.type === "객관식" && c.choices.length
-          ? { choices: c.choices.map((ch) => ch.text) }
+          ? { choices: c.choices.map((ch) => extractPlainText(ch.content)) }
           : {}),
         ...(answer ? { answer: answer.slice(0, 2000) } : {}),
         ...(explanation ? { explanation: explanation.slice(0, 4000) } : {}),

@@ -11,9 +11,12 @@ import {
   LlmGenerationResult,
   LlmRegenerateChoicesContext,
   LlmRegenerateChoicesResult,
+  LlmReviewResult,
+  REVIEW_AXES,
   TutorTurn,
 } from './llm.types';
 import { GeminiKeyPool } from './gemini-key-pool';
+import { findBlankMarkers } from '@/common/prosemirror/prosemirror.util';
 import {
   OutputLanguage,
   defaultChoiceCount,
@@ -36,6 +39,12 @@ const REGENERATE_TIMEOUT_MS = 15_000;
  */
 const REGENERATE_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = 400;
+
+/**
+ * 자기검증(#34 후속)은 생성 배치에 얹히는 **부가** 호출이다. 무기한 매달리면 큐 워커 하나가
+ * 판정 대기로 묶인다 — 생성 본체보다 짧게 끊고, 끊기면 판정만 포기한다(문항은 그대로 저장).
+ */
+const SELF_REVIEW_TIMEOUT_MS = 60_000;
 
 /**
  * 짧은 백오프로 재시도할 가치가 있는 장애: 5xx(일시적 과부하) / 타임아웃 / 네트워크.
@@ -72,6 +81,14 @@ export class GeminiLlmService {
   private readonly keyPool: GeminiKeyPool;
   /** 재현성 추적을 위해 ai_generations.model에 저장할 값 */
   readonly model: string;
+  /**
+   * LLM 자기검증(#34 후속) 스위치. **기본값은 꺼짐**이고, 켜야만 2차 호출이 나간다.
+   *
+   * 요청 파라미터가 아니라 환경변수로 둔 이유: 이 기능이 유예됐던 사유가 "호출 비용 배가"라,
+   * 켤지 말지는 최종 사용자의 취향이 아니라 **운영 비용 결정**이다. DTO·프론트·input_params
+   * 스냅샷을 건드리지 않으므로 꺼진 경로의 동작이 종전과 완전히 같음도 자명해진다.
+   */
+  readonly isSelfReviewEnabled: boolean;
   private readonly maxTokens: number;
   private readonly baseUrl: string;
 
@@ -96,6 +113,22 @@ export class GeminiLlmService {
     this.baseUrl =
       this.config.get<string>('GEMINI_BASE_URL') ??
       'https://generativelanguage.googleapis.com/v1beta';
+    this.isSelfReviewEnabled =
+      String(this.config.get<string>('AI_SELF_REVIEW') ?? '').toLowerCase() === 'true';
+    if (this.isSelfReviewEnabled) {
+      // 켠 사람이 비용 배가를 알고 켰는지 로그로 확인할 수 있게 한다.
+      this.logger.log(`LLM 자기검증 활성화(AI_SELF_REVIEW) — 생성 배치마다 판정 호출이 1회 추가됩니다.`);
+    }
+  }
+
+  /**
+   * 판정에 쓰는 모델. **생성 모델과 분리하지 않는다** — 2026-08-04 결정 6(`GEMINI_TUTOR_MODEL`
+   * 분리 보류)과 같은 판단이다. GEMINI_MODEL 기본값이 이미 flash급이라 지금 나누면 같은 값을
+   * 가리키는 두 번째 설정 손잡이만 생긴다. 생성 모델을 pro급으로 올리는 결정이 실제로 날 때
+   * 그 커밋에서 함께 나눈다(그 전까지 이 getter가 분기점을 한 곳에 모아 둔다).
+   */
+  get selfReviewModel(): string {
+    return this.model;
   }
 
   /** 다른 클래스에서 키 존재 여부만 확인하고 싶을 때 사용. */
@@ -111,8 +144,11 @@ export class GeminiLlmService {
     // 지문 수 — passageCount 명시가 없으면 includePassage로 0/1을 따른다(종전 동작).
     // 2 이상이면 다중지문 세트 모드(gap 3): 스키마·프롬프트·검증이 passages[] 계약으로 바뀐다.
     const passageCount = ctx.passageCount ?? (ctx.includePassage ? 1 : 0);
+    // 지문 내장 빈칸 모드(#43 gap 9). 빈칸 수는 문항 수와 같다 — Part 6는 빈칸 하나가 문항 하나다.
+    // 별도 파라미터를 두면 "빈칸 4개인데 문항 3개" 같은 요청이 무조건 FAILED가 되는 함정이 생긴다.
+    const blankCount = ctx.blanksInPassage && passageCount === 1 ? ctx.questionCount : 0;
     const raw = await this.callGemini(
-      this.buildSystemPrompt(ctx.language ?? 'ko', passageCount),
+      this.buildSystemPrompt(ctx.language ?? 'ko', passageCount, blankCount),
       this.buildUserPrompt(ctx),
     );
     // choiceCount를 명시한 요청만 개수를 검증한다 — 시험별 관행 권고와 ox 힌트는
@@ -123,7 +159,30 @@ export class GeminiLlmService {
       ctx.ox ? undefined : ctx.choiceCount,
       ctx.answerMode ?? 'single',
       passageCount,
+      blankCount,
     );
+  }
+
+  /**
+   * 생성 결과 자기검증 (#34 후속, 옵트인 2차 호출).
+   *
+   * 판정 축은 결정 3의 5축 중 **코드로 못 잡는 4축**뿐이다 — 형식 규격(선지 개수·언어·정답 개수)은
+   * 파서가 이미 검증했으므로 토큰을 태워 다시 보지 않는다.
+   *
+   * 호출부(프로세서)가 실패를 흡수한다. 여기서는 계약 위반이면 그냥 던진다 —
+   * "판정했는데 통과"와 "판정을 못 했다"를 뭉개면 기록이 거짓말이 된다.
+   */
+  async reviewGeneration(
+    ctx: LlmGenerationContext,
+    result: LlmGenerationResult,
+  ): Promise<LlmReviewResult> {
+    const raw = await this.callGemini(
+      this.buildReviewSystemPrompt(result.questions.length),
+      this.buildReviewUserPrompt(ctx, result),
+      // 배치 경로지만 판정은 부가 기능이다 — 무기한 매달려 생성 잡을 붙잡고 있지 않도록 끊는다.
+      { timeoutMs: SELF_REVIEW_TIMEOUT_MS },
+    );
+    return this.parseReviewResult(raw, result.questions.length);
   }
 
   /**
@@ -442,6 +501,7 @@ export class GeminiLlmService {
     expectedChoiceCount?: number,
     answerMode: AnswerMode = 'single',
     passageCount = 0,
+    blankCount = 0,
   ): LlmGenerationResult {
     // 코드펜스/서두 텍스트가 섞여 와도 첫 JSON 오브젝트만 안전하게 추출한다.
     const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
@@ -529,13 +589,71 @@ export class GeminiLlmService {
         );
       }
     }
+    // 지문 내장 빈칸 모드(gap 9) — 지문의 마커 집합과 문항의 blankIndex 집합이 **일대일**이어야 한다.
+    // 여기서 막지 않으면 "빈칸이 없는 지문", "가리킬 빈칸이 없는 문항", "번호가 겹친 문항"이
+    // 조용히 저장돼 응시자가 못 푸는 세트가 된다.
+    if (blankCount > 0) {
+      this.validateBlanks(parsed, blankCount);
+    }
     return parsed;
   }
 
-  private buildSystemPrompt(language: OutputLanguage = 'ko', passageCount = 0): string {
+  /**
+   * 지문 속 `[[n]]` 마커와 문항 blankIndex의 대응 검증(#43 gap 9).
+   * 마커 파싱은 조립과 같은 함수(findBlankMarkers)를 쓴다 — 규약이 두 군데로 갈라지지 않게.
+   */
+  private validateBlanks(parsed: LlmGenerationResult, blankCount: number): void {
+    const body = parsed.passage?.bodyText;
+    if (typeof body !== 'string' || !body.trim()) {
+      throw new ServiceUnavailableException('모델이 빈칸을 담을 지문을 반환하지 않았습니다.');
+    }
+    const markers = findBlankMarkers(body);
+    const expected = Array.from({ length: blankCount }, (_, i) => i + 1);
+    // 등장 순서까지 오름차순이어야 한다 — 순서가 어긋나면 학습자가 (2)를 (1)보다 먼저 읽는다.
+    if (markers.length !== blankCount || markers.some((n, i) => n !== expected[i])) {
+      throw new ServiceUnavailableException(
+        `모델이 지문에 빈칸 마커 [[1]]~[[${blankCount}]]를 순서대로 넣지 않았습니다(받은 값: ${markers.join(',') || '없음'}).`,
+      );
+    }
+    const taken = new Set<number>();
+    for (const q of parsed.questions) {
+      const idx = q.blankIndex;
+      if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 1 || idx > blankCount) {
+        throw new ServiceUnavailableException(
+          `모델이 빈칸 번호(blankIndex)가 잘못된 문항을 반환했습니다(받은 값: ${String(idx)}).`,
+        );
+      }
+      if (taken.has(idx)) {
+        throw new ServiceUnavailableException(
+          `모델이 같은 빈칸(${idx}번)에 문항을 두 개 이상 배정했습니다.`,
+        );
+      }
+      taken.add(idx);
+      // 발문이 다른 빈칸을 가리키면 학습자가 지문에서 엉뚱한 자리를 본다.
+      const stemMarkers = findBlankMarkers(q.stemText);
+      if (stemMarkers.some((n) => n !== idx)) {
+        throw new ServiceUnavailableException(
+          `모델이 자기 빈칸(${idx}번)이 아닌 마커를 발문에 쓴 문항을 반환했습니다.`,
+        );
+      }
+    }
+    if (taken.size !== blankCount) {
+      throw new ServiceUnavailableException(
+        '모델이 문항이 배정되지 않은 빈칸을 남겼습니다 — 빈칸마다 문항이 정확히 하나여야 합니다.',
+      );
+    }
+  }
+
+  private buildSystemPrompt(
+    language: OutputLanguage = 'ko',
+    passageCount = 0,
+    blankCount = 0,
+  ): string {
     // 다중지문 세트(gap 3)는 passages 배열 + 문항별 passageIndex 계약으로 바뀐다.
     // 단일 지문/무지문(passageCount <= 1)은 종전 계약(passage 단일 객체) 그대로.
     const multiPassage = passageCount >= 2;
+    // 지문 내장 빈칸(gap 9)은 단일 지문 위에서만 성립한다(resolveTemplateFormat이 보장).
+    const blanks = blankCount > 0;
     return [
       '너는 한국 시험 문항 출제 전문가다. 요청에 맞는 문항을 생성하고,',
       '아래 JSON 스키마를 "그대로" 따르는 JSON 하나만 출력한다. 서두/설명/코드펜스 금지.',
@@ -551,6 +669,7 @@ export class GeminiLlmService {
       ...(multiPassage
         ? [`      "passageIndex": 0~${passageCount - 1} (이 문항의 근거 지문 인덱스),`]
         : []),
+      ...(blanks ? [`      "blankIndex": 1~${blankCount} (이 문항이 맡은 지문 속 빈칸 번호),`] : []),
       '      "choices": [ { "content": string, "isCorrect": boolean, "explanation": string(선택) } ](객관식 전용),',
       '      "answerText": string(주관식 단답 정답, 선택),',
       '      "explanationText": string(선택),',
@@ -564,6 +683,15 @@ export class GeminiLlmService {
       ...(multiPassage
         ? [
             '- 모든 문항에 passageIndex를 지정하고, 모든 지문(passages의 각 인덱스)에 최소 1문항을 배정한다.',
+          ]
+        : []),
+      // 빈칸 마커는 평문 안의 규약이다 — 조립이 `___(n)___` 정본 형태로 바꿔 저장한다.
+      // 형태를 모델이 마음대로 고르게 두면(밑줄·점선·(A)) 파싱이 불가능해진다.
+      ...(blanks
+        ? [
+            `- 지문(bodyText) 안에 빈칸 마커 [[1]]부터 [[${blankCount}]]까지를 **글의 순서대로 정확히 한 번씩** 넣는다. 다른 형태(밑줄, -----, (A))로 빈칸을 표시하지 않는다.`,
+            '- 문항은 빈칸 하나당 정확히 하나다. 각 문항의 blankIndex로 자기 빈칸을 가리키고, 발문에서 그 빈칸을 부를 때도 같은 마커([[n]])를 쓴다(다른 번호의 마커는 쓰지 않는다).',
+            '- 선지는 그 빈칸에 그대로 들어갈 표현이어야 한다. 빈칸을 다시 문장으로 옮겨 적지 않는다.',
           ]
         : []),
       '- 객관식은 choices를 제공하고 isCorrect:true가 1개 이상(단일정답이면 정확히 1개).',
@@ -626,6 +754,100 @@ export class GeminiLlmService {
     return { choices };
   }
 
+  // --- 자기검증 프롬프트·파서 (#34 후속) --------------------------------
+
+  private buildReviewSystemPrompt(questionCount: number): string {
+    return [
+      '너는 한국 시험 출제 검수위원이다. 아래에 주어진 문항들이 "실제 시험에 낼 수 있는 수준"인지 판정한다.',
+      '아래 JSON 스키마를 "그대로" 따르는 JSON 하나만 출력한다. 서두/설명/코드펜스 금지.',
+      '',
+      '{ "verdicts": [ { "index": 0, "verdict": "PASS"|"REVISE", "axes": [축, ...], "issues": [string, ...] } ] }',
+      '',
+      '규칙:',
+      `- verdicts는 정확히 ${questionCount}개, index는 0부터 ${questionCount - 1}까지 각각 한 번씩.`,
+      `- axes에는 다음 값만 쓴다: ${REVIEW_AXES.join(', ')}.`,
+      '- PASS면 axes와 issues는 빈 배열. REVISE면 axes 1개 이상 + 그 근거를 issues에 한 줄씩.',
+      '- issues는 한국어로, 출제자가 바로 고칠 수 있게 구체적으로 쓴다("어색하다" 같은 총평 금지).',
+      '',
+      '판정 축(이 4가지만 본다):',
+      '- 발문형식: 실제 기출 발문 패턴인가. 부정발문이면 "않은/없는"이 발문에 드러나는가. 묻는 바가 하나로 확정되는가.',
+      '- 오답매력도: 오답이 그럴듯한 오해·실수에서 나오는가. 한눈에 버려지는 선지나 정답과 의미가 겹치는 선지가 없는가.',
+      '- 난이도일관성: 표기된 difficulty(1=개념 확인, 3=표준 적용, 5=다단계 추론)와 실제 요구 사고량이 맞는가.',
+      '- 지문문항정합: 지문이 있는 문항이 지문을 읽어야만 풀리는가. 지문에 근거가 없는 선지로 정오가 갈리지 않는가.',
+      '',
+      '선지 개수·출력 언어·정답 개수 같은 형식 규격은 이미 기계 검증을 통과했다 — 다시 지적하지 않는다.',
+      'JSON 외 문자는 절대 출력하지 않는다.',
+    ].join('\n');
+  }
+
+  /** 판정 대상 직렬화. 정답 표시를 포함해야 "오답 매력도"를 볼 수 있다. */
+  private buildReviewUserPrompt(ctx: LlmGenerationContext, result: LlmGenerationResult): string {
+    const lines = [
+      `시험: ${ctx.examType ?? '(미지정)'} / 대분류: ${ctx.examCategory ?? '(미지정)'} / 소분류: ${ctx.subjectName ?? '(미지정)'}`,
+      `요청 난이도: ${ctx.difficulty} (1 쉬움 ~ 5 어려움)`,
+      `출제 지시: ${ctx.prompt}`,
+    ];
+    const passages = result.passages ?? (result.passage ? [result.passage.bodyText] : []);
+    for (const [i, body] of passages.entries()) {
+      lines.push('', passages.length > 1 ? `[지문 ${i + 1}]` : '[지문]', body);
+    }
+    for (const [i, q] of result.questions.entries()) {
+      lines.push('', `[문항 ${i}] (index=${i}, difficulty=${q.difficulty}, ${q.questionType})`);
+      lines.push(`발문: ${q.stemText}`);
+      for (const [ci, c] of (q.choices ?? []).entries()) {
+        lines.push(`  ${ci + 1}) ${c.content}${c.isCorrect ? '  ← 정답' : ''}`);
+      }
+      if (q.answerText) lines.push(`정답(주관식): ${q.answerText}`);
+      if (q.explanationText) lines.push(`해설: ${q.explanationText}`);
+    }
+    return lines.join('\n');
+  }
+
+  private parseReviewResult(raw: string, questionCount: number): LlmReviewResult {
+    const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+    if (start === -1 || end === -1) {
+      throw new ServiceUnavailableException('자기검증 응답에서 JSON을 찾지 못했습니다.');
+    }
+
+    let parsed: LlmReviewResult;
+    try {
+      parsed = JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      throw new ServiceUnavailableException('자기검증 응답 JSON 파싱에 실패했습니다.');
+    }
+
+    const verdicts = parsed.verdicts;
+    if (!Array.isArray(verdicts) || verdicts.length !== questionCount) {
+      throw new ServiceUnavailableException(
+        `자기검증이 문항 ${questionCount}건을 판정하지 않았습니다(받은 값: ${Array.isArray(verdicts) ? verdicts.length : 0}건).`,
+      );
+    }
+    const seen = new Set<number>();
+    for (const v of verdicts) {
+      if (!Number.isInteger(v?.index) || v.index < 0 || v.index >= questionCount || seen.has(v.index)) {
+        throw new ServiceUnavailableException(
+          `자기검증 판정의 문항 index가 잘못되었습니다(받은 값: ${String(v?.index)}).`,
+        );
+      }
+      seen.add(v.index);
+      if (v.verdict !== 'PASS' && v.verdict !== 'REVISE') {
+        throw new ServiceUnavailableException(
+          `자기검증 판정값이 잘못되었습니다(받은 값: ${String(v.verdict)}).`,
+        );
+      }
+      // 모르는 축 이름은 통계를 오염시키므로 떨군다(판정 자체는 살린다 — 버리는 쪽이 더 나쁘다).
+      v.axes = Array.isArray(v.axes) ? v.axes.filter((a) => REVIEW_AXES.includes(a)) : [];
+      v.issues = Array.isArray(v.issues) ? v.issues.filter((s) => typeof s === 'string' && s.trim()) : [];
+      if (v.verdict === 'REVISE' && v.issues.length === 0) {
+        // 근거 없는 REVISE는 검수자에게 아무것도 주지 못한다 — 축이라도 남기게 한다.
+        v.issues = [`판정 근거가 제시되지 않았습니다(축: ${v.axes.join(', ') || '미지정'}).`];
+      }
+    }
+    return { verdicts };
+  }
+
   private buildChoicesSystemPrompt(choiceCount: number, language: OutputLanguage = 'ko'): string {
     return [
       '너는 한국 시험 문항 출제 전문가다. 주어진 발문에 대한 선지 집합을 새로 만든다.',
@@ -680,6 +902,12 @@ export class GeminiLlmService {
         // 시험별 관행(examFormatHints)에는 "지문 1개에 문항 여러 개" 같은 단일 지문 전제가
         // 섞여 있다 — 문자열 필터링은 취약하므로, 우선순위를 명시해 모순을 해소한다.
         '아래 형식 지시 중 "지문 1개" 전제의 관행과 어긋나는 부분은 이 다중지문 지시가 우선한다.',
+      );
+    }
+    // 지문 내장 빈칸(gap 9) — 빈칸 수 = 문항 수. 시스템 프롬프트의 마커 규약과 짝을 이룬다.
+    if (ctx.blanksInPassage && passageCount === 1) {
+      lines.push(
+        `지문 내장 빈칸: 지문 하나에 빈칸을 ${ctx.questionCount}개 두고(마커 [[1]]~[[${ctx.questionCount}]]), 문항 ${ctx.questionCount}개가 빈칸을 하나씩 맡는다.`,
       );
     }
     if (ctx.questionType) lines.push(`선호 유형: ${ctx.questionType}`);

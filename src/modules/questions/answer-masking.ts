@@ -18,6 +18,8 @@ export interface MaskableQuestion {
   explanation?: unknown;
   correctAnswerText?: string | null;
   hintContent?: string | null;
+  /** 서술형 채점기준표 — 모범답안을 항목별로 쪼갠 것이라 정답과 같은 등급으로 가린다. */
+  rubric?: unknown;
 }
 
 /** 선지에서 남겨도 되는 키. isCorrect와 선지별 해설은 정답을 그대로 드러낸다. */
@@ -25,7 +27,7 @@ const SAFE_CHOICE_KEYS = ['id', 'content'] as const;
 
 /**
  * 정답 관련 필드를 제거한 사본을 돌려준다(입력은 변형하지 않는다).
- * `maskSnapshot()`과 같은 기준으로 가린다: 선지 isCorrect·선지 해설·문항 해설·주관식 정답.
+ * `maskSnapshot()`과 같은 기준으로 가린다: 선지 isCorrect·선지 해설·문항 해설·주관식 정답·채점기준표.
  * 힌트는 응시 중에도 별도 게이팅(hint-quota)으로 소비되므로 여기서 함께 가린다.
  */
 export function maskQuestionAnswers<T extends MaskableQuestion>(question: T): T {
@@ -47,5 +49,6 @@ export function maskQuestionAnswers<T extends MaskableQuestion>(question: T): T 
     explanation: null,
     correctAnswerText: null,
     hintContent: null,
+    rubric: null,
   };
 }

@@ -14,6 +14,7 @@ describe('maskQuestionAnswers', () => {
     explanation: [{ type: 'paragraph' }],
     correctAnswerText: '42',
     hintContent: '힌트',
+    rubric: [{ id: 'c1', text: '핵심어 포함', points: 3 }],
   };
 
   it('선지에서 isCorrect와 선지별 해설을 제거한다', () => {
@@ -28,6 +29,10 @@ describe('maskQuestionAnswers', () => {
     expect(masked.explanation).toBeNull();
     expect(masked.correctAnswerText).toBeNull();
     expect(masked.hintContent).toBeNull();
+  });
+
+  it('채점기준표도 지운다 — 모범답안을 항목별로 쪼갠 것이라 사실상 정답이다', () => {
+    expect(maskQuestionAnswers(question).rubric).toBeNull();
   });
 
   it('입력 객체를 변형하지 않는다', () => {

@@ -165,6 +165,7 @@ export const GOLDEN_PROMPTS: Readonly<Record<string, string>> = {
   'ncs-module': '문서이해능력 — 업무 지시문을 정확히 파악하는 모듈형 문항',
   'ncs-psat-data': '부서별 예산 집행률 표를 해석하는 자료해석 문항',
   'toeic-part5': 'business correspondence grammar — verb tense and preposition',
+  'toeic-part6': 'a customer notice about extended store hours with in-text blanks',
   'toeic-part7-single': 'a company memo announcing an office relocation',
   'toeic-part7-double': 'a job posting paired with an applicant email',
   'toeic-part7-triple': 'a conference schedule, a registration email, and an invoice',

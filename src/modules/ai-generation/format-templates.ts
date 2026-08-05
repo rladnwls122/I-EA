@@ -59,6 +59,12 @@ export interface FormatTemplate {
     language?: OutputLanguage;
     /** 선호 문제 유형 기본값. 요청이 questionType을 명시하면 그쪽이 우선. */
     questionType?: QuestionKind;
+    /**
+     * 지문 내장 빈칸형(#43 gap 9 — 토익 Part 6). true면 지문 안에 번호 붙은 빈칸을 두고
+     * **문항 하나가 빈칸 하나**를 맡는다(빈칸 수 = 요청 문항 수).
+     * 지문이 전제이므로 includePassage=false로 해석되면 자동으로 꺼진다.
+     */
+    blanksInPassage?: boolean;
   };
   /** 프롬프트에 실리는 형식 지시 — examFormatHints보다 구체적(발문 패턴·소재·선지 관행). */
   promptHints: TemplateHint[];
@@ -191,7 +197,10 @@ const FORMAT_TEMPLATES: readonly FormatTemplate[] = [
         questionType: '주관식',
       },
       {
-        text: '서술형이므로 answerText는 쓰지 않는다 — 모범답안과 채점 포인트(꼭 들어가야 할 핵심어)를 explanationText에 서술한다.',
+        // 채점기준표(questions.rubric, #43 gap 8)는 아직 LLM 계약에 넣지 않는다 — 계약은 "평문만"이고,
+        // 배점이 실린 객체 배열은 모델이 흔들리는 순간 그대로 **점수 규칙**이 된다.
+        // 대신 평문 안에서 번호·배점 형태를 요구해, 출제자가 캔버스에서 기준 줄로 그대로 옮길 수 있게 한다.
+        text: '서술형이므로 answerText는 쓰지 않는다 — explanationText에 모범답안을 먼저 쓰고, 이어서 채점 포인트를 "채점기준 1) 꼭 들어가야 할 핵심어 (2점)"처럼 번호와 배점을 붙여 나열한다. 배점 합은 문항 배점과 맞춘다.',
         questionType: '주관식',
       },
       {
@@ -301,6 +310,42 @@ const FORMAT_TEMPLATES: readonly FormatTemplate[] = [
         questionType: '객관식',
       },
       { text: '문장 소재는 비즈니스 실무(사내 공지, 주문·배송, 회의·출장, 인사)로 한다.' },
+    ],
+  },
+  {
+    id: 'toeic-part6',
+    label: '토익 Part 6 지문 빈칸형',
+    examTypes: ['토익'],
+    description:
+      '실무 문서 1개 안에 번호 붙은 빈칸을 두고 문항 하나가 빈칸 하나를 맡는 형식. 4지선다, 전부 영어.',
+    structure: {
+      passageCount: 1,
+      // 실제 시험은 지문 1개당 빈칸 4개다. 빈칸 수는 요청 문항 수를 따르므로 여기선 관행만 알린다.
+      questionsPerPassage: [4, 4],
+      choiceCount: 4,
+      answerMode: 'single',
+      language: 'en',
+      questionType: '객관식',
+      blanksInPassage: true,
+    },
+    promptHints: [
+      {
+        text: '지문은 이메일·공지·안내문·기사 같은 실무 문서 한 편으로 쓰고, 빈칸이 없어도 문맥이 이어지는 완결된 글이어야 한다.',
+        requiresPassage: true,
+      },
+      {
+        text: '빈칸 유형을 섞는다: 어법(시제·태·품사), 어휘, 접속부사(However, Therefore 등), 그리고 문장 전체를 고르는 문장삽입 1개.',
+        requiresPassage: true,
+      },
+      {
+        text: '각 빈칸은 그 문장만 봐서는 답이 갈리지 않고 **앞뒤 문맥**을 읽어야 풀리게 만든다 — 그렇지 않으면 Part 5와 다를 게 없다.',
+        requiresPassage: true,
+      },
+      {
+        text: '선지는 같은 어근의 파생형이나 의미가 인접한 표현 4개로 구성한다(문장삽입 문항은 완결된 문장 4개).',
+        requiresPassage: true,
+        questionType: '객관식',
+      },
     ],
   },
   {
@@ -427,6 +472,11 @@ export interface ResolvedGenerationFormat {
   passageLabels: string[];
   questionType?: QuestionKind;
   answerMode: AnswerMode;
+  /**
+   * 지문 내장 빈칸형 여부(#43 gap 9). true면 LLM 계약이 "지문 안 `[[n]]` 마커 + 문항별 blankIndex"로
+   * 바뀌고 파서가 빈칸-문항 일대일 대응을 검증한다. 지문이 꺼지면 함께 꺼진다.
+   */
+  blanksInPassage: boolean;
   promptHints: string[];
 }
 
@@ -476,6 +526,10 @@ export function resolveTemplateFormat(
         : [],
     questionType,
     answerMode: s?.answerMode ?? 'single',
+    // 빈칸은 지문 안에 놓이므로 지문이 없으면 성립하지 않는다. 다중지문 세트에도 얹지 않는다 —
+    // "몇 번 지문의 몇 번 빈칸"까지 가면 마커 규약이 2차원이 되는데, 실제 시험(Part 6)이
+    // 단일 지문이라 지금 그 복잡도를 살 이유가 없다.
+    blanksInPassage: Boolean(s?.blanksInPassage) && passageCount === 1,
     promptHints,
   };
 }

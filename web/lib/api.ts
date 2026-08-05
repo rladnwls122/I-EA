@@ -23,12 +23,14 @@ import type {
   MeProfile,
   MyNotesResponse,
   ReviewSummaryResponse,
+  ReviewQueueResponse,
   MyExamSession,
   PaginatedResponse,
   SessionDetail,
   SubmitAnswerInput,
   SubmitAnswerResult,
   SubmitSessionResult,
+  SelfGradeInput,
   SelfGradeResult,
   QuestionReview,
   ReviewsResponse,
@@ -270,6 +272,26 @@ export function deleteQuestion(id: string) {
 export function publishQuestion(id: string) {
   return apiFetch<Question>(`/questions/${id}/publish`, {
     method: 'POST',
+  });
+}
+
+/**
+ * 선택지 재생성 (AI) — 동기 호출. 정답 1개를 포함한 선지 **전체 집합**을 새로 받는다.
+ *
+ * 저장하지 않는다(`persisted: false`) — 반환값은 후보고, 캔버스가 사용자에게 보여준 뒤
+ * 저장 시점에 함께 나간다. `:id`가 필요해 **이미 저장된 문항에서만** 부를 수 있다:
+ * 서버가 소유권과 과목·난이도를 그 행에서 읽기 때문이다.
+ */
+export function regenerateChoices(
+  id: string,
+  data: { stemText: string; choiceCount: number; difficulty?: number },
+) {
+  return apiFetch<{
+    choices: { content: string; isCorrect: boolean; explanation?: string }[];
+    persisted: boolean;
+  }>(`/questions/${id}/choices/regenerate`, {
+    method: 'POST',
+    body: JSON.stringify(data),
   });
 }
 
@@ -616,6 +638,30 @@ export function fetchMyNotes(params?: {
   );
 }
 
+/**
+ * 복습 큐 — 지금 풀어야 할 문항 id를 급한 순으로.
+ *
+ * 예전엔 화면이 `/me/notes` 전량을 받아 직접 조립했는데, 그 응답은 채점 이력 상한(500)에
+ * 잘려서 오래 푼 사용자일수록 복습 문항이 조용히 빠졌다. 서버가 복습 상태를 직접 읽는다.
+ */
+export function fetchReviewQueue(params?: {
+  examType?: string;
+  examCategory?: string;
+  subjectId?: string;
+  includeMastered?: boolean;
+  limit?: number;
+}) {
+  const query = new URLSearchParams();
+  if (params?.examType) query.set('examType', params.examType);
+  if (params?.examCategory) query.set('examCategory', params.examCategory);
+  if (params?.subjectId) query.set('subjectId', params.subjectId);
+  if (params?.includeMastered) query.set('includeMastered', 'true');
+  if (params?.limit) query.set('limit', String(params.limit));
+
+  const qs = query.toString();
+  return apiFetch<ReviewQueueResponse>(`/me/review-queue${qs ? `?${qs}` : ''}`);
+}
+
 /** 복습 요약 — due 배지용 경량 카운트 (전량 로드 없음) */
 export function fetchReviewSummary() {
   return apiFetch<ReviewSummaryResponse>('/me/review-summary');
@@ -672,16 +718,20 @@ export function submitSession(id: string) {
   });
 }
 
-/** 서술형 자기채점 확정(SUBMITTED 세션에서만 호출 가능) */
+/**
+ * 서술형 자기채점 확정(SUBMITTED 세션에서만 호출 가능).
+ * 채점기준표가 있는 문항은 `{ checkedCriterionIds }`로, 없으면 `{ isCorrect }`로 보낸다 —
+ * 서버가 둘을 함께 받으면 400이다(점수의 근거가 하나여야 한다).
+ */
 export function selfGradeSessionQuestion(
   sessionQuestionId: string,
-  isCorrect: boolean,
+  input: SelfGradeInput,
 ) {
   return apiFetch<SelfGradeResult>(
     `/exam-sessions/questions/${sessionQuestionId}/self-grade`,
     {
       method: 'PUT',
-      body: JSON.stringify({ isCorrect }),
+      body: JSON.stringify(input),
     },
   );
 }

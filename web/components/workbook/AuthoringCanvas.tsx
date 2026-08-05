@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { KEYWORD_TAG_CATEGORY } from "@/lib/tag-categories";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Loader2, PencilLine, Plus, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, Loader2, PencilLine, Plus, X } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { extractPlainText, blocksToDoc } from "@/lib/prosemirror";
 import { buildRichDoc } from "@/lib/prosemirror-assemble";
@@ -23,15 +24,18 @@ import {
   fetchSubjects,
   fetchTags,
   createTag,
+  regenerateChoices,
 } from "@/lib/api";
-import { useWorkbook } from "@/lib/hooks";
-import type { Question } from "@/lib/types";
+import { useWorkbook, useStartWorkbook } from "@/lib/hooks";
+import type { Question, RubricCriterion } from "@/lib/types";
+import { readRubricCriteria } from "@/lib/rubric";
 import { questionRejectReason, type ParsedQuestion } from "@/lib/authoring-chat";
 import { AuthoringChatPanel } from "./AuthoringChatPanel";
 import { AuthoringCanvasCard } from "./AuthoringCanvasCard";
 import {
   cardImageSrcs,
   collectImageSrcs,
+  isPersistedCard,
   passageFingerprint,
   questionFingerprint,
   uniquePassages,
@@ -48,22 +52,22 @@ import {
   sharedWith as sharedWithIn,
 } from "./authoring-canvas.reducer";
 
-/** 선지 하나 — 본문 + 선지별 해설(공개 여부 토글 가능). */
+/**
+ * 선지 하나 — 본문 + 선지별 해설(공개 여부 토글 가능). 둘 다 ProseMirror doc이다.
+ *
+ * 예전엔 평문 문자열이었고, 저장할 때 `buildRichDoc(평문)`으로 다시 지었다. 그래서 서식이
+ * 실린 선지를 캔버스에서 한 번 열었다 저장하는 것만으로 서식이 뭉개졌고, 불러온 원본을
+ * 들고 있다가 "텍스트를 안 고쳤으면 되돌려주는"(`keepIfUnchanged`) 방어로 막고 있었다.
+ *
+ * 수식(#35)이 들어오면서 그 방어로는 부족해졌다 — 생성이 선지에 `$x^2$`를 실어 보내는데,
+ * 평문 칸에서 그 선지를 **한 글자라도 고치면** 수식이 통째로 평문으로 주저앉는다.
+ * 방어를 키우는 대신 원인을 없앤다: 선지도 발문·해설과 같은 rich 편집기로 다룬다.
+ */
 export interface CanvasChoice {
-  text: string;
-  explanation: string;
+  content: any;
+  explanation: any;
   /** 선지별 해설 공개 여부 — 저장 시 choices Json에 함께 실린다. */
   showExplanation: boolean;
-  /**
-   * 불러온 선지의 원본 노드(rich). 카드 UI는 선지를 아직 평문 `<input>`으로 편집하므로,
-   * 서식이 실린 선지를 열었다가 저장하면 `buildRichDoc(평문)`으로 덮여 서식이 사라진다.
-   * 편집기가 캔버스로 일원화된 뒤에도(#41 Phase 3) 서식 유입 경로는 남는다 — AI 생성분,
-   * 그리고 이전 편집기 시절에 저장된 문항이 그렇다. 사용자가 그 선지의 텍스트를 실제로
-   * 고치지 않았다면 원본을 그대로 돌려보내 파괴를 막는다.
-   * 선지 자체를 rich 편집으로 바꾸면 이 방어는 필요 없어진다.
-   */
-  sourceContent?: any;
-  sourceExplanation?: any;
 }
 
 /** 좌측 캔버스 카드 — 편집에 쓰는 필드만 담은 경량 문항 모델. */
@@ -86,6 +90,14 @@ export interface CanvasCard {
   explanation: any;
   /** 배점 — 생성 단계부터 지정 가능. */
   points: number;
+  /**
+   * 서술형 채점기준표(#43 gap 8) — 주관식 전용. 응시자가 결과 화면에서 기준별로 체크하면
+   * 배점 합이 그 문항의 점수가 된다. 객관식은 자동채점이라 쓰지 않는다.
+   *
+   * 선택 필드로 둔 이유: 채점기준표 이전에 만들어진 카드가 그대로 흘러다니고, 없음(undefined)과
+   * 비움([])을 구분할 필요가 없다 — 저장 페이로드가 어느 쪽이든 `[]`로 정규화한다.
+   */
+  rubric?: RubricCriterion[];
   /** #키워드 — 자유 태깅. 저장 시 태그로 find-or-create 후 tagIds로 연결. */
   keywords: string[];
 }
@@ -115,7 +127,12 @@ type CardContent = Omit<CanvasCard, "id" | "passageGroupId">;
 function toCard(q: ParsedQuestion): CardContent | null {
   const isObjective = q.questionType === "객관식";
   const toChoices = (list: string[]): CanvasChoice[] =>
-    list.map((text) => ({ text, explanation: "", showExplanation: false }));
+    // 평문에 실린 수식 델리미터도 여기서 노드로 승격된다(buildRichDoc).
+    list.map((text) => ({
+      content: buildRichDoc(text),
+      explanation: buildRichDoc(""),
+      showExplanation: false,
+    }));
   if (isObjective) {
     if (questionRejectReason(q) !== null) return null;
     const choices = q.choices ?? [];
@@ -148,17 +165,6 @@ function toCard(q: ParsedQuestion): CardContent | null {
 }
 
 /**
- * 저장된 rich 값(doc 노드 또는 블록 노드 배열) → 평문.
- * choices[].content/stem은 doc, explanation은 buildRichBlocks가 만든 블록 배열이라
- * 배열이면 doc으로 감싸 extractPlainText가 순회할 수 있게 한다.
- */
-function richToText(v: any): string {
-  if (!v) return "";
-  const doc = Array.isArray(v) ? { type: "doc", content: v } : v;
-  return extractPlainText(doc);
-}
-
-/**
  * 저장된 Question(GET /questions/:id 상세) → CanvasCard 역매핑.
  * 기존 문제집을 "수정"으로 열 때 원래 문항을 캔버스에 그대로 복원한다.
  * id는 실제 question id를 유지해 저장 시 새로 만들지 않고 그 문항을 갱신하도록 한다.
@@ -167,13 +173,11 @@ function questionToCard(q: Question): CanvasCard {
   const isObjective = q.questionType === "객관식";
   const rawChoices: any[] = Array.isArray(q.choices) ? q.choices : [];
   const choices: CanvasChoice[] = rawChoices.map((c) => ({
-    text: extractPlainText(c?.content),
-    explanation: richToText(c?.explanation),
+    // 노드를 그대로 싣는다 — 평문을 거치면 열 때마다 서식·수식이 사라진다.
+    content: c?.content ? blocksToDoc(c.content) : buildRichDoc(""),
+    explanation: blocksToDoc(c?.explanation),
     // 저장 때 실린 선지별 해설 공개 여부를 그대로 복원.
     showExplanation: !!c?.explanationVisible,
-    // 원본 노드 보존 — 편집하지 않은 선지는 저장 시 이걸 그대로 돌려보낸다.
-    sourceContent: c?.content,
-    sourceExplanation: c?.explanation,
   }));
   const correct = rawChoices.findIndex((c) => c?.isCorrect === true);
   const keywords = (q.tags ?? [])
@@ -194,6 +198,8 @@ function questionToCard(q: Question): CanvasCard {
     // 감싸기만 한다 — 평문을 거치면 저장돼 있던 서식이 열 때마다 사라진다.
     explanation: blocksToDoc(q.explanation),
     points: Number(q.points) || 1,
+    // 채점기준표는 주관식만 갖는다. 형태가 어긋난 값은 null이 되고, 그 경우 기준 없음으로 연다.
+    rubric: isObjective ? [] : (readRubricCriteria(q.rubric) ?? []),
     keywords,
   };
 }
@@ -233,6 +239,8 @@ export function AuthoringCanvas({
   const [doc, dispatch] = useReducer(canvasReducer, initialSubjectId, initialCanvasState);
   const { cards, subjectId, isPublic, workbookKeywords, editingId } = doc;
   const [saving, setSaving] = useState(false);
+  const router = useRouter();
+  const startWorkbook = useStartWorkbook();
 
   /* ── AI 생성 설정 — 채팅창 밖 독립 패널(우측 상단)이 조작 ── */
   const [aiSettings, setAiSettings] = useState<AiSettings>({
@@ -402,6 +410,45 @@ export function AuthoringCanvas({
     setMobileTab("chat");
   }, []);
 
+  /**
+   * AI 선지 재생성 — 정답 포함 전체를 새로 받는다. 저장하지 않는다(후보일 뿐).
+   *
+   * 저장된 문항에서만 부를 수 있다: 서버가 소유권·과목·난이도를 그 행에서 읽는다.
+   * 이 제약은 캔버스가 만든 게 아니라 엔드포인트의 계약이라, 버튼을 감추는 대신
+   * 비활성으로 두고 이유를 title에 적는다(사라진 기능처럼 보이지 않게).
+   */
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const handleRegenerateChoices = useCallback(
+    async (card: CanvasCard) => {
+      const stemText = extractPlainText(card.stem).trim();
+      if (!stemText) {
+        toast.error("발문을 먼저 채워주세요 — AI가 무엇에 대한 선지인지 알 수 없어요.");
+        return;
+      }
+      setRegeneratingId(card.id);
+      try {
+        const res = await regenerateChoices(card.id, {
+          stemText,
+          choiceCount: Math.max(2, card.choices.length),
+        });
+        // 응답은 평문이다. 조립을 거치면서 `$...$` 수식도 노드로 승격된다.
+        const choices: CanvasChoice[] = res.choices.map((c) => ({
+          content: buildRichDoc(c.content),
+          explanation: buildRichDoc(c.explanation ?? ""),
+          showExplanation: false,
+        }));
+        const correct = res.choices.findIndex((c) => c.isCorrect);
+        updateCard(card.id, { choices, correct: correct >= 0 ? correct : 0 });
+        toast.success("선지를 새로 만들었어요. 저장 전까지 되돌릴 수 있어요.");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "선지 재생성에 실패했어요.");
+      } finally {
+        setRegeneratingId(null);
+      }
+    },
+    [updateCard],
+  );
+
   const addManualCard = useCallback(() => {
     dispatch({
       type: "addManualCard",
@@ -411,8 +458,8 @@ export function AuthoringCanvas({
         stem: buildRichDoc(""),
         passage: null,
         choices: Array.from({ length: 4 }, () => ({
-          text: "",
-          explanation: "",
+          content: buildRichDoc(""),
+          explanation: buildRichDoc(""),
           showExplanation: false,
         })),
         correct: 0,
@@ -448,7 +495,8 @@ export function AuthoringCanvas({
     [workbookId],
   );
 
-  const handleSave = async () => {
+  /** 저장. 전부 성공했으면 true — "저장하고 풀기"가 응시로 넘어갈지 판단하는 근거다. */
+  const handleSave = async (): Promise<boolean> => {
     // 사전검증은 순수 규칙이라 authoring-save로 뺐다(테스트 대상).
     const blocked = validateSave({
       cardCount: cards.length,
@@ -457,7 +505,7 @@ export function AuthoringCanvas({
     });
     if (blocked) {
       toast.error(blocked);
-      return;
+      return false;
     }
     setSaving(true);
     try {
@@ -480,8 +528,28 @@ export function AuthoringCanvas({
         if (n.level === "error") toast.error(n.message);
         else toast.success(n.message);
       }
+      return outcome.failedCount === 0;
     } finally {
       setSaving(false);
+    }
+  };
+
+  /**
+   * 저장하고 바로 풀기 — 편집기 일원화(#41 Phase 3) 전 `/studio/editor`가 갖고 있던
+   * 단축 경로다. 캔버스만 남기면서 "저장 → 문제집 목록 → 미리보기 → 응시"로 늘어났는데,
+   * 방금 만든 문제를 즉시 풀어 보는 건 출제 루프의 마지막 단계라 클릭으로 밀어낼 자리가 아니다.
+   *
+   * 실패한 문항이 있으면 응시로 넘어가지 않는다 — 반쪽만 담긴 문제집을 푸는 건
+   * 저장이 실패했다는 사실을 더 늦게 알게 만들 뿐이다.
+   */
+  const handleSaveAndSolve = async () => {
+    const clean = await handleSave();
+    if (!clean) return;
+    try {
+      const session = await startWorkbook.mutateAsync(workbookId);
+      router.push(`/exam-sessions/${session.id}`);
+    } catch {
+      toast.error("응시 세션을 시작하지 못했어요. 문제집에서 다시 시도해주세요.");
     }
   };
 
@@ -591,9 +659,26 @@ export function AuthoringCanvas({
                 />
               </span>
             </button>
-            <Button onClick={handleSave} disabled={saving} className="flex-none">
+            <Button
+              variant="outline"
+              onClick={handleSave}
+              disabled={saving || startWorkbook.isPending}
+              className="flex-none"
+            >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={2.5} />}
               문제집 저장
+            </Button>
+            <Button
+              onClick={handleSaveAndSolve}
+              disabled={saving || startWorkbook.isPending}
+              className="flex-none"
+            >
+              {startWorkbook.isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <ArrowUpRight size={14} strokeWidth={2.5} />
+              )}
+              저장하고 풀기
             </Button>
           </div>
         </header>
@@ -661,6 +746,9 @@ export function AuthoringCanvas({
                 onChange={(patch) => updateCard(c.id, patch)}
                 onRemove={() => removeCard(c.id)}
                 onAskAi={() => askAi(i)}
+                onRegenerateChoices={() => void handleRegenerateChoices(c)}
+                canRegenerate={isPersistedCard(c.id)}
+                regenerating={regeneratingId === c.id}
               />
             </div>
           ))}

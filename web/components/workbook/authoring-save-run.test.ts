@@ -10,8 +10,8 @@ const card = (over: Partial<CanvasCard> = {}): CanvasCard => ({
   passage: null,
   passageGroupId: null,
   choices: [
-    { text: '선지1', explanation: '', showExplanation: false },
-    { text: '선지2', explanation: '', showExplanation: false },
+    { content: buildRichDoc('선지1'), explanation: buildRichDoc(''), showExplanation: false },
+    { content: buildRichDoc('선지2'), explanation: buildRichDoc(''), showExplanation: false },
   ],
   correct: 1,
   answerText: '',

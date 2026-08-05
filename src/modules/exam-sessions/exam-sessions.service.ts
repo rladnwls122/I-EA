@@ -23,8 +23,10 @@ import {
   XpReason,
   satisfiedMilestoneKeys,
 } from '@/common/constants/xp';
+import { RubricCriterion } from '@/common/constants/rubric';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { SubmitAnswerDto } from './dto/submit-answer.dto';
+import { SelfGradeDto } from './dto/self-grade.dto';
 import {
   grade,
   isSelfGradable,
@@ -32,6 +34,7 @@ import {
   QuestionSnapshot,
   SnapshotPassage,
 } from './grading.util';
+import { gradeByRubric, readRubric, RubricGrading } from './rubric-grading.util';
 import { PMNode } from '@/common/prosemirror/prosemirror.util';
 import { transitionReviewState } from './review-state.util';
 
@@ -119,6 +122,8 @@ export class ExamSessionsService {
         choices: true,
         explanation: true,
         correctAnswerText: true,
+        // 서술형 채점기준표 — 자기채점이 기준별 부분점수를 내려면 스냅샷에 있어야 한다.
+        rubric: true,
         points: true,
         difficulty: true,
         // 결과 화면 정답률 배지용 — 조립 시점 값을 스냅샷에 고정한다.
@@ -178,6 +183,9 @@ export class ExamSessionsService {
               choices: (q.choices ?? undefined) as JsonWritable,
               explanation: (q.explanation ?? undefined) as JsonWritable,
               correctAnswerText: q.correctAnswerText,
+              // 서술형 채점기준표. 세션 시작 뒤 출제자가 기준을 고쳐도 이미 응시한 사람의
+              // 채점 근거는 그대로여야 하므로 다른 필드와 같이 통째로 복사해 둔다.
+              rubric: (q.rubric ?? undefined) as JsonWritable,
               points: Number(q.points),
               difficulty: q.difficulty,
               totalSolvedCount: q.totalSolvedCount,
@@ -487,15 +495,19 @@ export class ExamSessionsService {
   /**
    * 서술형(자기채점 대상) 문항의 정오를 응시자가 직접 확정한다.
    * 세션 제출(SUBMITTED) 이후 결과 화면에서 호출. 최초 확정 시 문항 정답률 캐시도 갱신한다.
+   *
+   * 스냅샷에 채점기준표가 있으면 정오를 직접 받지 않고 **충족한 기준의 배점 합**으로 계산한다
+   * (#43 gap 8). 부분점수 자체는 답안에 남기고, 기존 파이프라인(정답률 캐시·복습 전이·XP)이
+   * 요구하는 `isCorrect` 불리언은 rubric-grading.util의 기준선으로 접어서 넘긴다.
    */
-  async selfGrade(sessionQuestionId: string, userId: string, isCorrect: boolean) {
+  async selfGrade(sessionQuestionId: string, userId: string, dto: SelfGradeDto) {
     const sq = await this.prisma.examSessionQuestion.findUnique({
       where: { id: sessionQuestionId },
       select: {
         id: true,
         questionId: true,
         snapshot: true,
-        answer: { select: { id: true, isCorrect: true } },
+        answer: { select: { id: true, isCorrect: true, annotations: true } },
         examSession: { select: { id: true, userId: true, status: true, isReview: true } },
       },
     });
@@ -511,6 +523,10 @@ export class ExamSessionsService {
       throw new BadRequestException('자기채점 대상(서술형) 문항이 아닙니다.');
     }
 
+    // 형태가 깨진 rubric은 통째로 null이 되어 기존 정오 2지선다 경로로 되돌아간다(readRubric).
+    const rubric = readRubric(snapshot.rubric);
+    const { isCorrect, rubricGrading } = this.resolveSelfGrade(rubric, dto);
+
     const answerId = sq.answer.id;
     const prev = sq.answer.isCorrect; // null(미채점) | boolean(재채점)
 
@@ -524,7 +540,19 @@ export class ExamSessionsService {
       (isCorrect ? perCorrectXp : 0) - (prev === true ? perCorrectXp : 0);
 
     const reward = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      await tx.examSessionAnswer.update({ where: { id: answerId }, data: { isCorrect } });
+      await tx.examSessionAnswer.update({
+        where: { id: answerId },
+        data: {
+          isCorrect,
+          // 부분점수는 새 컬럼 없이 annotations(답안 부가기록 Json)의 예약 키에 담는다.
+          // 여기에 둬도 안전한 이유: annotations를 쓰는 다른 경로는 submitAnswer뿐이고
+          // 그건 IN_PROGRESS에서만 열린다 — 자기채점(SUBMITTED)과 시점이 겹치지 않는다.
+          // 그래도 통째로 덮지 않고 병합한다(필기 스트로크를 지우지 않으려고).
+          ...(rubricGrading
+            ? { annotations: this.mergeRubricGrading(sq.answer?.annotations, rubricGrading) }
+            : {}),
+        },
+      });
 
       // 정답률 캐시 델타: 최초 확정이면 total+1(+정답 시 correct+1), 재채점이면 correct만 보정.
       // 최초 확정(=totalSolvedCount 증가) 시에만 증가 후 값으로 누적 10솔브 저자 보너스를 판정한다.
@@ -564,13 +592,78 @@ export class ExamSessionsService {
         : null;
     });
 
-    return { sessionQuestionId, isCorrect, reward };
+    return { sessionQuestionId, isCorrect, rubricGrading, reward };
+  }
+
+  /**
+   * 자기채점 요청을 (정오, 부분점수)로 푼다 — 채점기준표 유무가 요청 형태를 결정한다.
+   *
+   * 두 입력을 함께 받지 않는 이유: 기준 체크와 사용자가 누른 정오가 어긋날 수 있고, 그러면
+   * 답안에 남는 점수와 통계에 반영되는 정오가 서로 다른 근거를 갖게 된다. 근거는 하나여야 한다.
+   */
+  private resolveSelfGrade(
+    rubric: RubricCriterion[] | null,
+    dto: SelfGradeDto,
+  ): { isCorrect: boolean; rubricGrading: RubricGrading | null } {
+    if (!rubric) {
+      if (dto.checkedCriterionIds !== undefined) {
+        throw new BadRequestException('이 문항에는 채점기준표가 없습니다 — isCorrect로 채점하세요.');
+      }
+      if (typeof dto.isCorrect !== 'boolean') {
+        throw new BadRequestException('isCorrect가 필요합니다.');
+      }
+      return { isCorrect: dto.isCorrect, rubricGrading: null };
+    }
+
+    if (dto.isCorrect !== undefined) {
+      throw new BadRequestException(
+        '채점기준표가 있는 문항은 checkedCriterionIds로만 채점합니다(정오는 배점 합으로 결정됩니다).',
+      );
+    }
+    if (!Array.isArray(dto.checkedCriterionIds)) {
+      throw new BadRequestException('checkedCriterionIds가 필요합니다(빈 배열이면 0점).');
+    }
+
+    const result = gradeByRubric(rubric, dto.checkedCriterionIds);
+    // 이 문항에 없는 기준 id는 조용히 버리지 않는다 — 클라이언트 버그이거나 조작이고,
+    // 무시하면 응시자가 체크한 것과 저장된 점수가 다른 채로 확정된다.
+    if (result.unknownIds.length) {
+      throw new BadRequestException(
+        `이 문항의 채점기준에 없는 id입니다: ${result.unknownIds.join(', ')}`,
+      );
+    }
+    // unknownIds는 위에서 이미 걸렀으므로 답안에 남길 이유가 없다 — 저장 형태에서 뺀다.
+    const grading: RubricGrading = {
+      checkedIds: result.checkedIds,
+      earnedPoints: result.earnedPoints,
+      totalPoints: result.totalPoints,
+      isCorrect: result.isCorrect,
+    };
+    return { isCorrect: grading.isCorrect, rubricGrading: grading };
+  }
+
+  /**
+   * 부분점수 결과를 기존 annotations Json에 병합한다(예약 키 `rubricGrading`).
+   * 기존 값이 평범한 객체가 아니면(배열·스칼라 등 손상 데이터) 병합할 자리가 없으므로
+   * 새 객체로 시작한다 — 채점 결과를 못 남기는 것보다 낫다.
+   */
+  private mergeRubricGrading(existing: unknown, grading: RubricGrading): JsonWritable {
+    const base =
+      existing && typeof existing === 'object' && !Array.isArray(existing)
+        ? (existing as Record<string, unknown>)
+        : {};
+    return { ...base, rubricGrading: grading } as JsonWritable;
   }
 
   /**
    * 오답 복습 상태(user_question_review_states) 전이를 채점 트랜잭션 안에서 일괄 반영한다.
    * 기존 상태를 한 번의 findMany로 배치 조회한 뒤(N+1 금지) transitionReviewState(순수 함수)를
    * 적용해 유저×문항당 1행을 upsert한다. 세션 제출·자기채점 양쪽에서 호출된다.
+   *
+   * 같은 트랜잭션에서 전이 이력(user_question_review_transitions)에도 1행씩 남긴다(#37).
+   * 상태 테이블은 **현재 값만** 들고 있어 "복습에서 또 틀렸다"(X→X)를 셀 수 없다 —
+   * 지금 X인 문항이 처음 틀린 건지 세 번째 틀린 건지 구분되지 않기 때문이다.
+   * 이력은 상태 갱신과 원자적으로 커밋돼야 한다(따로 쓰면 둘이 어긋난 원장이 남는다).
    */
   private async applyReviewTransitions(
     tx: Prisma.TransactionClient,
@@ -586,9 +679,22 @@ export class ExamSessionsService {
     });
     const prevByQuestion = new Map(prevRows.map((r) => [r.questionId, r]));
 
+    // 이력은 문항마다 왕복하지 않고 모아서 createMany 한 번으로 쓴다(배치 조회와 같은 이유).
+    const transitions: {
+      userId: string;
+      questionId: string;
+      fromStatus: string | null;
+      toStatus: string;
+      correct: boolean;
+      occurredAt: Date;
+    }[] = [];
+
     for (const g of graded) {
       const prev = prevByQuestion.get(g.id) ?? null;
       const next = transitionReviewState(prev, g.correct, now);
+      // 실제로 커밋된 전이의 from/to를 적는다. 경합 복구 경로에서는 재조회한 값으로 덮인다.
+      let fromStatus: string | null = prev?.status ?? null;
+      let toStatus: string = next.status;
       try {
         await tx.userQuestionReviewState.upsert({
           where: { userId_questionId: { userId, questionId: g.id } },
@@ -605,15 +711,30 @@ export class ExamSessionsService {
             where: { userId_questionId: { userId, questionId: g.id } },
             select: { status: true, consecutiveCorrect: true },
           });
+          const retried = transitionReviewState(cur ?? null, g.correct, now);
           await tx.userQuestionReviewState.update({
             where: { userId_questionId: { userId, questionId: g.id } },
-            data: transitionReviewState(cur ?? null, g.correct, now),
+            data: retried,
           });
+          // 경합 상대가 이미 상태를 바꿔 놓았으므로 처음 계산한 from/to는 사실이 아니다.
+          // 원장에는 실제로 일어난 전이(재조회 상태 → 재전이 결과)를 적어야 X→X 집계가 맞는다.
+          fromStatus = cur?.status ?? null;
+          toStatus = retried.status;
         } else {
           throw e;
         }
       }
+      transitions.push({
+        userId,
+        questionId: g.id,
+        fromStatus,
+        toStatus,
+        correct: g.correct,
+        occurredAt: now,
+      });
     }
+
+    await tx.userQuestionReviewTransition.createMany({ data: transitions });
   }
 
   /**

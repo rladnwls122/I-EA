@@ -2,6 +2,7 @@
 import { useState } from "react";
 import {
   Check,
+  Loader2,
   ChevronDown,
   ChevronUp,
   Eye,
@@ -18,11 +19,20 @@ import { TiptapEditor } from "@/components/editor/TiptapEditor";
 import { isRichEmpty } from "@/lib/prosemirror";
 import { buildRichDoc } from "@/lib/prosemirror-assemble";
 import { RichContent } from "@/components/editor/RichContent";
+import { formatPoints } from "@/lib/rubric";
+import type { RubricCriterion } from "@/lib/types";
 import type { CanvasCard, CanvasChoice } from "./AuthoringCanvas";
 
 /** 유형 전환 시 선지/정답 필드를 유실 없이 맞춰주는 기본값. */
 const DEFAULT_CHOICES = (): CanvasChoice[] =>
-  Array.from({ length: 4 }, () => ({ text: "", explanation: "", showExplanation: false }));
+  Array.from({ length: 4 }, () => ({
+    content: buildRichDoc(""),
+    explanation: buildRichDoc(""),
+    showExplanation: false,
+  }));
+
+/** 채점기준 개수 상한 — 서버 RUBRIC_MAX_CRITERIA와 같은 값이어야 한다(넘으면 저장이 400). */
+const MAX_RUBRIC_CRITERIA = 12;
 
 /**
  * 캔버스 문항 카드 — 읽기/편집 두 모드.
@@ -39,6 +49,9 @@ export function AuthoringCanvasCard({
   onChange,
   onRemove,
   onAskAi,
+  onRegenerateChoices,
+  canRegenerate = false,
+  regenerating = false,
 }: {
   card: CanvasCard;
   index: number;
@@ -50,6 +63,10 @@ export function AuthoringCanvasCard({
   onChange: (patch: Partial<CanvasCard>) => void;
   onRemove: () => void;
   onAskAi: () => void;
+  /** AI 선지 재생성. 저장된 문항에서만 호출 가능하다(canRegenerate로 게이팅). */
+  onRegenerateChoices?: () => void;
+  canRegenerate?: boolean;
+  regenerating?: boolean;
 }) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [keywordInput, setKeywordInput] = useState("");
@@ -67,6 +84,19 @@ export function AuthoringCanvasCard({
   };
   const removeKeyword = (name: string) =>
     onChange({ keywords: card.keywords.filter((k) => k !== name) });
+
+  /* ── 서술형 채점기준표 ──
+     id는 여기서 만들지 않는다 — 저장 페이로드가 순서대로 `c1`..로 다시 매긴다(선지와 같다).
+     편집 중에는 배열 인덱스로만 다루므로 중간 삭제·재배열이 id를 흔들지 않는다. */
+  const rubric = card.rubric ?? [];
+  const rubricTotal = rubric.reduce((sum, c) => sum + (c.points || 0), 0);
+
+  const addCriterion = () =>
+    onChange({ rubric: [...rubric, { id: "", text: "", points: 1 }] });
+  const updateCriterion = (index: number, patch: Partial<RubricCriterion>) =>
+    onChange({ rubric: rubric.map((c, i) => (i === index ? { ...c, ...patch } : c)) });
+  const removeCriterion = (index: number) =>
+    onChange({ rubric: rubric.filter((_, i) => i !== index) });
 
   // 텍스트 유무가 아니라 내용 유무로 본다 — 이미지만 있는 해설(Phase 2)도 "있음"이다.
   const hasExplanation = !isRichEmpty(card.explanation);
@@ -158,15 +188,15 @@ export function AuthoringCanvasCard({
               >
                 <div className="flex items-start gap-2">
                   <span className="font-mono text-xs leading-5">{j + 1}.</span>
-                  <span>{ch.text}</span>
+                  <RichContent value={ch.content} />
                   {j === card.correct && (
                     <Check size={14} strokeWidth={2.5} className="ml-auto mt-0.5 flex-none text-primary" />
                   )}
                 </div>
-                {ch.explanation.trim() && ch.showExplanation && (
-                  <p className="mt-1 pl-6 text-xs leading-relaxed text-muted-foreground">
-                    {ch.explanation}
-                  </p>
+                {!isRichEmpty(ch.explanation) && ch.showExplanation && (
+                  <div className="mt-1 pl-6 text-xs leading-relaxed text-muted-foreground">
+                    <RichContent value={ch.explanation} />
+                  </div>
                 )}
               </li>
             ))}
@@ -191,6 +221,25 @@ export function AuthoringCanvasCard({
                     <span className="font-medium text-foreground/70">정답: </span>
                     {card.answerText.trim() || "서술형 (자기채점)"}
                   </p>
+                )}
+                {/* 채점기준표가 있으면 배점과 함께 — 응시자가 결과 화면에서 볼 체크리스트 그대로. */}
+                {rubric.length > 0 && (
+                  <div>
+                    <span className="font-medium text-foreground/70">
+                      채점기준 (합계 {formatPoints(rubricTotal)}점):
+                    </span>
+                    <ul className="mt-1 space-y-0.5">
+                      {rubric.map((c, j) => (
+                        <li key={j} className="flex items-start gap-2">
+                          <span className="font-mono">{j + 1}.</span>
+                          <span className="flex-1">{c.text}</span>
+                          <span className="flex-none font-mono tabular-nums">
+                            {formatPoints(c.points)}점
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
                 {hasExplanation && <RichContent value={card.explanation} className="leading-relaxed" />}
               </div>
@@ -329,9 +378,32 @@ export function AuthoringCanvasCard({
       {/* 객관식: 선지 편집 */}
       {card.type === "객관식" && (
         <div className="mb-4">
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            선지 <span className="font-normal">(번호를 눌러 정답 지정)</span>
-          </label>
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <label className="block text-xs font-medium text-muted-foreground">
+              선지 <span className="font-normal">(번호를 눌러 정답 지정)</span>
+            </label>
+            {/* AI 선지 재생성 — 편집기 일원화(#41 Phase 3)로 사라졌던 원클릭.
+                서버가 소유권·과목·난이도를 문항 행에서 읽으므로 **저장된 문항에서만** 부를 수 있다.
+                (옛 편집기의 같은 버튼은 임시 id로 호출해 실제로는 동작하지 않는 죽은 코드였다.) */}
+            <button
+              type="button"
+              onClick={onRegenerateChoices}
+              disabled={!canRegenerate || regenerating}
+              title={
+                canRegenerate
+                  ? "정답 포함 선지 전체를 AI로 다시 만듭니다 (저장 전까지 되돌릴 수 있어요)"
+                  : "먼저 문제집을 저장하면 쓸 수 있어요"
+              }
+              className="flex flex-none items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-purple/10 hover:text-purple disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+            >
+              {regenerating ? (
+                <Loader2 size={11} className="animate-spin" />
+              ) : (
+                <Sparkles size={11} strokeWidth={2} />
+              )}
+              선지 재생성
+            </button>
+          </div>
           <div className="space-y-2.5">
             {card.choices.map((choice, j) => (
               <div key={j} className="space-y-1">
@@ -349,16 +421,21 @@ export function AuthoringCanvasCard({
                   >
                     {j + 1}
                   </button>
-                  <input
-                    value={choice.text}
-                    onChange={(e) => {
-                      const next = [...card.choices];
-                      next[j] = { ...next[j], text: e.target.value };
-                      onChange({ choices: next });
-                    }}
-                    placeholder={`선지 ${j + 1}`}
-                    className="h-9 flex-1 rounded-lg border border-input bg-transparent px-3 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  />
+                  {/* 선지도 rich다(#41). 수식이 실린 선지를 평문 칸에서 고치면 통째로
+                      주저앉기 때문 — 표·이미지는 선지에 과해서 버튼을 띄우지 않는다. */}
+                  <div className="min-w-0 flex-1">
+                    <TiptapEditor
+                      value={choice.content}
+                      onChange={(json) => {
+                        const next = [...card.choices];
+                        next[j] = { ...next[j], content: json };
+                        onChange({ choices: next });
+                      }}
+                      placeholder={`선지 ${j + 1}`}
+                      minHeight="36px"
+                      allowMath
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -377,16 +454,19 @@ export function AuthoringCanvasCard({
                 </div>
                 {/* 선지별 해설 + 공개/비공개 토글 */}
                 <div className="flex items-center gap-2 pl-11">
-                  <input
-                    value={choice.explanation}
-                    onChange={(e) => {
-                      const next = [...card.choices];
-                      next[j] = { ...next[j], explanation: e.target.value };
-                      onChange({ choices: next });
-                    }}
-                    placeholder="이 선지의 해설 (선택)"
-                    className="h-7 flex-1 rounded-md border border-border bg-transparent px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-ring"
-                  />
+                  <div className="min-w-0 flex-1">
+                    <TiptapEditor
+                      value={choice.explanation}
+                      onChange={(json) => {
+                        const next = [...card.choices];
+                        next[j] = { ...next[j], explanation: json };
+                        onChange({ choices: next });
+                      }}
+                      placeholder="이 선지의 해설 (선택)"
+                      minHeight="32px"
+                      allowMath
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
@@ -413,7 +493,14 @@ export function AuthoringCanvasCard({
               type="button"
               onClick={() =>
                 onChange({
-                  choices: [...card.choices, { text: "", explanation: "", showExplanation: false }],
+                  choices: [
+                    ...card.choices,
+                    {
+                      content: buildRichDoc(""),
+                      explanation: buildRichDoc(""),
+                      showExplanation: false,
+                    },
+                  ],
                 })
               }
               className="mt-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -436,6 +523,77 @@ export function AuthoringCanvasCard({
             placeholder="단답 정답을 입력하세요."
             className="h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
+        </div>
+      )}
+
+      {/* 서술형 채점기준표(#43 gap 8) — 주관식이면서 단답 정답이 없을 때만.
+          단답 정답이 있으면 문자열 비교로 자동채점되므로 기준이 쓰일 자리가 없고,
+          객관식도 마찬가지라 아예 띄우지 않는다. */}
+      {card.type === "주관식" && !card.answerText.trim() && (
+        <div className="mb-4">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <label className="text-xs font-medium text-muted-foreground">
+              채점기준 <span className="font-normal">(서술형 부분점수)</span>
+            </label>
+            {rubric.length > 0 && (
+              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                합계 {formatPoints(rubricTotal)}점
+              </span>
+            )}
+          </div>
+          {rubric.length === 0 ? (
+            <p className="mb-1.5 text-[11px] text-muted-foreground">
+              기준을 추가하면 응시자가 결과 화면에서 기준별로 체크해 부분점수를 매겨요.
+              비워 두면 기존처럼 맞음/틀림으로만 채점됩니다.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {rubric.map((c, j) => (
+                <div key={j} className="flex items-center gap-2">
+                  <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg border border-border font-mono text-xs text-muted-foreground">
+                    {j + 1}
+                  </span>
+                  <input
+                    value={c.text}
+                    onChange={(e) => updateCriterion(j, { text: e.target.value })}
+                    placeholder={`채점기준 ${j + 1} (예: 명반응 산물 2가지를 모두 언급)`}
+                    className="h-9 flex-1 rounded-lg border border-input bg-transparent px-3 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                  <label className="flex flex-none items-center gap-1 text-[11px] text-muted-foreground">
+                    <input
+                      type="number"
+                      min={0.5}
+                      step={0.5}
+                      value={c.points}
+                      onChange={(e) =>
+                        updateCriterion(j, { points: Math.max(0, Number(e.target.value) || 0) })
+                      }
+                      aria-label={`채점기준 ${j + 1} 배점`}
+                      className="h-9 w-16 rounded-lg border border-input bg-transparent px-2 text-right font-mono text-xs text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                    점
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeCriterion(j)}
+                    aria-label={`채점기준 ${j + 1} 삭제`}
+                    className="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-wrong"
+                  >
+                    <X size={13} strokeWidth={2} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {rubric.length < MAX_RUBRIC_CRITERIA && (
+            <button
+              type="button"
+              onClick={addCriterion}
+              className="mt-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Plus size={13} strokeWidth={2} /> 채점기준 추가
+            </button>
+          )}
         </div>
       )}
 

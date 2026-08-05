@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { useDebounce, useSubmitAnswer } from "@/lib/hooks";
 import { RichContent } from "@/components/editor/RichContent";
 import { sessionPassages } from "@/lib/session-passages";
+import { stemBlankNumber } from "@/lib/blank-markers";
 import type { SessionQuestionItem } from "@/lib/types";
 
 export function SolveQuestionCard({
@@ -49,6 +50,11 @@ export function SolveQuestionCard({
 
   const choices = item.snapshot.choices ?? [];
 
+  // 지문 내장 빈칸(#43 gap 9 — 토익 Part 6): 이 문항이 지문의 몇 번 빈칸인지.
+  // 지문에 같은 마커(___(n)___)가 그대로 보이므로, 배지는 "지문에서 이 번호를 찾아라"는 이정표다.
+  // 빈칸형이 아니면 null이라 기존 문항의 화면은 하나도 바뀌지 않는다.
+  const blankNumber = stemBlankNumber(item.snapshot.stem);
+
   return (
     <article className="rounded-xl border border-border bg-card p-5 shadow-surface">
       <div className="mb-3 flex items-center gap-2">
@@ -58,6 +64,11 @@ export function SolveQuestionCard({
         <Badge variant="secondary" className="text-[10px] font-medium">
           {item.snapshot.questionType}
         </Badge>
+        {blankNumber !== null && (
+          <Badge variant="outline" className="text-[10px] font-medium tabular-nums">
+            지문 빈칸 ({blankNumber})
+          </Badge>
+        )}
       </div>
 
       {/* 세트 지문은 전부 보여준다(#43). (가)(나)·토익 double은 나머지 지문 없이 풀 수 없다. */}

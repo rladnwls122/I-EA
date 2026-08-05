@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Target, TrendingDown } from "lucide-react";
+import { Loader2, RotateCcw, Target, TrendingDown } from "lucide-react";
 import { toast } from "sonner";
 import { useCreateSession } from "@/lib/hooks";
 import type { WeaknessReport, Weakness } from "@/lib/types";
@@ -87,10 +87,28 @@ export function WeaknessCard({
                   >
                     {w.kind === "DRILL" ? "훈련 부족" : "개념 약점"}
                   </span>
+                  {/*
+                    복습 실패율 라벨 — 개념/훈련과 **겹치는 축이 아니라 나란히 붙는 축**이다.
+                    개념/훈련은 "왜 틀렸나", 이건 "다시 풀려도 고쳐지나"를 말한다.
+                    절반 이상 재오답이면(stuck) 처방이 달라진다 — 더 풀리는 게 아니라
+                    접근법 자체를 다시 세워야 하는 축이라 눈에 띄게 표시한다.
+                    판정 불가(전이 표본 부족)면 서버가 null을 내리므로 아무것도 안 뜬다.
+                  */}
+                  {w.reviewFailure?.stuck && (
+                    <span className="flex items-center gap-1 rounded-full bg-wrong/10 px-1.5 py-0.5 text-[10px] font-medium text-wrong">
+                      <RotateCcw size={9} />
+                      복습에도 재오답
+                    </span>
+                  )}
                 </div>
                 <p className="mt-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">
                   정답률 {w.accuracyPercent}% · {w.total}문항 중 {w.wrong}개 오답
                   {w.dominantReason && ` · 주원인 ${w.dominantReason.label}`}
+                  {/* 비율만 쓰면 "3번 중 2번"이 "100번 중 66번"처럼 읽힌다 — 표본을 병기한다. */}
+                  {w.reviewFailure &&
+                    ` · 복습 재오답 ${w.reviewFailure.failed}/${w.reviewFailure.total}회(${Math.round(
+                      w.reviewFailure.ratio * 100,
+                    )}%)`}
                 </p>
               </div>
               {subjectId && (

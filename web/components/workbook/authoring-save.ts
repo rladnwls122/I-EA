@@ -8,8 +8,7 @@
  * 여기에는 **네트워크를 모르는 것만** 둔다 — 무엇을 저장할지 정하는 규칙.
  * 실제 호출 순서와 실패 처리는 컴포넌트가 그대로 갖는다(그건 별개 문제다).
  */
-import { docToBlocks, isRichEmpty, keepIfUnchanged } from '@/lib/prosemirror';
-import { buildRichDoc, buildRichBlocks } from '@/lib/prosemirror-assemble';
+import { docToBlocks, isRichEmpty } from '@/lib/prosemirror';
 import { extractPlainText } from '@/lib/prosemirror';
 import type { CanvasCard, CanvasChoice } from './AuthoringCanvas';
 
@@ -144,17 +143,14 @@ export function isSavableCard(card: CanvasCard): boolean {
 function choicePayload(ch: CanvasChoice, index: number) {
   return {
     id: `c${index + 1}`,
-    // 텍스트를 안 고쳤으면 불러온 원본 노드를 그대로 — 평문으로 다시 지으면
-    // 다른 편집기에서 넣은 서식이 사라진다(#41 Phase 1).
-    content: keepIfUnchanged(ch.sourceContent, ch.text) ?? buildRichDoc(ch.text),
+    // 노드를 그대로 보낸다. 예전엔 평문에서 다시 지어서(`buildRichDoc`) 서식·수식이
+    // 저장 한 번에 증발했고, 원본을 되돌려주는 방어로 겨우 막고 있었다 — 선지를 rich로
+    // 올린 지금은 되돌릴 것도 잃을 것도 없다.
+    content: ch.content,
     isCorrect: false as boolean,
-    ...(ch.explanation.trim()
-      ? {
-          explanation:
-            keepIfUnchanged(ch.sourceExplanation, ch.explanation) ??
-            buildRichBlocks(ch.explanation),
-          explanationVisible: ch.showExplanation,
-        }
+    // 텍스트가 아니라 내용 유무로 본다 — 수식만 있는 선지 해설도 내용이 있다.
+    ...(!isRichEmpty(ch.explanation)
+      ? { explanation: docToBlocks(ch.explanation), explanationVisible: ch.showExplanation }
       : {}),
   };
 }
@@ -170,6 +166,7 @@ function choicePayload(ch: CanvasChoice, index: number) {
  * 예전처럼 빈 값을 생략하면 **삭제를 표현할 방법이 없다** — 마지막 키워드를 지우거나
  * 지문을 떼도 서버에는 그대로 남는다. 변경 감지가 붙은 지금은 그 상태가 "동기화됨"으로
  * 기준선에 박혀 다음 저장에서도 건너뛰므로, 영영 반영되지 않는다.
+ * `rubric`도 같은 이유로 빈 배열을 싣는다(마지막 채점기준을 지우는 유일한 표현).
  */
 export function buildQuestionPayload(
   card: CanvasCard,
@@ -187,8 +184,24 @@ export function buildQuestionPayload(
         : undefined,
     correctAnswerText:
       card.type === '주관식' && card.answerText.trim() ? card.answerText.trim() : undefined,
+    rubric: rubricPayload(card),
     explanation: isRichEmpty(card.explanation) ? undefined : docToBlocks(card.explanation),
   };
+}
+
+/**
+ * 채점기준표 페이로드 — id를 저장 시점에 `c1`..로 다시 매긴다(선지와 같은 관행).
+ *
+ * 서버가 rubric을 거부하는 조합(객관식 / 단답 정답이 있는 주관식)에서는 빈 배열을 보내
+ * **지운다**. 400을 받게 두지 않는 이유: 유형을 바꾸거나 단답 정답을 채우는 건 정상적인
+ * 편집이고, 그때 남는 기준은 어차피 채점에 쓰이지 않는 죽은 데이터다.
+ */
+function rubricPayload(card: CanvasCard): { id: string; text: string; points: number }[] {
+  const usable = card.type === '주관식' && !card.answerText.trim();
+  if (!usable) return [];
+  return (card.rubric ?? [])
+    .filter((c) => c.text.trim().length > 0 && c.points > 0)
+    .map((c, i) => ({ id: `c${i + 1}`, text: c.text.trim(), points: c.points }));
 }
 
 /* ── 변경 감지 ──────────────────────────────────────────────────────
@@ -253,8 +266,7 @@ export function collectImageSrcs(value: unknown): string[] {
 export function cardImageSrcs(card: CanvasCard): string[] {
   const parts: unknown[] = [card.stem, card.explanation];
   for (const ch of card.choices) {
-    if (ch.sourceContent) parts.push(ch.sourceContent);
-    if (ch.sourceExplanation) parts.push(ch.sourceExplanation);
+    parts.push(ch.content, ch.explanation);
   }
   const seen = new Set<string>();
   const out: string[] = [];

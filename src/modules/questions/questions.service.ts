@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -164,9 +165,42 @@ export class QuestionsService {
     return active !== null;
   }
 
+  /**
+   * 채점기준표를 가질 수 있는 문항인지 — **저장 후 갖게 될 모습**으로 판정한다.
+   *
+   * DTO 혼자서는 못 하는 검사다: PATCH는 questionType 없이 rubric만 올 수 있어서
+   * 기존 행과 병합해야 실제 유형을 안다. 그래서 검증을 여기 저장 직전에 둔다.
+   *
+   * 막는 이유는 둘 다 "이 rubric이 절대 쓰이지 않는다"는 것이다 — 죽은 데이터가 저장되면
+   * 출제자는 기준을 적어 놓고도 화면에서 부분점수 채점을 못 보게 되고, 화면은 어느 채점 UI를
+   * 띄울지 모호해진다.
+   *   - 객관식: 정답 선지로 자동채점된다. 자기채점 자체가 없다.
+   *   - 단답 정답(correctAnswerText)이 있는 주관식: 문자열 비교로 자동채점된다(grade()).
+   * 빈 배열/미지정은 "기준 없음"이라 언제나 허용한다.
+   */
+  private assertRubricAllowed(effective: {
+    questionType: string;
+    correctAnswerText?: string | null;
+    rubric?: unknown;
+  }): void {
+    if (!Array.isArray(effective.rubric) || effective.rubric.length === 0) return;
+
+    if (effective.questionType === '객관식') {
+      throw new BadRequestException(
+        '객관식에는 채점기준표를 쓸 수 없습니다(정답 선지로 자동채점됩니다).',
+      );
+    }
+    if (effective.correctAnswerText?.trim()) {
+      throw new BadRequestException(
+        '단답 정답이 있는 문항은 자동채점됩니다 — 채점기준표는 정답 텍스트를 비운 서술형에만 쓸 수 있습니다.',
+      );
+    }
+  }
+
   /** 문항 직접 생성(DRAFT). tagIds가 있으면 question_tags도 함께 매핑한다. */
   async create(creatorId: string, dto: CreateQuestionDto) {
     await this.assertSubjectExists(dto.subjectId);
+    this.assertRubricAllowed(dto);
 
     return this.prisma.question.create({
       data: {
@@ -178,6 +212,9 @@ export class QuestionsService {
         ...(dto.choices ? { choices: dto.choices as JsonWritable } : {}),
         ...(dto.explanation ? { explanation: dto.explanation as JsonWritable } : {}),
         ...(dto.correctAnswerText !== undefined ? { correctAnswerText: dto.correctAnswerText } : {}),
+        // 빈 배열은 "기준 없음"이라 컬럼에 넣지 않는다 — 읽는 쪽(readRubric)이 null과
+        // []를 똑같이 "정오 2지선다 자기채점"으로 다루게 하려면 저장 형태를 하나로 모아야 한다.
+        ...(dto.rubric?.length ? { rubric: dto.rubric as JsonWritable } : {}),
         ...(dto.metadata ? { metadata: dto.metadata as JsonWritable } : {}),
         ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
         difficulty: dto.difficulty ?? 3,
@@ -195,6 +232,15 @@ export class QuestionsService {
   /** 부분 수정 — 작성자 본인만. 태그가 오면 전체 교체(set) 방식. */
   async update(id: string, userId: string, dto: UpdateQuestionDto) {
     const existing = await this.assertOwner(id, userId);
+
+    // 채점기준표 허용 여부는 "이번 수정을 반영한 뒤의 모습"으로 본다 — 유형만 객관식으로
+    // 바꾸는 요청도, rubric만 넣는 요청도 같은 규칙에 걸려야 한다.
+    this.assertRubricAllowed({
+      questionType: dto.questionType ?? existing.questionType,
+      correctAnswerText:
+        dto.correctAnswerText !== undefined ? dto.correctAnswerText : existing.correctAnswerText,
+      rubric: dto.rubric !== undefined ? dto.rubric : existing.rubric,
+    });
 
     // 콘텐츠가 바뀌면 search_text도 다시 계산(부분 필드만 온 경우 기존 값과 병합).
     const contentChanged =
@@ -235,6 +281,11 @@ export class QuestionsService {
           ...(dto.explanation !== undefined ? { explanation: dto.explanation as JsonWritable } : {}),
           ...(dto.correctAnswerText !== undefined
             ? { correctAnswerText: dto.correctAnswerText }
+            : {}),
+          // 빈 배열은 "기준 전부 삭제" — 편집기가 삭제를 표현할 수 있는 유일한 형태다
+          // (필드를 생략하면 PATCH 규약상 "안 건드림"이라 마지막 기준을 지울 방법이 없다).
+          ...(dto.rubric !== undefined
+            ? { rubric: dto.rubric.length ? (dto.rubric as JsonWritable) : Prisma.DbNull }
             : {}),
           ...(dto.metadata !== undefined ? { metadata: dto.metadata as JsonWritable } : {}),
           ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
@@ -405,6 +456,10 @@ export class QuestionsService {
         choices: true,
         explanation: true,
         correctAnswerText: true,
+        // 채점기준표 허용 규칙(assertRubricAllowed)이 "수정 후의 모습"을 보려면
+        // 이번 요청에 안 실린 쪽의 현재 값이 필요하다.
+        questionType: true,
+        rubric: true,
       },
     });
     if (!q) throw new NotFoundException('문제를 찾을 수 없습니다.');
