@@ -9,7 +9,7 @@ import {
   uniquePassages,
   validateSave,
 } from './authoring-save';
-import { buildRichDoc, buildRichBlocks } from '@/lib/prosemirror';
+import { buildRichDoc, buildRichBlocks } from '@/lib/prosemirror-assemble';
 import type { CanvasCard } from './AuthoringCanvas';
 
 const card = (over: Partial<CanvasCard> = {}): CanvasCard => ({

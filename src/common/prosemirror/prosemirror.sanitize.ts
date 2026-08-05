@@ -27,7 +27,27 @@ const ALLOWED_NODES: Record<string, readonly string[]> = {
   horizontalRule: [],
   hardBreak: [],
   image: ['src', 'alt', 'title', 'width', 'height'],
+  // 수식(#35). @tiptap/extension-mathematics의 atom 노드 2종 — 자식 없이 latex 문자열 하나다.
+  // latex는 KaTeX가 렌더하므로 HTML 주입면이 아니다(KaTeX `trust` 기본값 false 유지).
+  inlineMath: ['latex'],
+  blockMath: ['latex'],
+  // 표(#35 2단계). @tiptap/extension-table의 TableKit이 등록하는 4개 노드.
+  // **에디터 수동 입력 전용**이다 — LLM은 평문 한 필드로 표 구조를 실어 나를 수 없어
+  // 생성 경로는 표를 만들지 않는다.
+  table: [],
+  tableRow: [],
+  tableHeader: ['colspan', 'rowspan', 'colwidth', 'align'],
+  tableCell: ['colspan', 'rowspan', 'colwidth', 'align'],
 };
+
+/**
+ * 배열 값을 허용하는 attr 목록.
+ *
+ * attrs는 원칙적으로 원시 값만 받는다(객체를 허용하면 검증 못 한 구조가 통째로 들어온다).
+ * 그런데 Tiptap 표의 `colwidth`만은 열 너비 **숫자 배열**(`[120, 80]`)이라 그 규칙에
+ * 그대로 걸려 저장이 400이 된다. 여기만 "유한한 숫자의 배열"로 좁게 예외를 둔다.
+ */
+const NUMERIC_ARRAY_ATTRS = new Set(['colwidth']);
 
 /** 마크 타입 → 허용 attrs 키 목록. */
 const ALLOWED_MARKS: Record<string, readonly string[]> = {
@@ -177,6 +197,16 @@ function pickAttrs(
     if (value === null || value === undefined) continue;
     if (!allowed.includes(key)) {
       throw new ProseMirrorValidationError(`${path}: 허용되지 않은 속성입니다(${key}).`);
+    }
+    if (Array.isArray(value)) {
+      if (
+        !NUMERIC_ARRAY_ATTRS.has(key) ||
+        !value.every((v) => typeof v === 'number' && Number.isFinite(v))
+      ) {
+        throw new ProseMirrorValidationError(`${path}.${key}: 원시 값이어야 합니다.`);
+      }
+      out[key] = [...value];
+      continue;
     }
     if (typeof value === 'object') {
       throw new ProseMirrorValidationError(`${path}.${key}: 원시 값이어야 합니다.`);

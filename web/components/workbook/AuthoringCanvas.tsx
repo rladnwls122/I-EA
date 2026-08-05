@@ -5,11 +5,8 @@ import { toast } from "sonner";
 import { ArrowLeft, Check, Loader2, PencilLine, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import {
-  buildRichDoc,
-  extractPlainText,
-  blocksToDoc,
-} from "@/lib/prosemirror";
+import { extractPlainText, blocksToDoc } from "@/lib/prosemirror";
+import { buildRichDoc } from "@/lib/prosemirror-assemble";
 import {
   createQuestion,
   updateQuestion,

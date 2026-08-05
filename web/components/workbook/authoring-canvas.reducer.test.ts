@@ -6,7 +6,7 @@ import {
   type CanvasState,
 } from './authoring-canvas.reducer';
 import { emptyBaseline } from './authoring-save-run';
-import { buildRichDoc } from '@/lib/prosemirror';
+import { buildRichDoc } from '@/lib/prosemirror-assemble';
 import type { CanvasCard } from './AuthoringCanvas';
 
 /** id·그룹 없는 카드 내용 — 그 둘은 리듀서가 정한다. */

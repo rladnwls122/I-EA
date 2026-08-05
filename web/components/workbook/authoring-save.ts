@@ -8,7 +8,8 @@
  * 여기에는 **네트워크를 모르는 것만** 둔다 — 무엇을 저장할지 정하는 규칙.
  * 실제 호출 순서와 실패 처리는 컴포넌트가 그대로 갖는다(그건 별개 문제다).
  */
-import { buildRichDoc, buildRichBlocks, docToBlocks, isRichEmpty, keepIfUnchanged } from '@/lib/prosemirror';
+import { docToBlocks, isRichEmpty, keepIfUnchanged } from '@/lib/prosemirror';
+import { buildRichDoc, buildRichBlocks } from '@/lib/prosemirror-assemble';
 import { extractPlainText } from '@/lib/prosemirror';
 import type { CanvasCard, CanvasChoice } from './AuthoringCanvas';
 

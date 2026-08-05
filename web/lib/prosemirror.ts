@@ -1,51 +1,17 @@
 /**
- * ProseMirror / Tiptap JSON 유틸리티
+ * ProseMirror / Tiptap JSON 유틸리티 — 읽기·순회·구조 변환.
  *
  * 백엔드 규약: src/common/prosemirror/prosemirror.util.ts
  * 이 파일의 규약은 백엔드와 반드시 일치해야 합니다.
  *
  * - question.stem, choices[].content/explanation, passage.content,
  *   explanation 등은 모두 Tiptap/ProseMirror JSON으로 저장됩니다.
- * - LLM은 항상 평문(plain text)만 반환하며, 이 유틸을 통해
- *   ProseMirror 노드 트리로 변환합니다.
+ * - LLM은 항상 평문(plain text)만 반환하며, 평문 → 노드 **조립**은
+ *   `prosemirror-assemble.ts`가 맡습니다(KaTeX 의존이라 분리돼 있습니다).
+ * - 수식(#35)은 `inlineMath`/`blockMath` atom 노드로 저장되고, 여기서는
+ *   `$latex$`/`$$latex$$` 평문으로 되돌려 읽습니다 — atom이라 그냥 순회하면
+ *   수식이 통째로 사라집니다(search_text·튜터 프롬프트·응시 평문화 전부).
  */
-
-/**
- * 평문 텍스트를 ProseMirror doc 노드로 변환합니다.
- * 빈 줄은 무시됩니다.
- *
- * @param text - 변환할 평문 텍스트
- * @returns ProseMirror doc JSON 객체
- */
-export function buildRichDoc(text: string): any {
-  return {
-    type: 'doc',
-    content: text
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => ({
-        type: 'paragraph',
-        content: [{ type: 'text', text: line }],
-      })),
-  };
-}
-
-/**
- * 평문 텍스트를 ProseMirror paragraph 노드 배열로 변환합니다.
- * doc 래퍼 없이 블록 노드만 반환합니다.
- *
- * @param text - 변환할 평문 텍스트
- * @returns ProseMirror paragraph 노드 배열
- */
-export function buildRichBlocks(text: string): any[] {
-  return text
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => ({
-      type: 'paragraph',
-      content: [{ type: 'text', text: line }],
-    }));
-}
 
 /* ────────────────────────────────────────────────────────────────────────
  * 구조 보존 변환 (doc ↔ 블록 배열)
@@ -68,7 +34,8 @@ export function blocksToDoc(value: any): any {
   if (value && value.type === 'doc') return value;
   // 단일 블록 노드가 온 경우까지 방어(손상 데이터).
   if (value && value.type) return { type: 'doc', content: [value] };
-  return buildRichDoc('');
+  // 조립 모듈을 부르지 않는다 — 여기서 부르면 이 파일이 다시 katex를 끌고 온다.
+  return { type: 'doc', content: [] };
 }
 
 /** doc이든 블록 배열이든 블록 노드 배열로 벗긴다. 내용은 손대지 않는다. */
@@ -85,7 +52,15 @@ export function docToBlocks(value: any): any[] {
  * Phase 2에서 이미지 삽입이 붙으면 텍스트 기준 판정은 "이미지만 있는 해설"을
  * 빈 값으로 보고 저장에서 통째로 날린다. 지금 미리 노드 기준으로 판정한다.
  */
-const NON_TEXT_CONTENT_NODES = new Set(['image', 'horizontalRule', 'table']);
+// 수식 노드도 여기 들어가야 한다. atom이라 텍스트가 0글자인데, 빠뜨리면 "수식만 있는 발문"이
+// 빈 값으로 판정돼 저장에서 통째로 날아간다.
+const NON_TEXT_CONTENT_NODES = new Set([
+  'image',
+  'horizontalRule',
+  'table',
+  'inlineMath',
+  'blockMath',
+]);
 
 export function isRichEmpty(value: any): boolean {
   let hasContent = false;
@@ -127,6 +102,21 @@ export function keepIfUnchanged(source: any, edited: string): any | null {
 }
 
 /**
+ * math atom 노드를 평문으로 되돌린다. 수식 노드가 아니면 null.
+ *
+ * math 노드는 atom이라 `text`도 `content`도 없다 — 이 분기가 없으면 순회가 조용히
+ * 건너뛰어 수식이 통째로 증발한다(오답노트 검색·주석 평문·미리보기 전부).
+ * 델리미터를 포함한 문자열을 돌려주는 건 백엔드 `extractPlainText`와 같은 규약이고,
+ * 그래야 `buildRichDoc(extractPlainText(doc))`이 수식 보존 왕복이 된다.
+ */
+function mathPlainText(node: any): string | null {
+  if (node?.type !== 'inlineMath' && node?.type !== 'blockMath') return null;
+  const latex = node.attrs?.latex;
+  if (typeof latex !== 'string' || !latex) return '';
+  return node.type === 'blockMath' ? `$$${latex}$$` : `$${latex}$`;
+}
+
+/**
  * 내부 공통 visitor — extractPlainText와 walkTextSegments가 반드시 같은 순회를
  * 쓰도록 하는 단일 출처. 블록 사이는 blockGap(평문 '\n' 1글자), 텍스트 노드는 text.
  * 이 일치가 주석 앵커(평문 오프셋) 모델의 전제다.
@@ -155,12 +145,22 @@ function visitTextNodes(
    *
    * 블록 경계('\n')는 **텍스트가 아닌 형제** 앞에만 넣는다. 한 문단 안의 인라인
    * 텍스트 조각들(굵게/기울임으로 쪼개진 것)은 붙여야 하기 때문이다.
+   *
+   * 수식(#35)은 `inlineMath`를 텍스트 조각과 동급으로 취급한다 — 문단 중간에 있으므로
+   * 앞에 '\n'을 끼우면 안 된다. `blockMath`는 이름 그대로 블록이라 다른 블록과 같다.
+   * 어느 쪽이든 `$latex$` 길이만큼 평문 오프셋을 차지하고, 그 값이 visitor를 통해
+   * extractPlainText·walkTextSegments 양쪽에 똑같이 전달되므로 오프셋은 자동으로 맞는다.
    */
   const walk = (nodes: any[]): void => {
     nodes.forEach((node: any, i: number) => {
       if (!node) return;
-      const isTextLeaf = typeof node.text === 'string';
+      const math = mathPlainText(node);
+      const isTextLeaf = typeof node.text === 'string' || node.type === 'inlineMath';
       if (i > 0 && !isTextLeaf) visitor.blockGap();
+      if (math !== null) {
+        if (math) visitor.text(math);
+        return;
+      }
       if (isTextLeaf) {
         if (node.text) visitor.text(node.text);
         return;

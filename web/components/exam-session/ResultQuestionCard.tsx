@@ -5,7 +5,8 @@ import { ArrowUpRight, Check, Loader2, Sparkles, X } from "lucide-react";
 import { ReviewTutorPanel } from "@/components/tutor/ReviewTutorPanel";
 import { Badge } from "@/components/ui/badge";
 import { useSelfGrade } from "@/lib/hooks";
-import { extractPlainText } from "@/lib/prosemirror";
+import { isRichEmpty } from "@/lib/prosemirror";
+import { RichContent } from "@/components/editor/RichContent";
 import { sessionPassages } from "@/lib/session-passages";
 import type { SessionQuestionItem } from "@/lib/types";
 import { ReviewDueLabel, ReviewStateBadge } from "@/components/notes/ReviewStateBadge";
@@ -94,13 +95,14 @@ export function ResultQuestionCard({
           {p.label && (
             <p className="mb-1.5 text-xs font-semibold text-muted-foreground">{p.label}</p>
           )}
-          <p className="whitespace-pre-wrap">{extractPlainText(p.content)}</p>
+          <RichContent value={p.content} />
         </div>
       ))}
 
-      <p className="mb-4 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-        {extractPlainText(item.snapshot.stem)}
-      </p>
+      <RichContent
+        value={item.snapshot.stem}
+        className="mb-4 text-sm leading-relaxed text-foreground"
+      />
 
       {isObjective ? (
         <div className="space-y-2">
@@ -121,7 +123,7 @@ export function ResultQuestionCard({
                 <span className="flex h-5 w-5 flex-none items-center justify-center rounded-full border border-current text-[10px] font-mono">
                   {i + 1}
                 </span>
-                <span>{extractPlainText(c.content)}</span>
+                <RichContent value={c.content} />
                 {correct && <Check size={13} className="ml-auto text-correct" />}
                 {!correct && picked && <X size={13} className="ml-auto text-wrong" />}
               </div>
@@ -165,10 +167,10 @@ export function ResultQuestionCard({
         </div>
       )}
 
-      {extractPlainText(item.snapshot.explanation) && (
-        <p className="mt-4 rounded-lg bg-surface-raised px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-          {extractPlainText(item.snapshot.explanation)}
-        </p>
+      {!isRichEmpty(item.snapshot.explanation) && (
+        <div className="mt-4 rounded-lg bg-surface-raised px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+          <RichContent value={item.snapshot.explanation} />
+        </div>
       )}
 
       <div className="mt-3 flex items-center justify-between gap-2">

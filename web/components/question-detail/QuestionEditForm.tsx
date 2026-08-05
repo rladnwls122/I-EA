@@ -6,12 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useUpdateQuestion } from "@/lib/hooks";
-import {
-  buildRichDoc,
-  buildRichBlocks,
-  extractPlainText,
-  keepIfUnchanged,
-} from "@/lib/prosemirror";
+import { extractPlainText, keepIfUnchanged } from "@/lib/prosemirror";
+import { buildRichDoc, buildRichBlocks } from "@/lib/prosemirror-assemble";
 import type { Question } from "@/lib/types";
 
 /**

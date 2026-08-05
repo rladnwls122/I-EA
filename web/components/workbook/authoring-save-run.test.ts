@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runSave, emptyBaseline, type SaveClient, type SaveBaseline } from './authoring-save-run';
-import { buildRichDoc } from '@/lib/prosemirror';
+import { buildRichDoc } from '@/lib/prosemirror-assemble';
 import type { CanvasCard } from './AuthoringCanvas';
 
 const card = (over: Partial<CanvasCard> = {}): CanvasCard => ({

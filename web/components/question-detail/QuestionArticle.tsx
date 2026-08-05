@@ -1,7 +1,7 @@
 "use client";
 import { Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { extractPlainText } from "@/lib/prosemirror";
+import { RichContent } from "@/components/editor/RichContent";
 import type { Question } from "@/lib/types";
 
 /**
@@ -48,13 +48,14 @@ export function QuestionArticle({
           {"label" in p && p.label && (
             <p className="mb-1.5 text-xs font-semibold text-muted-foreground">{p.label}</p>
           )}
-          <p className="whitespace-pre-wrap">{extractPlainText(p.content)}</p>
+          <RichContent value={p.content} />
         </div>
       ))}
 
-      <p className="mb-5 whitespace-pre-wrap text-[15px] font-medium leading-relaxed text-foreground">
-        {extractPlainText(question.stem)}
-      </p>
+      <RichContent
+        value={question.stem}
+        className="mb-5 text-[15px] font-medium leading-relaxed text-foreground"
+      />
 
       {question.questionType === "객관식" && choices.length > 0 && (
         <div className="space-y-2">
@@ -76,7 +77,7 @@ export function QuestionArticle({
                 >
                   {i + 1}
                 </span>
-                <span>{extractPlainText(c.content)}</span>
+                <RichContent value={c.content} />
                 {correct && <Check size={13} className="ml-auto text-correct" />}
               </div>
             );
