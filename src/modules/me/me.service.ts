@@ -16,7 +16,14 @@ import {
   ShopItemKey,
 } from '@/common/constants/shop';
 import { REVIEW_STATUS } from '@/modules/exam-sessions/review-state.util';
-import { rankWeaknesses } from './weakness.util';
+import { rankWeaknesses, type ReviewFailureInput } from './weakness.util';
+import {
+  judgeRubricScore,
+  judgeRubricScoreByAxis,
+  type RubricAxisInput,
+} from './rubric-score.util';
+import { buildReviewQueue } from './review-queue.util';
+import { REVIEW_QUEUE_MAX_LIMIT } from './dto/query-review-queue.dto';
 
 export interface WrongStat {
   key: string;
@@ -43,6 +50,16 @@ export const UNCLASSIFIED_DETAIL_LABEL = '미분류';
  * 프론트 복습 큐 상한(100) + 통계 표본으로 충분한 값. 상한 도달 시 truncated=true로 알린다.
  */
 export const NOTES_GRADED_LIMIT = 500;
+
+/**
+ * 축별 서술형 득점률을 접기 위해 끌어오는 답안 행 수 상한 (#33 도그푸딩 잔여 2).
+ *
+ * 전체 득점률(헤드라인)은 DB 집계라 상한이 없다. 여기만 상한이 있는 이유는 축별 분해가
+ * 행을 앱으로 끌어와야 하기 때문이고, 2000으로 넉넉히 잡은 이유는 대상이 "채점기준표로
+ * 채점된 서술형 답안"뿐이라 모집단 자체가 작기 때문이다 — 하루 두 문항씩 3년을 풀어야
+ * 닿는 수다. 그래도 상한을 두는 건 NOTES_GRADED_LIMIT과 같은 보험이다.
+ */
+export const RUBRIC_AXIS_LIMIT = 2000;
 
 @Injectable()
 export class MeService {
@@ -299,6 +316,89 @@ export class MeService {
       },
     });
 
+    // 서술형 부분점수 지표(#43 gap 8 후속) — 채점기준표로 채점된 답안의 평균 득점률.
+    //
+    // 왜 여기(별도 엔드포인트가 아니라 /me/notes 응답)인가: 결정 A(#37)와 같은 이유다.
+    // 범위 필터(questionWhere)·1차 응시 조건·인가 경로가 이미 이 요청 안에 다 있고, 별도
+    // 엔드포인트로 빼면 그 조건을 두 벌 유지하면서 왕복만 한 번 더 생긴다. 다만 이쪽은
+    // "무거운 집계를 두 번 돈다"는 부분이 그대로 적용되진 않는다 — 아래는 쿼리 한 방이다.
+    //
+    // 왜 위 graded 루프에서 같이 세지 않고 별도 집계인가: graded는 응답 크기 보험으로
+    // 500건에 잘려 있다(NOTES_GRADED_LIMIT). 잘린 표본으로 평균을 내면 "최근 500건의
+    // 득점률"이 되는데, 그건 화면이 말하는 값이 아니다. **집계를 DB에서 하면** 행을 앱으로
+    // 끌어오지 않으므로 상한을 걸 이유 자체가 없다 — 컬럼을 꺼낸 이유가 그것이다.
+    //
+    // 두 컬럼이 NOT NULL인 답안 = 채점기준표로 채점된 답안. rubric 없는 서술형은 두 컬럼이
+    // null로 남으므로(exam-sessions.service의 rubricGradingWrite) 이 조건이 곧 대상 선별이다.
+    //
+    // 조건 객체를 변수로 뽑아 아래 축별 조회와 **같은 것을 쓴다**. 같은 필터를 두 벌
+    // 적어 두면 언젠가 한쪽만 고쳐져 전체 득점률과 축별 득점률이 서로 다른 모집단을 말한다.
+    const rubricWhere = {
+      earnedPoints: { not: null },
+      rubricTotalPoints: { not: null },
+      examSessionQuestion: {
+        examSession: { userId, status: 'SUBMITTED', isReview: false },
+        ...(questionWhere ? { question: questionWhere } : {}),
+      },
+    } as const;
+    const rubricAgg = await this.prisma.examSessionAnswer.aggregate({
+      where: rubricWhere,
+      _sum: { earnedPoints: true, rubricTotalPoints: true },
+      _count: true,
+    });
+    // Decimal 컬럼이라 Prisma가 Decimal 객체를 돌려준다 — 응답으로 나가기 전에 숫자로 접는다
+    // (JSON 직렬화가 문자열로 바꿔 놓는다). 저장소 관행: exam-sessions의 `Number(q.points)`.
+    const rubricOverall = judgeRubricScore({
+      count: rubricAgg._count,
+      earnedPoints: Number(rubricAgg._sum.earnedPoints ?? 0),
+      totalPoints: Number(rubricAgg._sum.rubricTotalPoints ?? 0),
+    });
+
+    // 분류축(하위요소)별 득점률 (#33 도그푸딩 잔여 2) — 전체 하나로는 "서술형이 약하다"까지만
+    // 알 수 있고 **어느 서술형인지**를 못 말한다.
+    //
+    // 축이 questions 쪽 컬럼이라 Prisma groupBy로는 못 묶는다(조인 컬럼 그룹화 불가).
+    // 남는 선택지는 (a) 축마다 쿼리, (b) raw SQL, (c) 행을 받아 앱에서 접기였다.
+    //   (a)는 축 수만큼 쿼리가 늘고, (b)는 위 필터를 SQL로 **한 벌 더** 적어야 해서
+    //   언젠가 한쪽만 고쳐진다. (c)를 골랐다 — 대상이 "채점기준표로 채점된 서술형 답안"뿐이라
+    //   모집단 자체가 작고(한 세션에 한두 문항), 위 where 객체를 그대로 재사용할 수 있다.
+    //
+    // 전체 득점률을 이 행들로 다시 계산하지 않는 이유: 이 조회에는 상한이 있고 위 집계에는
+    // 없다. 헤드라인 숫자는 상한 밖에서 정확해야 한다 — 컬럼을 꺼낸 이유가 그것이다.
+    const rubricRows = rubricOverall
+      ? await this.prisma.examSessionAnswer.findMany({
+          where: rubricWhere,
+          take: RUBRIC_AXIS_LIMIT,
+          orderBy: { examSessionQuestion: { examSession: { submittedAt: 'desc' } } },
+          select: {
+            earnedPoints: true,
+            rubricTotalPoints: true,
+            examSessionQuestion: {
+              select: {
+                question: {
+                  select: { subjectDetailId: true, detail: { select: { name: true } } },
+                },
+              },
+            },
+          },
+        })
+      : []; // 전체가 하한 미달이면 축은 볼 것도 없다(부분집합이라 반드시 미달이다).
+
+    const rubricAxisMap = new Map<string, RubricAxisInput>();
+    for (const row of rubricRows) {
+      const q = row.examSessionQuestion.question;
+      const key = q.subjectDetailId && q.detail ? q.subjectDetailId : UNCLASSIFIED_DETAIL_KEY;
+      const label = q.subjectDetailId && q.detail ? q.detail.name : UNCLASSIFIED_DETAIL_LABEL;
+      const cur = rubricAxisMap.get(key) ?? { key, label, count: 0, earnedPoints: 0, totalPoints: 0 };
+      cur.count += 1;
+      cur.earnedPoints += Number(row.earnedPoints ?? 0);
+      cur.totalPoints += Number(row.rubricTotalPoints ?? 0);
+      rubricAxisMap.set(key, cur);
+    }
+    const rubricScore = rubricOverall
+      ? { ...rubricOverall, ...judgeRubricScoreByAxis([...rubricAxisMap.values()]) }
+      : null;
+
     // 내 주석 — byReason 통계 + 오답 문항별 주석 조인.
     // 범위 필터가 있으면 그 범위에서 채점된 문항의 주석만 센다(원인 통계도 범위를 따라간다).
     const scopedQuestionIds = questionWhere
@@ -365,6 +465,29 @@ export class MeService {
       }
     }
 
+    // 복습 실패율(#37) — "복습에서도 또 틀림"(X→X). 상태 테이블은 현재 값만 들고 있어
+    // 셀 수 없던 신호라 전이 이력(user_question_review_transitions)을 따로 읽는다.
+    // 조회 대상을 위에서 축을 확정한 문항(detailKeyByQuestion)으로 한정하는 이유가 둘이다:
+    //   (1) 축을 모르는 전이는 어차피 집계에 못 쓴다. (2) 범위 필터와 상한(500)이 그대로 따라와
+    //       유저 전체 이력이 무한정 딸려오지 않는다.
+    // fromStatus = X인 행만 가져온다 — 분모가 "X 상태에서 일어난 전이 전부"이기 때문.
+    const axisQuestionIds = [...detailKeyByQuestion.keys()];
+    const reviewFailureByDetail = new Map<string, ReviewFailureInput>();
+    if (axisQuestionIds.length > 0) {
+      const xTransitions = await this.prisma.userQuestionReviewTransition.findMany({
+        where: { userId, fromStatus: REVIEW_STATUS.X, questionId: { in: axisQuestionIds } },
+        select: { questionId: true, correct: true },
+      });
+      for (const t of xTransitions) {
+        const axisKey = detailKeyByQuestion.get(t.questionId);
+        if (!axisKey) continue;
+        const cur = reviewFailureByDetail.get(axisKey) ?? { fromX: 0, failed: 0 };
+        cur.fromX += 1;
+        if (!t.correct) cur.failed += 1;
+        reviewFailureByDetail.set(axisKey, cur);
+      }
+    }
+
     const wrongQuestions = wrongList.map((w) => {
       const anns = annByQuestion.get(w.questionId) ?? [];
       return {
@@ -396,11 +519,18 @@ export class MeService {
         // 자기채점 대기 서술형 답안 수(#39 B-2) — 범위 필터를 따라간다. 0이면 프론트에서 숨김.
         ungradedCount,
         /**
+         * 서술형 평균 득점률(#43 gap 8 후속) — 채점기준표로 채점된 답안만, 1차 응시 기준.
+         * 표본 하한(RUBRIC_SCORE_MIN_SAMPLE) 미만이거나 서술형 채점 이력이 없으면 null이다.
+         * null = "판정 불가"이지 "0점"이 아니다 — 화면은 아무것도 띄우지 않는다.
+         */
+        rubricScore,
+        /**
          * 약점 진단(#37) — 하위요소 축 기준 상위 3개 + 표본 부족 축.
          * 여기서 계산해 내려주는 이유: 집계가 이미 이 요청 안에 다 있어 추가 쿼리가 없고,
          * 표본 하한·점수식 같은 진단 규칙을 화면마다 다르게 구현하지 않게 하려는 것.
+         * 복습 실패율도 이미 접어 둔 집계 형태로만 넘긴다 — weakness.util은 DB를 모른다.
          */
-        weakness: rankWeaknesses([...detailMap.values()], reasonsByDetail),
+        weakness: rankWeaknesses([...detailMap.values()], reasonsByDetail, 3, reviewFailureByDetail),
       },
       wrongQuestions,
       // 채점 이력이 조회 상한(NOTES_GRADED_LIMIT)에 걸려 잘렸는지(#39 B-3).
@@ -433,6 +563,80 @@ export class MeService {
       }),
     ]);
     return { due, ungraded };
+  }
+
+  /**
+   * 복습 큐 — 지금 풀어야 할 문항 id를 급한 순으로.
+   *
+   * 원래 프런트가 `/me/notes` 전량을 받아 조립했다. 그 응답은 채점 이력 상한 500에 잘려서
+   * (#39 B-3), **오래 푼 사용자일수록 복습해야 할 문항이 큐에서 조용히 빠졌다.**
+   * 응답에 `truncated`를 실어 경고는 했지만 경고가 누락을 고치지는 못한다.
+   *
+   * 큐가 봐야 하는 건 채점 이력이 아니라 복습 상태다. 상태 테이블을 직접 읽으면 상한과
+   * 무관하게 정확하고, due 배지(`reviewSummary`)와 데이터 출처도 하나가 된다.
+   * 조립 규칙은 순수 함수(`buildReviewQueue`)에 있다.
+   */
+  async reviewQueue(
+    userId: string,
+    query: {
+      examType?: string;
+      examCategory?: string;
+      subjectId?: string;
+      limit?: number;
+      includeMastered?: boolean;
+    } = {},
+  ) {
+    const questionWhere = this.buildQuestionScope(query);
+    const includeMastered = query.includeMastered ?? false;
+    const limit = query.limit ?? REVIEW_QUEUE_MAX_LIMIT;
+
+    // O(처음부터 맞음)는 애초에 복습 대상이 아니라 DB에서 걷어낸다 — 큐 규칙과 같은 판단이지만,
+    // 여기서 빼야 상한을 넘길 만큼 큰 사용자에서도 불필요한 행을 나르지 않는다.
+    // MASTERED는 토글에 따라 필요할 수 있어 남긴다.
+    const rows = await this.prisma.userQuestionReviewState.findMany({
+      where: {
+        userId,
+        status: includeMastered
+          ? { not: REVIEW_STATUS.O }
+          : { notIn: [REVIEW_STATUS.O, REVIEW_STATUS.MASTERED] },
+        ...(questionWhere ? { question: questionWhere } : {}),
+      },
+      select: { questionId: true, status: true, nextReviewAt: true },
+      // 정렬의 정본은 buildReviewQueue다. 여기 orderBy는 "예정일이 이른 것부터"라는
+      // 같은 방향을 미리 줘서, 아래 slice가 급한 것을 자르지 않게 하는 보험이다.
+      orderBy: [{ nextReviewAt: 'asc' }],
+    });
+
+    const questionIds = buildReviewQueue(rows, { includeMastered, now: new Date() });
+    return {
+      questionIds: questionIds.slice(0, limit),
+      /** 상한을 넘은 잔여분 — 화면이 "남은 N문항은 다음 복습에서" 안내에 쓴다. */
+      remaining: Math.max(0, questionIds.length - limit),
+    };
+  }
+
+  /**
+   * 시험·대분류·세부과목 3단 범위를 Question where 절로. 값이 없으면 undefined(조건 생략).
+   * 오답노트와 복습 큐가 같은 규약을 써야 사용자가 보는 범위와 복습 범위가 어긋나지 않는다.
+   */
+  private buildQuestionScope(filter: {
+    examType?: string;
+    examCategory?: string;
+    subjectId?: string;
+  }) {
+    const subjectWhere =
+      filter.examType || filter.examCategory
+        ? {
+            ...(filter.examType ? { examType: filter.examType } : {}),
+            ...(filter.examCategory ? { examCategory: filter.examCategory } : {}),
+          }
+        : undefined;
+    return filter.subjectId || subjectWhere
+      ? {
+          ...(filter.subjectId ? { subjectId: filter.subjectId } : {}),
+          ...(subjectWhere ? { subject: subjectWhere } : {}),
+        }
+      : undefined;
   }
 
   /** 지갑 — 코인·XP부스터·인벤토리(보호권/힌트)·코스메틱 보유·칭호·이름색·미개봉 상자 수. */

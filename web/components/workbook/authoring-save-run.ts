@@ -14,6 +14,11 @@
  * 그래서 네트워크를 **주입받는다**(`SaveClient`). 이 모듈은 fetch도 toast도 모른다 —
  * 사용자에게 무엇을 알릴지는 `notices`로 돌려주고, 화면 상태를 어떻게 바꿀지는
  * `newQuestionIdByCardId` 같은 결과값으로 돌려준다. 컴포넌트는 그걸 옮기기만 한다.
+ *
+ * 주입 구조로 만들어 둔 덕에 **배치 엔드포인트가 생겼을 때 어댑터 교체로 흡수됐다**.
+ * 예전엔 문항 하나당 3회(생성·발행·담기) 또는 1회(갱신)가 나가서 20문항 첫 저장이
+ * 60회를 넘었다. 지금은 생성도 갱신도 묶음당 한 번이고, 순서는 서버가 지킨다 —
+ * 그래서 "새 문항은 순서 때문에 순차로 돌린다"는 제약 자체가 사라졌다.
  */
 import type { CanvasCard } from './AuthoringCanvas';
 import {
@@ -33,20 +38,44 @@ import {
 /* ── 주입 경계 ────────────────────────────────────────────────────── */
 
 /**
+ * 배치 응답의 항목 하나. 이 계약의 전부는 "서버가 **항목별로** 성패를 돌려준다"는 것이다 —
+ * 전부 성공 아니면 전부 실패로 뭉개지면, 실패한 문항만 다음 저장에서 다시 시도하는
+ * 기준선 규칙이 통째로 무너진다.
+ *
+ * `index`는 보낸 배열에서의 자리다. 응답 순서에 기대지 않고 되짚기 위한 것.
+ */
+export interface SaveBatchItem {
+  index: number;
+  /** 성공 시 — 만들어졌거나 갱신된 문항 id. */
+  questionId?: string;
+  /** 실패 시 — 사용자에게 그대로 보여도 되는 사유. */
+  error?: string;
+}
+
+/**
  * 저장이 쓰는 서버 호출의 전부. 이름은 API 경로가 아니라 **의도**로 짓는다 —
  * 이 모듈은 어떤 엔드포인트가 있는지 알 필요가 없다.
  */
 export interface SaveClient {
+  /**
+   * 한 번에 보낼 수 있는 문항 수. 서버가 정하는 값이라 어댑터가 알려 준다 —
+   * 이 모듈이 API 상수를 직접 읽으면 "네트워크를 모른다"는 경계가 깨진다.
+   * 넘는 만큼은 나눠 보내되, 생성은 **순차**여야 한다(순서가 곧 문제집 순서다).
+   */
+  readonly batchLimit: number;
   createPassage(content: unknown): Promise<{ id: string }>;
   publishPassage(id: string): Promise<unknown>;
   updatePassage(id: string, content: unknown): Promise<unknown>;
   /** #키워드 카테고리의 기존 태그 전체. */
   listKeywordTags(): Promise<{ id: string; name: string }[]>;
   createKeywordTag(name: string): Promise<{ id: string }>;
-  createQuestion(payload: unknown): Promise<{ id: string }>;
-  updateQuestion(id: string, payload: unknown): Promise<unknown>;
-  publishQuestion(id: string): Promise<unknown>;
-  addQuestionToWorkbook(questionId: string): Promise<unknown>;
+  /**
+   * 문항을 한 번에 만들어 **발행하고 문제집에 담는다**. 보낸 순서가 곧 문제집 순서다.
+   * (예전의 생성 → 발행 → 담기 3회 × N이 이 한 번이다.)
+   */
+  createQuestionsBatch(payloads: unknown[]): Promise<SaveBatchItem[]>;
+  /** 문항을 한 번에 갱신한다. (예전의 PATCH × N.) */
+  updateQuestionsBatch(items: { id: string; payload: unknown }[]): Promise<SaveBatchItem[]>;
   removeQuestionFromWorkbook(questionId: string): Promise<unknown>;
   /** 문제집 **전체** 문항 순서. 서버가 빠짐없는 집합을 요구한다. */
   reorderWorkbookQuestions(questionIds: string[]): Promise<unknown>;
@@ -54,11 +83,17 @@ export interface SaveClient {
     tagIds: string[];
     visibility?: 'PUBLIC' | 'PRIVATE';
   }): Promise<unknown>;
-  registerImage(args: {
-    storageUrl: string;
-    questionId?: string;
-    passageId?: string;
-  }): Promise<unknown>;
+  /**
+   * 한 번에 보낼 수 있는 이미지 등록 수. 문항 배치와 값이 다르다(이미지가 더 많이 나온다).
+   */
+  readonly imageBatchLimit: number;
+  /**
+   * 이미지를 한 번에 등록한다. (예전의 `POST /media-assets` × 장수.)
+   * 결과는 항목별 — 등록에 실패한 이미지만 기준선에서 빼 다음 저장에서 다시 시도한다.
+   */
+  registerImagesBatch(
+    items: { storageUrl: string; questionId?: string; passageId?: string }[],
+  ): Promise<SaveBatchItem[]>;
 }
 
 /* ── 서버와 일치하던 마지막 모습 ──────────────────────────────────── */
@@ -117,33 +152,18 @@ export interface SaveOutcome {
   failedCount: number;
 }
 
-/* ── 동시성 ──────────────────────────────────────────────────────── */
-
-/**
- * 갱신 경로에만 쓰는 제한 병렬. 상한을 두는 이유는 서버 레이트 리밋이고,
- * **생성 경로에는 쓰지 않는다** — 새 문항은 담기는 순서가 곧 문제집 순서라
- * 병렬로 돌리면 순서가 뒤섞인다.
- */
-const UPDATE_CONCURRENCY = 4;
-
-async function mapWithLimit<T>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<void>,
-): Promise<void> {
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    for (;;) {
-      const i = cursor++;
-      if (i >= items.length) return;
-      await fn(items[i]);
-    }
-  });
-  await Promise.all(workers);
-}
+/* ── 보조 ────────────────────────────────────────────────────────── */
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/** 배치 상한만큼 잘라 나눈다. 상한이 0 이하면 나누지 않는다(방어). */
+function chunked<T>(items: T[], size: number): T[][] {
+  if (size <= 0) return items.length ? [items] : [];
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
 }
 
 /* ── 본체 ────────────────────────────────────────────────────────── */
@@ -158,6 +178,11 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
     registeredImages: [...input.baseline.registeredImages],
   };
   const registered = new Set(baseline.registeredImages);
+  /**
+   * 이번 저장에서 등록할 이미지들. 지문·문항 어느 쪽에 붙든 한 줄에 모았다가
+   * 마지막에 배치로 보낸다 — 지문 이미지만 따로 보내면 왕복이 다시 둘로 갈린다.
+   */
+  const pendingImages: { storageUrl: string; questionId?: string; passageId?: string }[] = [];
 
   // 발문이 빈 카드는 저장 대상이 아니다. 지문 루프까지 전체 카드를 돌면 어느 문항에도
   // 연결되지 않는 passage 행이 생성·발행된다.
@@ -174,7 +199,7 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
         await client.updatePassage(groupId, passage);
         baseline.passages[groupId] = fingerprint;
         // 생성 분기에만 등록이 있으면, 기존 지문에 새로 넣은 이미지는 끝내 등록되지 않는다.
-        await registerImages(collectImageSrcs(passage), { passageId: groupId });
+        queueImages(collectImageSrcs(passage), { passageId: groupId });
       } catch (e) {
         // 지문 갱신 실패는 문항을 못 잇는 실패가 아니다 — 연결은 그대로 살아 있고
         // 내용만 예전 것이다. 기준선을 갱신하지 않아 다음 저장에서 다시 시도한다.
@@ -188,7 +213,7 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
       passageIdByGroup.set(groupId, created.id);
       newPassageIdByGroupId[groupId] = created.id;
       baseline.passages[created.id] = fingerprint;
-      await registerImages(collectImageSrcs(passage), { passageId: created.id });
+      queueImages(collectImageSrcs(passage), { passageId: created.id });
     } catch (e) {
       notices.push({
         level: 'error',
@@ -197,11 +222,16 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
     }
   }
 
-  /* 2) #키워드 → 태그 find-or-create. 목록은 한 번만 받아 이름으로 재사용한다. */
-  const tagIdByName = new Map<string, string>();
+  /* 2) #키워드 → 태그 find-or-create. 목록은 한 번만 받아 이름으로 재사용한다.
+   *
+   * 값이 아니라 **약속(Promise)**을 담는다. 값을 담으면 "조회 → await 생성 → 기록" 사이에
+   * 다른 워커가 끼어들어(갱신은 4-병렬이다) 같은 태그를 인원수만큼 만든다. 약속을 먼저
+   * 꽂아 두면 뒤따라온 워커는 이미 나가 있는 그 호출을 기다린다.
+   * 실패한 약속(null)도 그대로 남긴다 — 한 번 실패한 이름을 카드 수만큼 다시 때리지 않는다. */
+  const tagIdByName = new Map<string, Promise<string | null>>();
   try {
     for (const t of await client.listKeywordTags()) {
-      tagIdByName.set(t.name.trim().toLowerCase(), t.id);
+      tagIdByName.set(t.name.trim().toLowerCase(), Promise.resolve(t.id));
     }
   } catch {
     // 목록을 못 받아도 저장을 막지 않는다 — 아래에서 전부 새로 만들려 시도한다.
@@ -218,22 +248,26 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
     let complete = true;
     for (const name of normalizeKeywords(keywords)) {
       const key = name.toLowerCase();
-      let id = tagIdByName.get(key);
+      let pending = tagIdByName.get(key);
+      if (!pending) {
+        // 예약을 await **전에** 꽂는다 — 이게 이 함수의 유일한 경합 방어다.
+        pending = client
+          .createKeywordTag(name)
+          .then((t) => t.id)
+          .catch(() => null);
+        tagIdByName.set(key, pending);
+      }
+      const id = await pending;
       if (!id) {
-        try {
-          id = (await client.createKeywordTag(name)).id;
-          tagIdByName.set(key, id);
-        } catch {
-          complete = false; // 이 키워드만 건너뛰고 나머지는 계속
-          continue;
-        }
+        complete = false; // 이 키워드만 건너뛰고 나머지는 계속
+        continue;
       }
       ids.push(id);
     }
     return { ids, complete };
   };
 
-  /* 3) 문항 — 새 문항은 순서대로 하나씩(담기는 순서가 문제집 순서), 갱신은 제한 병렬. */
+  /* 3) 문항 — 갱신도 생성도 묶음당 한 번. 순서는 서버가 지킨다. */
   let savedCount = 0;
   let skippedCount = 0;
   let failedCount = 0;
@@ -283,43 +317,85 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
     toUpdate.push(card);
   }
 
-  await mapWithLimit(toUpdate, UPDATE_CONCURRENCY, async (card) => {
+
+  /**
+   * 페이로드를 배치 **전에** 다 만든다. 태그 해석이 비동기라 카드마다 await이 끼는데,
+   * 배치가 되면서 그 await들을 한 번에 겹쳐도 되는 자리가 됐다 — 예약 맵(tagIdByName)이
+   * 같은 태그를 두 번 만들지 않게 이미 막고 있다.
+   */
+  const buildPayloads = async (cards: CanvasCard[]) => {
+    const built = await Promise.all(cards.map(payloadFor));
+    return cards.map((card, i) => ({ card, ...built[i] }));
+  };
+
+  /** 배치 응답을 index로 되짚는다. 응답에 없는 항목은 **실패로 본다**(성공으로 치면 기준선이 박힌다). */
+  const resultAt = (results: SaveBatchItem[], index: number): SaveBatchItem | undefined =>
+    results.find((r) => r.index === index);
+
+  /* 3a) 갱신 — 묶음당 한 번. 묶음끼리는 서로 순서에 영향을 주지 않아 순서 제약이 없다. */
+  for (const chunk of chunked(await buildPayloads(toUpdate), client.batchLimit)) {
+    let results: SaveBatchItem[];
     try {
-      const { payload, complete } = await payloadFor(card);
-      await client.updateQuestion(card.id, payload);
+      results = await client.updateQuestionsBatch(
+        chunk.map((e) => ({ id: e.card.id, payload: e.payload })),
+      );
+    } catch (e) {
+      // 배치 자체가 못 나갔다(네트워크·400). 이 묶음은 통째로 실패다 — 기준선은 그대로 둔다.
+      failedCount += chunk.length;
+      lastError = errorText(e);
+      continue;
+    }
+    chunk.forEach(({ card, complete }, i) => {
+      const r = resultAt(results, i);
+      if (!r || r.error || !r.questionId) {
+        failedCount += 1;
+        lastError = r?.error ?? '서버가 이 문항의 결과를 돌려주지 않았어요.';
+        return;
+      }
       savedCount += 1;
       // 태그를 다 못 붙였으면 기준선을 세우지 않는다 — 다음 저장이 다시 시도해야 한다.
       if (complete) baseline.questions[card.id] = questionFingerprint(withResolvedPassage(card));
-      await registerImages(cardImageSrcs(card), { questionId: card.id });
-    } catch (e) {
-      failedCount += 1;
-      lastError = errorText(e);
-    }
-  });
+      queueImages(cardImageSrcs(card), { questionId: card.id });
+    });
+  }
 
-  for (const card of toCreate) {
+  /* 3b) 생성 — 만들고 발행하고 담는 것까지 묶음당 한 번.
+   *
+   * 묶음은 **순차**로 보낸다. 담기는 순서가 곧 문제집 순서라 뒤 묶음이 먼저 도착하면
+   * 순서가 뒤집힌다. 한 묶음 **안의** 순서는 서버가 보낸 순서대로 매겨 준다 —
+   * 그래서 예전처럼 문항 하나씩 순차로 돌 이유가 없어졌다. */
+  for (const chunk of chunked(await buildPayloads(toCreate), client.batchLimit)) {
+    let results: SaveBatchItem[];
     try {
-      const { payload, complete } = await payloadFor(card);
-      const created = await client.createQuestion({ subjectId: input.subjectId, ...payload });
-      // 발행 실패를 삼키고 담기를 강행하면 백엔드가 "발행되지 않은 문항" 404를 돌려줘
-      // 원인이 가려진다 — 단계별로 실패를 구분한다.
-      await client.publishQuestion(created.id);
-      await client.addQuestionToWorkbook(created.id);
+      results = await client.createQuestionsBatch(
+        chunk.map((e) => ({ subjectId: input.subjectId, ...e.payload })),
+      );
+    } catch (e) {
+      failedCount += chunk.length;
+      lastError = errorText(e);
+      continue;
+    }
+    chunk.forEach(({ card, complete }, i) => {
+      const r = resultAt(results, i);
+      if (!r || r.error || !r.questionId) {
+        failedCount += 1;
+        lastError = r?.error ?? '서버가 이 문항의 결과를 돌려주지 않았어요.';
+        return;
+      }
       savedCount += 1;
-      newQuestionIdByCardId[card.id] = created.id;
+      newQuestionIdByCardId[card.id] = r.questionId;
       // 기준선은 **새 id** 기준으로 남긴다 — 컴포넌트가 카드 id를 교체하므로
       // 다음 저장에서는 이 카드가 새 id로 찾아온다.
       if (complete) {
-        baseline.questions[created.id] = questionFingerprint(
-          withResolvedPassage({ ...card, id: created.id }),
+        baseline.questions[r.questionId] = questionFingerprint(
+          withResolvedPassage({ ...card, id: r.questionId }),
         );
       }
-      await registerImages(cardImageSrcs(card), { questionId: created.id });
-    } catch (e) {
-      failedCount += 1;
-      lastError = errorText(e);
-    }
+      queueImages(cardImageSrcs(card), { questionId: r.questionId });
+    });
   }
+
+  await flushImages();
 
   if (failedCount > 0) {
     notices.push({
@@ -398,25 +474,47 @@ export async function runSave(input: SaveInput, client: SaveClient): Promise<Sav
   };
 
   /**
-   * 이번에 새로 들어온 이미지만 등록한다. 실패해도 저장을 실패로 만들지 않는다 —
-   * 등록은 자원 목록(media_assets)을 채우는 부수 작업이고, 이미지 자체는 문서의
-   * src로 이미 살아 있어 화면에는 정상적으로 보인다.
+   * 이번에 새로 들어온 이미지를 등록 대기줄에 넣는다 (#33 도그푸딩 잔여 3).
+   *
+   * 예전에는 여기서 곧바로 `POST /media-assets`를 불렀다(제한 병렬 4). 문항 저장이
+   * 배치가 된 뒤로는 남은 왕복의 대부분이 이 호출이었다 — 그림 20장이면 20회다.
+   * 지금은 모아 두었다가 마지막에 한 번(또는 상한만큼 나눠) 보낸다.
+   *
+   * 대기줄에 넣는 시점에 `registered`를 **미리 채운다**: 같은 그림이 여러 카드에 실려
+   * 있어도 한 번만 보내기 위해서다. 실패한 항목만 flush에서 도로 뺀다.
    */
-  async function registerImages(
+  function queueImages(
     srcs: string[],
     target: { questionId?: string; passageId?: string },
-  ): Promise<void> {
+  ): void {
     for (const storageUrl of srcs) {
       if (registered.has(storageUrl)) continue;
-      // 호출 **전에** 예약한다. 확인과 기록 사이에 await이 있으면, 같은 이미지가 두 카드에
-      // 실린 채 병렬 갱신을 타는 순간 두 워커가 나란히 통과해 중복 행이 생긴다 —
-      // 이 함수가 막겠다고 한 바로 그 중복이다.
       registered.add(storageUrl);
-      try {
-        await client.registerImage({ storageUrl, ...target });
-      } catch {
-        registered.delete(storageUrl); // 다음 저장에서 다시 시도된다
-      }
+      pendingImages.push({ storageUrl, ...target });
     }
+  }
+
+  /**
+   * 모인 이미지를 등록한다. 실패해도 저장을 실패로 만들지 않는다 — 등록은 자원 목록
+   * (media_assets)을 채우는 부수 작업이고, 이미지 자체는 문서의 src로 이미 살아 있어
+   * 화면에는 정상적으로 보인다. 실패한 것만 기준선에서 빼 다음 저장이 다시 시도한다.
+   */
+  async function flushImages(): Promise<void> {
+    for (const chunk of chunked(pendingImages, client.imageBatchLimit)) {
+      let results: SaveBatchItem[];
+      try {
+        results = await client.registerImagesBatch(chunk);
+      } catch {
+        // 배치 자체가 못 나갔다 — 이 묶음은 통째로 다음 저장에서 다시 시도한다.
+        for (const item of chunk) registered.delete(item.storageUrl);
+        continue;
+      }
+      chunk.forEach((item, i) => {
+        const r = results.find((x) => x.index === i);
+        // 결과가 없거나 실패면 등록되지 않은 것으로 본다(성공으로 치면 영영 재시도되지 않는다).
+        if (!r || r.error) registered.delete(item.storageUrl);
+      });
+    }
+    pendingImages.length = 0;
   }
 }

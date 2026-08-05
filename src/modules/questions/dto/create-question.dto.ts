@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsArray,
   IsIn,
@@ -12,7 +13,9 @@ import {
   Min,
 } from 'class-validator';
 import { QUESTION_KINDS, QuestionKind } from '@/common/constants/question';
+import { RubricCriterion } from '@/common/constants/rubric';
 import { QuestionContentDto } from './question-content.dto';
+import { IsQuestionRubric } from './rubric.validator';
 
 /**
  * 문항 직접 생성(에디터에서 수기 작성/저장). AI 생성 경로와 달리 즉시 DB에 쓴다.
@@ -55,6 +58,20 @@ export class CreateQuestionDto extends QuestionContentDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   points?: number;
+
+  @ApiPropertyOptional({
+    description:
+      '서술형 채점기준표 `[{ id, text, points }]`. 자기채점이 기준별 배점 합으로 부분점수를 낸다. ' +
+      '빈 배열이면 기준을 지운다(생략은 "안 건드림"). 객관식에는 쓸 수 없다.',
+    type: [Object],
+  })
+  @IsOptional()
+  @IsArray()
+  // Json 배열은 @Transform 통과로 원형을 보존한다 — 전역 enableImplicitConversion이
+  // Array<Record> 원소를 new Array()로 변조해 []로 저장하던 버그가 선지·해설에서 있었다.
+  @Transform(({ obj }) => obj.rubric)
+  @IsQuestionRubric()
+  rubric?: RubricCriterion[];
 
   @ApiPropertyOptional({ description: '풀이 힌트(응시 중 열람 가능)', maxLength: 2000 })
   @IsOptional()

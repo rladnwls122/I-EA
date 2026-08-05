@@ -1,6 +1,9 @@
 import {
+  judgeReviewFailure,
   rankWeaknesses,
   weaknessScore,
+  REVIEW_FAILURE_MIN_SAMPLE,
+  REVIEW_FAILURE_WEIGHT,
   WEAKNESS_MIN_SAMPLE,
   type WeaknessStatInput,
 } from './weakness.util';
@@ -102,5 +105,116 @@ describe('rankWeaknesses — 처방 분류(개념 vs 훈련)', () => {
     const { weaknesses } = rankWeaknesses([stat('a', 20, 10), stat('b', 20, 10)], byKey, 2);
     const kinds = Object.fromEntries(weaknesses.map((w) => [w.key, w.kind]));
     expect(kinds).toEqual({ a: 'DRILL', b: 'CONCEPT' });
+  });
+});
+
+describe('rankWeaknesses — 복습 실패율', () => {
+  const rf = (m: Record<string, { fromX: number; failed: number }>) => new Map(Object.entries(m));
+
+  it(`전이 표본이 ${REVIEW_FAILURE_MIN_SAMPLE} 미만이면 판정하지 않는다(null)`, () => {
+    // 2번 중 2번 다 또 틀렸어도 "또 틀리는 유형"이라 단정하는 건 오진이다.
+    const { weaknesses } = rankWeaknesses(
+      [stat('a', 20, 10)],
+      new Map(),
+      3,
+      rf({ a: { fromX: 2, failed: 2 } }),
+    );
+    expect(weaknesses[0].reviewFailure).toBeNull();
+  });
+
+  it('하한을 넘기면 비율·분모·분자를 함께 준다 (표본 병기)', () => {
+    const { weaknesses } = rankWeaknesses(
+      [stat('a', 20, 10)],
+      new Map(),
+      3,
+      rf({ a: { fromX: 4, failed: 3 } }),
+    );
+    expect(weaknesses[0].reviewFailure).toEqual({
+      total: 4,
+      failed: 3,
+      ratio: 0.75,
+      stuck: true,
+    });
+  });
+
+  it('절반 미만이면 판정은 하되 stuck은 아니다 — 복습이 먹히고 있다', () => {
+    const { weaknesses } = rankWeaknesses(
+      [stat('a', 20, 10)],
+      new Map(),
+      3,
+      rf({ a: { fromX: 5, failed: 1 } }),
+    );
+    expect(weaknesses[0].reviewFailure).toMatchObject({ ratio: 0.2, stuck: false });
+  });
+
+  it('개념/훈련 라벨과 겹치지 않는 별개 축이다 (실수형이면서 재복습 실패 가능)', () => {
+    const { weaknesses } = rankWeaknesses(
+      [stat('a', 20, 10)],
+      new Map([['a', new Map([['MISTAKE', 9]])]]),
+      3,
+      rf({ a: { fromX: 4, failed: 4 } }),
+    );
+    expect(weaknesses[0].kind).toBe('DRILL');
+    expect(weaknesses[0].reviewFailure?.stuck).toBe(true);
+  });
+
+  it('신호가 없는 축은 점수·순위가 기존과 완전히 동일하다 (추가 정보로만 얹힌다)', () => {
+    const stats = [stat('a', 20, 2), stat('b', 20, 16), stat('c', 20, 9), stat('d', 20, 12)];
+    const before = rankWeaknesses(stats, new Map(), 3);
+    // b에만 신호를 주되 실패율 0 — 배수가 정확히 1이라 점수가 흔들리면 안 된다.
+    const after = rankWeaknesses(stats, new Map(), 3, rf({ b: { fromX: 4, failed: 0 } }));
+    expect(after.weaknesses.map((w) => w.key)).toEqual(before.weaknesses.map((w) => w.key));
+    expect(after.weaknesses.map((w) => w.score)).toEqual(before.weaknesses.map((w) => w.score));
+  });
+
+  it('판정 불가 축의 점수도 기존과 같다 — "모른다"가 감점도 가점도 되지 않는다', () => {
+    const base = rankWeaknesses([stat('a', 20, 10)]).weaknesses[0].score;
+    const withUnjudged = rankWeaknesses(
+      [stat('a', 20, 10)],
+      new Map(),
+      3,
+      rf({ a: { fromX: 2, failed: 2 } }),
+    ).weaknesses[0].score;
+    expect(withUnjudged).toBe(base);
+  });
+
+  it('재복습이 계속 실패하는 축은 같은 성적의 축보다 위로 온다', () => {
+    // a와 b는 표본·오답 수가 같다 — 기존 점수식만으로는 동점이다.
+    const { weaknesses } = rankWeaknesses(
+      [stat('a', 20, 10), stat('b', 20, 10)],
+      new Map(),
+      2,
+      rf({ b: { fromX: 4, failed: 4 } }),
+    );
+    expect(weaknesses.map((w) => w.key)).toEqual(['b', 'a']);
+  });
+
+  it(`가산 상한은 ${REVIEW_FAILURE_WEIGHT} 배율까지 — 주신호를 뒤집을 만큼 세지 않다`, () => {
+    // 실패율 100%인 약한 축(오답률 20%)이 오답률 80%인 축을 넘어서면 안 된다.
+    const { weaknesses } = rankWeaknesses(
+      [stat('weak', 20, 4), stat('bad', 20, 16)],
+      new Map(),
+      2,
+      rf({ weak: { fromX: 10, failed: 10 } }),
+    );
+    expect(weaknesses[0].key).toBe('bad');
+  });
+});
+
+describe('judgeReviewFailure', () => {
+  it('입력 자체가 없으면 null', () => {
+    expect(judgeReviewFailure(undefined)).toBeNull();
+  });
+
+  it('경계값 — 분모가 정확히 하한이면 판정한다', () => {
+    expect(judgeReviewFailure({ fromX: REVIEW_FAILURE_MIN_SAMPLE, failed: 2 })).toMatchObject({
+      total: REVIEW_FAILURE_MIN_SAMPLE,
+      failed: 2,
+    });
+  });
+
+  it('경계값 — 비율이 정확히 임계면 stuck', () => {
+    expect(judgeReviewFailure({ fromX: 4, failed: 2 })?.stuck).toBe(true);
+    expect(judgeReviewFailure({ fromX: 5, failed: 2 })?.stuck).toBe(false);
   });
 });

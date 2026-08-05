@@ -123,23 +123,24 @@ model User {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  roles            UserRole[]
-  aiGenerations    AiGeneration[]
-  passages         Passage[]
-  questionsCreated Question[]                @relation("QuestionCreator")
-  mediaUploaded    MediaAsset[]
-  examSessions     ExamSession[]
-  questionReviews  QuestionReview[]
-  questionComments QuestionComment[]
-  annotations      UserQuestionAnnotation[]
-  reviewStates     UserQuestionReviewState[]
-  workbooks        Workbook[]
-  xpHistory        XpHistory[]
-  milestones       MilestoneAchievement[]
-  lootBoxes        LootBox[]
-  inventory        UserInventory[]
-  purchases        Purchase[]
-  coinHistory      CoinHistory[]
+  roles             UserRole[]
+  aiGenerations     AiGeneration[]
+  passages          Passage[]
+  questionsCreated  Question[]                     @relation("QuestionCreator")
+  mediaUploaded     MediaAsset[]
+  examSessions      ExamSession[]
+  questionReviews   QuestionReview[]
+  questionComments  QuestionComment[]
+  annotations       UserQuestionAnnotation[]
+  reviewStates      UserQuestionReviewState[]
+  reviewTransitions UserQuestionReviewTransition[]
+  workbooks         Workbook[]
+  xpHistory         XpHistory[]
+  milestones        MilestoneAchievement[]
+  lootBoxes         LootBox[]
+  inventory         UserInventory[]
+  purchases         Purchase[]
+  coinHistory       CoinHistory[]
 
   @@map("users")
 }
@@ -379,6 +380,12 @@ model Question {
   // 출제자가 제공하는 풀이 힌트
   hintContent String? @map("hint_content") @db.Text
 
+  // 서술형 채점기준표(#43 gap 8). `[{ id, text, points }]` 형태의 기준 배열.
+  // 내신 서·논술형은 "맞았다/틀렸다"가 아니라 기준별 부분점수로 채점된다 — 자기채점 UI가
+  // 기준을 체크리스트로 띄우고, 체크한 배점 합으로 점수를 낸다.
+  // 없으면(null) 기존대로 정오 2지선다 자기채점이다. 객관식은 쓰지 않는다.
+  rubric Json?
+
   // --- 정답률 캐시 컬럼 ---
   totalSolvedCount   Int     @default(0) @map("total_solved_count")
   correctSolvedCount Int     @default(0) @map("correct_solved_count")
@@ -408,6 +415,7 @@ model Question {
   comments             QuestionComment[]
   annotations          UserQuestionAnnotation[]
   reviewStates         UserQuestionReviewState[]
+  reviewTransitions    UserQuestionReviewTransition[]
   workbookQuestions    WorkbookQuestion[]
   choiceStats          QuestionChoiceStat[]
 
@@ -540,6 +548,12 @@ model ExamSessionAnswer {
   answerText            String?   @map("answer_text") @db.Text
   // 객관식/단답=자동채점, 서술형=자기채점 전까지 null
   isCorrect             Boolean?  @map("is_correct")
+  // 서술형 부분점수(#43 gap 8). 채점 근거 전체(체크한 기준 id 등)는 annotations.rubricGrading에
+  // 남고, 여기엔 **집계 가능한 숫자만** 꺼내 둔다 — Json 안에 있으면 "서술형 평균 득점률" 같은
+  // 지표를 SQL로 뽑을 수 없다(MySQL JSON 함수는 TiDB 호환 때문에 쓰지 않기로 했다).
+  // rubric 채점을 하지 않은 답안은 둘 다 null이라, 리포트가 대상 답안을 그대로 골라낼 수 있다.
+  earnedPoints          Decimal?  @map("earned_points") @db.Decimal(8, 2)
+  rubricTotalPoints     Decimal?  @map("rubric_total_points") @db.Decimal(8, 2)
   annotations           Json?
   timeSpentSec          Int?      @map("time_spent_sec")
   answeredAt            DateTime? @map("answered_at")
@@ -663,6 +677,37 @@ model UserQuestionReviewState {
   // relationMode="prisma" — FK가 암묵적으로 만들던 인덱스를 직접 선언.
   @@index([questionId])
   @@map("user_question_review_states")
+}
+
+// ---------------------------------------------------------------------
+// 15-b. user_question_review_transitions — 복습 상태 전이 이력 (#37)
+//   위 테이블은 **현재 상태만** 들고 있다. 그래서 "복습에서 또 틀렸다"(X→X)를 셀 수 없었고,
+//   약점 진단(#37) 초안이 "복습 실패율" 신호를 **데이터 없음**으로 분류한 이유가 이것이다.
+//   현재 상태만 보면 지금 X인 문항이 처음 틀린 건지 세 번째 틀린 건지 구분되지 않는다.
+//
+//   전이가 일어날 때마다 1행. 되돌리지 않는 append-only 원장이라, 나중에 다른 신호
+//   (마스터까지 걸린 횟수, 회복 속도)를 뽑을 때도 재계산 없이 읽으면 된다.
+//     fromStatus = 전이 직전 상태. 첫 응시라 기존 상태가 없으면 null.
+//     correct    = 이번 채점 결과. 전이의 입력이자 X→X 판정의 근거.
+//   전이 규칙 자체는 review-state.util.ts가 단일 출처다 — 여기는 결과만 적는다.
+// ---------------------------------------------------------------------
+model UserQuestionReviewTransition {
+  id         String   @id @default(uuid()) @db.Char(36)
+  userId     String   @map("user_id") @db.Char(36)
+  questionId String   @map("question_id") @db.Char(36)
+  fromStatus String?  @map("from_status") @db.VarChar(20)
+  toStatus   String   @map("to_status") @db.VarChar(20)
+  correct    Boolean
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  // 약점 진단이 "이 유저의 전이 전부"를 분류축별로 집계한다.
+  @@index([userId, occurredAt])
+  // relationMode="prisma" — FK가 암묵적으로 만들던 인덱스를 직접 선언.
+  @@index([questionId])
+  @@map("user_question_review_transitions")
 }
 
 // ---------------------------------------------------------------------

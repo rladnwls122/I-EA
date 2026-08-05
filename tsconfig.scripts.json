@@ -1,0 +1,14 @@
+{
+  // 수동 스크립트(scripts/)용 타입체크 설정.
+  //
+  // 루트 tsconfig는 `rootDir: ./src` + `include: src/**/*`라 scripts/가 **아무 검사도 받지 않는다.**
+  // 그대로 두면 스크립트는 실행할 때만 깨지고, 실행이 드물어(토큰을 쓰므로) 몇 달 뒤에야 발견된다.
+  // 이 저장소가 반복해서 지적한 실패 모드가 그것이라(예: 아무것도 검사하지 않던 web lint),
+  // 얇은 설정 하나로 CI 타입체크에 포함시킨다. 빌드 산출물은 만들지 않는다.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["scripts/**/*", "src/**/*"]
+}

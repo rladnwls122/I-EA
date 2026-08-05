@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { Prisma } from '@prisma/client';
 import { ExamSessionsService } from './exam-sessions.service';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { PrismaService } from '@/prisma/prisma.service';
@@ -248,5 +249,167 @@ describe('ExamSessionsService.awardForSubmit — 데일리 챌린지 게이트',
 
     // 순증감 0이면 원장 행을 남기지 않는다(노이즈 방지).
     expect(xpHistoryCreate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 복습 전이 이력(user_question_review_transitions) 기록 — 약점 진단(#37)의 "복습 실패율" 원천.
+ *
+ * 상태 테이블은 현재 값만 들고 있어 X→X("복습에서 또 틀림")를 셀 수 없었다. 이 원장이
+ * 비거나 어긋나면 신호 자체가 사라지므로, 정상 경로와 P2002 경합 복구 경로 양쪽에서
+ * "실제로 커밋된 전이"가 그대로 적히는지 고정한다.
+ */
+describe('ExamSessionsService.applyReviewTransitions — 전이 이력 기록', () => {
+  let service: ExamSessionsService;
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      // tx를 인자로 받는 private 메서드라 PrismaService 자체는 쓰지 않는다.
+      providers: [
+        ExamSessionsService,
+        { provide: PrismaService, useValue: {} },
+        { provide: GeminiLlmService, useValue: {} },
+      ],
+    }).compile();
+    service = module.get(ExamSessionsService);
+  });
+
+  type PrevRow = { questionId: string; status: string; consecutiveCorrect: number };
+
+  /**
+   * 최소 tx 스텁. prevRows = findMany가 돌려줄 기존 상태들.
+   * upsertImpl로 경합(P2002)을 흉내내고, refetched는 그때 재조회될 상대의 행이다.
+   */
+  function makeTx(
+    prevRows: PrevRow[],
+    opts: {
+      upsertImpl?: () => Promise<unknown>;
+      refetched?: { status: string; consecutiveCorrect: number } | null;
+    } = {},
+  ) {
+    const upsert = jest.fn(opts.upsertImpl ?? (() => Promise.resolve({})));
+    const findUnique = jest.fn().mockResolvedValue(opts.refetched ?? null);
+    const update = jest.fn().mockResolvedValue({});
+    const createMany = jest.fn().mockResolvedValue({ count: 0 });
+    const tx = {
+      userQuestionReviewState: {
+        findMany: jest.fn().mockResolvedValue(prevRows),
+        upsert,
+        findUnique,
+        update,
+      },
+      userQuestionReviewTransition: { createMany },
+    };
+    return { tx, upsert, findUnique, update, createMany };
+  }
+
+  function apply(tx: unknown, graded: { id: string; correct: boolean }[], now: Date) {
+    return (
+      service as unknown as {
+        applyReviewTransitions(
+          tx: unknown,
+          userId: string,
+          graded: { id: string; correct: boolean }[],
+          now: Date,
+        ): Promise<void>;
+      }
+    ).applyReviewTransitions(tx, 'u1', graded, now);
+  }
+
+  const NOW = new Date(2026, 7, 5, 9, 0, 0);
+
+  it('X 상태에서 또 틀리면 X→X 전이를 원장에 남긴다 (복습 실패율의 분자)', async () => {
+    const { tx, createMany } = makeTx([{ questionId: 'q1', status: 'X', consecutiveCorrect: 0 }]);
+
+    await apply(tx, [{ id: 'q1', correct: false }], NOW);
+
+    expect(createMany).toHaveBeenCalledTimes(1);
+    expect(createMany.mock.calls[0][0].data).toEqual([
+      {
+        userId: 'u1',
+        questionId: 'q1',
+        fromStatus: 'X',
+        toStatus: 'X',
+        correct: false,
+        occurredAt: NOW,
+      },
+    ]);
+  });
+
+  it('기존 상태가 없으면 fromStatus는 null (첫 응시)', async () => {
+    const { tx, createMany } = makeTx([]);
+
+    await apply(tx, [{ id: 'q1', correct: true }], NOW);
+
+    expect(createMany.mock.calls[0][0].data).toEqual([
+      expect.objectContaining({ fromStatus: null, toStatus: 'O', correct: true }),
+    ]);
+  });
+
+  it('X에서 맞히면 X→TRIANGLE — 같은 분모에 들어가되 실패는 아니다', async () => {
+    const { tx, createMany } = makeTx([{ questionId: 'q1', status: 'X', consecutiveCorrect: 0 }]);
+
+    await apply(tx, [{ id: 'q1', correct: true }], NOW);
+
+    expect(createMany.mock.calls[0][0].data).toEqual([
+      expect.objectContaining({ fromStatus: 'X', toStatus: 'TRIANGLE', correct: true }),
+    ]);
+  });
+
+  it('여러 문항을 createMany 한 번으로 묶는다 (N+1 금지)', async () => {
+    const { tx, createMany } = makeTx([
+      { questionId: 'q1', status: 'X', consecutiveCorrect: 0 },
+      { questionId: 'q2', status: 'TRIANGLE', consecutiveCorrect: 1 },
+    ]);
+
+    await apply(
+      tx,
+      [
+        { id: 'q1', correct: false },
+        { id: 'q2', correct: true },
+        { id: 'q3', correct: true },
+      ],
+      NOW,
+    );
+
+    expect(createMany).toHaveBeenCalledTimes(1);
+    expect(createMany.mock.calls[0][0].data).toHaveLength(3);
+  });
+
+  it('채점 대상이 없으면 원장에 손대지 않는다', async () => {
+    const { tx, createMany } = makeTx([]);
+    await apply(tx, [], NOW);
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
+  it('P2002 경합 복구 경로에서도 기록이 빠지지 않고, 재조회한 상태 기준으로 적힌다', async () => {
+    // 이 트랜잭션이 읽었을 땐 기록이 없었지만(=fromStatus null로 계산), 경합 상대가 먼저
+    // 행을 만들어 X로 만들어 놨다. 원장에는 실제로 일어난 X→X가 적혀야 한다 —
+    // 처음 계산한 null→X를 적으면 복습 실패율의 분모·분자가 둘 다 어긋난다.
+    const conflict = new Prisma.PrismaClientKnownRequestError('unique', {
+      code: 'P2002',
+      clientVersion: 'test',
+    });
+    const { tx, update, createMany } = makeTx([], {
+      upsertImpl: () => Promise.reject(conflict),
+      refetched: { status: 'X', consecutiveCorrect: 0 },
+    });
+
+    await apply(tx, [{ id: 'q1', correct: false }], NOW);
+
+    // 복구 경로를 실제로 탔는지(= upsert 실패 후 update) 확인.
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(createMany.mock.calls[0][0].data).toEqual([
+      expect.objectContaining({ fromStatus: 'X', toStatus: 'X', correct: false }),
+    ]);
+  });
+
+  it('P2002 외의 오류는 삼키지 않고 그대로 던진다', async () => {
+    const { tx, createMany } = makeTx([], {
+      upsertImpl: () => Promise.reject(new Error('boom')),
+    });
+
+    await expect(apply(tx, [{ id: 'q1', correct: false }], NOW)).rejects.toThrow('boom');
+    expect(createMany).not.toHaveBeenCalled();
   });
 });

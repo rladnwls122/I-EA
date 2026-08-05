@@ -20,6 +20,7 @@ import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QueryQuestionDto } from './dto/query-question.dto';
 import { RegenerateChoicesDto } from './dto/regenerate-choices.dto';
+import { BatchUpdateQuestionsDto } from './dto/batch-update-question.dto';
 
 @ApiTags('questions')
 @ApiBearerAuth()
@@ -72,6 +73,19 @@ export class QuestionsController {
   @ApiOperation({ summary: '문제 직접 생성 (DRAFT 상태로 저장)' })
   create(@CurrentUser() user: CurrentUserPayload, @Body() dto: CreateQuestionDto) {
     return this.service.create(user.id, dto);
+  }
+
+  // ⚠️ `:id`(ParseUUIDPipe)보다 **위**에 있어야 한다 — 아래에 두면 'batch'가 UUID가 아니라며
+  // 400으로 튕긴다. Nest는 선언 순서대로 매칭한다.
+  @Patch('batch')
+  @ApiOperation({
+    summary: '문항 일괄 수정 (작성자 본인). 항목별 성공/실패를 돌려준다',
+    description:
+      '캔버스 저장이 문항 수만큼 PATCH를 쏘던 자리를 한 번으로 줄인다. ' +
+      '항목 하나가 실패해도 나머지는 저장되며, 실패 사유는 results[].error에 담긴다.',
+  })
+  updateBatch(@CurrentUser() user: CurrentUserPayload, @Body() dto: BatchUpdateQuestionsDto) {
+    return this.service.updateBatch(user.id, dto);
   }
 
   @Patch(':id')

@@ -1,13 +1,19 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Check, Loader2, Sparkles, X } from "lucide-react";
+import { ArrowUpRight, Check, CheckSquare, Loader2, Sparkles, Square, X } from "lucide-react";
 import { ReviewTutorPanel } from "@/components/tutor/ReviewTutorPanel";
 import { Badge } from "@/components/ui/badge";
 import { useSelfGrade } from "@/lib/hooks";
 import { isRichEmpty } from "@/lib/prosemirror";
 import { RichContent } from "@/components/editor/RichContent";
 import { sessionPassages } from "@/lib/session-passages";
+import {
+  formatPoints,
+  readRubricCriteria,
+  readRubricGrading,
+  sumRubricPoints,
+} from "@/lib/rubric";
 import type { SessionQuestionItem } from "@/lib/types";
 import { ReviewDueLabel, ReviewStateBadge } from "@/components/notes/ReviewStateBadge";
 
@@ -34,6 +40,17 @@ export function ResultQuestionCard({
     item.answer != null &&
     (item.answer.isCorrect === null || item.answer.isCorrect === undefined);
 
+  /* 채점기준표(#43 gap 8) — 있으면 "맞음/틀림" 두 버튼 대신 기준 체크리스트로 채점한다.
+     서술형은 부분점수로 채점되므로 정오 두 갈래로는 실제 점수를 표현할 수 없다.
+     형태가 깨진 값은 null이 되어 기존 두 버튼으로 되돌아간다(readRubricCriteria). */
+  const rubric = readRubricCriteria(item.snapshot.rubric);
+  // 이미 채점했다면 그때 체크한 기준과 점수. 새로고침해도 근거가 남아야 복기가 된다.
+  const savedGrading = readRubricGrading(item.answer?.annotations);
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const checkedSet = new Set(checkedIds);
+  const earnedPreview = rubric ? sumRubricPoints(rubric, checkedSet) : 0;
+  const totalPoints = rubric ? sumRubricPoints(rubric, rubric.map((c) => c.id)) : 0;
+
   const isCorrect = item.answer?.isCorrect;
   const borderColor =
     isCorrect === true
@@ -48,6 +65,17 @@ export function ResultQuestionCard({
       { onSuccess: () => onSelfGraded(item.sessionQuestionId, correct) },
     );
   };
+
+  /* 기준 체크 채점. 정오는 보내지 않는다 — 배점 합으로 서버가 정한다(근거는 하나여야 한다). */
+  const handleRubricGrade = () => {
+    selfGrade.mutate(
+      { sessionQuestionId: item.sessionQuestionId, checkedCriterionIds: checkedIds },
+      { onSuccess: (res) => onSelfGraded(item.sessionQuestionId, res.isCorrect) },
+    );
+  };
+
+  const toggleCriterion = (id: string) =>
+    setCheckedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   // 문항 정답률(조립 시점 스냅샷 기준) — 표본이 10명 미만이면 노이즈라 숨긴다.
   const { totalSolvedCount, correctSolvedCount } = item.snapshot;
@@ -143,7 +171,101 @@ export function ResultQuestionCard({
         </div>
       )}
 
-      {needsSelfGrade && (
+      {/* 채점기준표가 있는 문항: 기준 체크리스트로 부분점수를 매긴다. */}
+      {needsSelfGrade && rubric && (
+        <div className="mt-4 border-t border-border pt-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">
+              서술형 자기채점 — 충족한 채점기준을 체크하세요
+            </span>
+            <span className="font-mono text-xs font-medium tabular-nums text-foreground">
+              {formatPoints(earnedPreview)} / {formatPoints(totalPoints)}점
+            </span>
+          </div>
+          <ul className="space-y-1.5">
+            {rubric.map((c) => {
+              const on = checkedSet.has(c.id);
+              return (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => toggleCriterion(c.id)}
+                    aria-pressed={on}
+                    className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                      on
+                        ? "border-correct bg-correct/10 text-foreground"
+                        : "border-border text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    {on ? (
+                      <CheckSquare size={15} className="flex-none text-correct" />
+                    ) : (
+                      <Square size={15} className="flex-none" />
+                    )}
+                    <span className="flex-1">{c.text}</span>
+                    <span className="flex-none font-mono text-xs tabular-nums">
+                      {formatPoints(c.points)}점
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <button
+            type="button"
+            onClick={handleRubricGrade}
+            disabled={selfGrade.isPending}
+            className="mt-2.5 flex h-10 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-opacity duration-150 ease-swift hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
+          >
+            {selfGrade.isPending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+            채점 확정
+          </button>
+          {/* 아무것도 체크하지 않은 채로 확정할 수도 있다 — 0점도 유효한 채점 결과다. */}
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            체크한 기준의 배점 합이 이 문항의 점수가 돼요.
+          </p>
+        </div>
+      )}
+
+      {/* 이미 기준으로 채점한 문항: 무엇을 체크해 몇 점을 받았는지 그대로 남긴다(복기용). */}
+      {!needsSelfGrade && savedGrading && (
+        <div className="mt-4 border-t border-border pt-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">채점기준 결과</span>
+            <span className="font-mono text-xs font-medium tabular-nums text-foreground">
+              {formatPoints(savedGrading.earnedPoints)} / {formatPoints(savedGrading.totalPoints)}점
+            </span>
+          </div>
+          {rubric && (
+            <ul className="space-y-1">
+              {rubric.map((c) => {
+                const on = savedGrading.checkedIds.includes(c.id);
+                return (
+                  <li
+                    key={c.id}
+                    className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
+                      on ? "bg-correct/10 text-foreground" : "text-muted-foreground"
+                    }`}
+                  >
+                    {on ? (
+                      <CheckSquare size={13} className="flex-none text-correct" />
+                    ) : (
+                      <Square size={13} className="flex-none" />
+                    )}
+                    <span className="flex-1">{c.text}</span>
+                    <span className="flex-none font-mono tabular-nums">
+                      {formatPoints(c.points)}점
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* 채점기준표가 없는 문항: 기존 정오 2지선다 그대로. */}
+      {needsSelfGrade && !rubric && (
         <div className="mt-4 flex items-center gap-2 border-t border-border pt-3">
           <span className="text-xs text-muted-foreground">서술형 자기채점:</span>
           <button

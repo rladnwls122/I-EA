@@ -9,17 +9,36 @@ import { PrismaService } from '@/prisma/prisma.service';
 // Json 컬럼에 쓰는 구조화 객체는 이 별칭으로 국소 캐스팅한다(런타임 동작엔 영향 없음).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JsonWritable = any;
-import { buildRichBlocks, buildRichDoc, extractPlainText } from '@/common/prosemirror/prosemirror.util';
+import {
+  blankMarker,
+  buildRichBlocks,
+  buildRichDoc,
+  extractPlainText,
+  normalizeBlankMarkers,
+} from '@/common/prosemirror/prosemirror.util';
 import { QuestionKind } from '@/common/constants/question';
 import { KEYWORD_TAG_CATEGORY } from '@/common/constants/tag';
 import { GeminiLlmService } from './llm/gemini-llm.service';
-import { LlmGenerationContext, LlmQuestion } from './llm/llm.types';
+import { LlmGenerationContext, LlmGenerationResult, LlmQuestion, ReviewAxis } from './llm/llm.types';
 import { OutputLanguage, resolveOutputLanguage } from './exam-format';
 import { getTemplate, resolveTemplateFormat } from './format-templates';
 import { AI_GENERATION_QUEUE } from './ai-generation.constants';
 
 interface GenerationJobData {
   generationId: string;
+}
+
+/**
+ * questions.metadata에 남기는 자기검증 기록(#34 후속).
+ * 스키마 컬럼을 늘리지 않는다 — metadata는 이미 OX 스타일 표시가 쓰는 자리다.
+ * verdict='ERROR'는 "판정을 못 했다"는 뜻이다(통과와 구분해서 남긴다).
+ */
+interface ReviewNote {
+  model: string;
+  at: string;
+  verdict: 'PASS' | 'REVISE' | 'ERROR';
+  axes?: ReviewAxis[];
+  issues?: string[];
 }
 
 @Processor(AI_GENERATION_QUEUE)
@@ -89,6 +108,8 @@ export class AiGenerationProcessor extends WorkerHost {
         resolveOutputLanguage(generation.subject?.examType, generation.subject?.examCategory),
       // 복수정답 모드(#43 gap 4)와 템플릿 형식 지시 — 프롬프트 조립·검증 완화에 쓰인다.
       answerMode: format.answerMode,
+      // 지문 내장 빈칸(#43 gap 9) — 지문 평문의 `[[n]]` 마커 + 문항별 blankIndex 계약으로 바뀐다.
+      blanksInPassage: format.blanksInPassage,
       templateHints: format.promptHints,
       subjectName: generation.subject?.name,
       examCategory: generation.subject?.examCategory,
@@ -97,7 +118,12 @@ export class AiGenerationProcessor extends WorkerHost {
     };
 
     try {
-      const result = await this.llm.generate(ctx);
+      const generated = await this.llm.generate(ctx);
+      // 지문 내장 빈칸(gap 9): LLM 입력 문법 `[[n]]`을 저장·표시 정본 `___(n)___`으로 한 번만 정규화한다.
+      // 빈칸 모드가 아니면 결과 객체를 손대지 않는다 — 기존 전 경로의 출력은 바이트 단위로 동일하다.
+      const result = ctx.blanksInPassage ? this.normalizeBlanks(generated) : generated;
+      // LLM 자기검증(#34 후속) — 옵트인. 꺼져 있으면 호출도, 지연도, 비용도 종전 그대로다.
+      const reviews = await this.selfReview(ctx, result, generationId);
 
       await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // 다중지문 세트(gap 3): passages[]를 각각 Passage 행으로 만들고(스키마는 원래 1:N)
@@ -141,7 +167,7 @@ export class AiGenerationProcessor extends WorkerHost {
         // 이 생성 배치 안에서 같은 키워드가 여러 문항에 걸치면 한 번만 만들어 재사용한다.
         const tagIdByName = new Map<string, string>();
 
-        for (const q of result.questions) {
+        for (const [qIndex, q] of result.questions.entries()) {
           // 다중지문이면 문항별 근거 지문(passageIndex — 파서가 범위를 검증했다), 아니면 단일 지문.
           const passageId = multiPassageIds.length
             ? (multiPassageIds[q.passageIndex ?? 0] ?? null)
@@ -159,6 +185,15 @@ export class AiGenerationProcessor extends WorkerHost {
           // questionType 저장값(QUESTION_KINDS)은 그대로 두고 metadata에만 표시 —
           // 새 타입을 도입하지 않고도 에디터/문제은행이 OX 뱃지를 구분해 보여줄 수 있다.
           const isOxStyle = ctx.ox && kind === '객관식' && choices?.length === 2;
+          // metadata는 "스키마 컬럼을 늘리지 않고 문항에 붙이는 부가 정보"의 자리다(OX 뱃지가 선례).
+          // 빈칸 번호(gap 9)와 자기검증 판정(#34)도 여기 얹는다 — 둘 다 마이그레이션이 필요 없다.
+          // ⚠ 응시 스냅샷(exam_session_questions.snapshot)은 metadata를 싣지 않는다.
+          //    그래서 학습자에게 보이는 "몇 번 빈칸인가"는 metadata가 아니라 발문 속 마커가 나른다.
+          const metadata = {
+            ...(isOxStyle ? { style: 'OX' } : {}),
+            ...(ctx.blanksInPassage && q.blankIndex ? { blankIndex: q.blankIndex } : {}),
+            ...(reviews?.[qIndex] ? { review: reviews[qIndex] } : {}),
+          };
           await tx.question.create({
             data: {
               creatorId: generation.creatorId,
@@ -170,7 +205,7 @@ export class AiGenerationProcessor extends WorkerHost {
               // nullable Json은 값이 없으면 필드를 생략 → 컬럼 NULL로 저장
               ...(choices ? { choices: choices as JsonWritable } : {}),
               ...(correctAnswerText ? { correctAnswerText } : {}),
-              ...(isOxStyle ? { metadata: { style: 'OX' } as JsonWritable } : {}),
+              ...(Object.keys(metadata).length ? { metadata: metadata as JsonWritable } : {}),
               ...(q.explanationText
                 ? { explanation: buildRichBlocks(q.explanationText) as JsonWritable }
                 : {}),
@@ -203,6 +238,83 @@ export class AiGenerationProcessor extends WorkerHost {
         });
       }
       throw err;
+    }
+  }
+
+  // --- 지문 내장 빈칸(#43 gap 9) ----------------------------------------
+
+  /**
+   * 빈칸 마커를 정본 형태로 정규화한 결과 사본을 만든다.
+   *
+   * 발문에 자기 마커가 없으면 **앞에 붙여 준다**. 파서에서 막지 않는 이유:
+   * "몇 번 빈칸인지"는 blankIndex가 이미 확정했고, 발문에 표기가 빠진 건 우리가 조립으로
+   * 메울 수 있는 표기 문제라 배치 전체를 FAILED로 떨굴 사유가 아니다(어긋난 번호는 파서가 막는다).
+   * 이 표기가 곧 응시 화면에서 학습자가 보는 유일한 연결 고리다.
+   */
+  private normalizeBlanks(result: LlmGenerationResult): LlmGenerationResult {
+    return {
+      ...result,
+      ...(result.passage
+        ? {
+            passage: {
+              ...result.passage,
+              bodyText: normalizeBlankMarkers(result.passage.bodyText),
+            },
+          }
+        : {}),
+      questions: result.questions.map((q) => {
+        const stemText = normalizeBlankMarkers(q.stemText);
+        const marker = q.blankIndex ? blankMarker(q.blankIndex) : '';
+        return {
+          ...q,
+          stemText: marker && !stemText.includes(marker) ? `${marker} ${stemText}` : stemText,
+        };
+      }),
+    };
+  }
+
+  // --- LLM 자기검증(#34 후속) -------------------------------------------
+
+  /**
+   * 생성 결과를 2차 호출로 판정한다. **옵트인이 아니면 호출하지 않는다** — 이 기능이 유예됐던
+   * 이유가 "비용 배가"라, 꺼진 경로의 호출 횟수·지연·과금이 종전과 완전히 같아야 한다.
+   *
+   * 판정 결과로 **문항을 버리거나 재생성하지 않는다.** 재생성은 비용을 한 번 더 배가시키고,
+   * 조용히 버리는 건 이 저장소가 일관되게 피하는 실패 모드다(AuthoringCanvas의 검증 실패 표시,
+   * prosemirror.util의 "안전한 강등"과 같은 정신). 판정은 문항 metadata.review에 기록하고
+   * REVISE는 로그로 띄워, 어차피 DRAFT로 검수 대기 중인 문항에 근거를 붙여 준다.
+   *
+   * 반환값은 문항 인덱스와 정렬된 배열(꺼져 있으면 null).
+   */
+  private async selfReview(
+    ctx: LlmGenerationContext,
+    result: LlmGenerationResult,
+    generationId: string,
+  ): Promise<ReviewNote[] | null> {
+    if (!this.llm.isSelfReviewEnabled) return null;
+
+    const at = new Date().toISOString();
+    const model = this.llm.selfReviewModel;
+    try {
+      const { verdicts } = await this.llm.reviewGeneration(ctx, result);
+      const byIndex = new Map(verdicts.map((v) => [v.index, v]));
+      return result.questions.map((_, i) => {
+        const v = byIndex.get(i);
+        // 판정이 빠진 문항(파서가 막지만 방어) — "판정됐다"고 기록하지 않는다.
+        if (!v) return { model, at, verdict: 'ERROR' as const, issues: ['판정 결과에 이 문항이 없습니다.'] };
+        if (v.verdict === 'REVISE') {
+          this.logger.warn(
+            `자기검증 REVISE — 생성 ${generationId} ${i + 1}번 문항 [${v.axes.join(', ')}]: ${v.issues.join(' / ')}`,
+          );
+        }
+        return { model, at, verdict: v.verdict, axes: v.axes, issues: v.issues };
+      });
+    } catch (err) {
+      // 부가 판정이 본 생성을 깨뜨리면 안 된다 — 옵션을 켠 것만으로 배치가 FAILED가 된다.
+      // 대신 "판정을 못 했다"는 사실을 문항마다 남긴다(통과했다고 기록하지 않는다).
+      const reason = (err as Error).message;
+      this.logger.warn(`생성 작업 ${generationId} 자기검증 실패 — 문항은 그대로 저장합니다: ${reason}`);
+      return result.questions.map(() => ({ model, at, verdict: 'ERROR' as const, issues: [reason] }));
     }
   }
 

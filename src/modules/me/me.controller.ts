@@ -4,6 +4,7 @@ import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { QueryNotesDto } from './dto/query-notes.dto';
+import { QueryReviewQueueDto } from './dto/query-review-queue.dto';
 import { EquipCosmeticDto } from './dto/equip-cosmetic.dto';
 import { MeService } from './me.service';
 
@@ -30,6 +31,16 @@ export class MeController {
   @ApiOperation({ summary: '통합 오답노트 (시험·과목·세부과목 필터 + 원인별 집계 + 오답 문항 + 내 주석)' })
   notes(@CurrentUser() user: CurrentUserPayload, @Query() query: QueryNotesDto) {
     return this.service.notes(user.id, query);
+  }
+
+  @Get('review-queue')
+  @ApiOperation({
+    summary:
+      '복습 큐 — 지금 풀어야 할 문항 id를 급한 순으로. 프런트가 /me/notes 전량을 받아 ' +
+      '조립하던 것을 옮겼다(채점 이력 상한 500에 잘려 복습 문항이 누락되던 문제, #39 B-3).',
+  })
+  reviewQueue(@CurrentUser() user: CurrentUserPayload, @Query() query: QueryReviewQueueDto) {
+    return this.service.reviewQueue(user.id, query);
   }
 
   @Get('review-summary')

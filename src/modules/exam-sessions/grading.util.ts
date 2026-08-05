@@ -1,5 +1,6 @@
 import { PMNode } from '@/common/prosemirror/prosemirror.util';
 import { QuestionKind } from '@/common/constants/question';
+import { RubricCriterion } from '@/common/constants/rubric';
 
 /** 스냅샷에 실리는 지문 하나. */
 export interface SnapshotPassage {
@@ -31,6 +32,12 @@ export interface QuestionSnapshot {
   explanation?: unknown;
   // 주관식 정답(단답 자동채점용). 없으면 서술형 → 자기채점 대상.
   correctAnswerText?: string | null;
+  /**
+   * 서술형 채점기준표(#43 gap 8). 있으면 자기채점이 정오 2지선다 대신 기준별 부분점수로 바뀐다.
+   * 스냅샷에 실어야 하는 이유는 다른 필드와 같다 — 세션 시작 뒤 출제자가 기준을 고쳐도
+   * 이미 응시한 사람의 채점 근거는 그대로여야 한다. 구세션 스냅샷엔 없다(undefined).
+   */
+  rubric?: RubricCriterion[] | null;
   points: number;
   difficulty: number;
   // 조립 시점의 풀이 통계 — 결과 화면 정답률 배지용(선택). 스냅샷 원칙대로 이후 변동과 무관.
@@ -55,12 +62,15 @@ export interface AnswerPayload {
   answerText?: string;
 }
 
-/** 응시자용으로 정답 정보를 제거한 스냅샷(선지 isCorrect·주관식 정답·해설 마스킹). */
+/** 응시자용으로 정답 정보를 제거한 스냅샷(선지 isCorrect·주관식 정답·채점기준·해설 마스킹). */
 export function maskSnapshot(snapshot: QuestionSnapshot): QuestionSnapshot {
   return {
     ...snapshot,
     choices: snapshot.choices?.map(({ id, content }) => ({ id, content })),
     correctAnswerText: undefined,
+    // 채점기준표는 모범답안을 항목별로 쪼개 놓은 것이라 사실상 정답이다.
+    // 응시 중에 보이면 그대로 베껴 쓰면 된다 — 해설과 같은 등급으로 가린다.
+    rubric: undefined,
     explanation: undefined, // 진행 중에는 해설도 숨긴다
   };
 }

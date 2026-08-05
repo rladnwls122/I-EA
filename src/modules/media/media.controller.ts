@@ -13,6 +13,8 @@ import { IsOptional, IsUUID } from 'class-validator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
 import { MediaService } from './media.service';
+import { MEDIA_BATCH_MAX } from './media.constants';
+import { BatchCreateMediaDto } from './dto/batch-create-media.dto';
 import { CreateMediaDto } from './dto/create-media.dto';
 import { PresignMediaDto } from './dto/presign-media.dto';
 
@@ -52,9 +54,24 @@ export class MediaController {
   }
 
   @Post()
-  @ApiOperation({ summary: '미디어 자원 등록 (지문 XOR 문제 배타 매핑)' })
+  @ApiOperation({
+    summary: '미디어 자원 등록 (지문 XOR 문제 배타 매핑)',
+    description:
+      '같은 URL을 같은 대상에 다시 등록하면 새 행을 만들지 않고 기존 행을 돌려준다(멱등).',
+  })
   create(@CurrentUser() user: CurrentUserPayload, @Body() dto: CreateMediaDto) {
     return this.service.create(user.id, dto);
+  }
+
+  @Post('batch')
+  @ApiOperation({
+    summary: '미디어 자원 일괄 등록',
+    description:
+      `한 번에 최대 ${MEDIA_BATCH_MAX}건. 결과는 **항목별**(index·status·mediaId·error)로 돌아오며, ` +
+      '항목 하나가 실패해도 나머지는 등록된다. 등록은 단건과 같이 멱등이다.',
+  })
+  createBatch(@CurrentUser() user: CurrentUserPayload, @Body() dto: BatchCreateMediaDto) {
+    return this.service.createBatch(user.id, dto);
   }
 
   @Delete(':id')

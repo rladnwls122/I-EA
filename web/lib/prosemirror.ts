@@ -123,7 +123,15 @@ function mathPlainText(node: any): string | null {
  */
 function visitTextNodes(
   doc: any,
-  visitor: { text: (t: string) => void; blockGap: () => void },
+  visitor: {
+    /**
+     * `latex`가 함께 오면 이 조각은 수식 노드에서 나온 것이다. 평문 값(`$latex$`)은
+     * 그대로 오프셋을 차지하고, 원본 latex는 **화면이 KaTeX로 그릴 수 있게** 곁들인다.
+     * 이 값이 없으면 오답노트 상세는 수식을 `$x^2$` 원문으로 보여줄 수밖에 없다.
+     */
+    text: (t: string, latex?: string) => void;
+    blockGap: () => void;
+  },
 ): void {
   // choices[].content·explanation은 doc 래퍼 없는 블록 배열(buildRichBlocks)로 저장된다.
   // 배열이 들어오면 doc.content처럼 취급해 순회한다 — 안 그러면 선지/해설이 빈 문자열로
@@ -158,7 +166,7 @@ function visitTextNodes(
       const isTextLeaf = typeof node.text === 'string' || node.type === 'inlineMath';
       if (i > 0 && !isTextLeaf) visitor.blockGap();
       if (math !== null) {
-        if (math) visitor.text(math);
+        if (math) visitor.text(math, node.attrs?.latex);
         return;
       }
       if (isTextLeaf) {
@@ -195,6 +203,8 @@ export interface TextSegment {
   start: number;
   end: number;
   blockIndex: number;
+  /** 수식 노드에서 나온 조각이면 원본 latex. 화면이 KaTeX로 그릴 때 쓴다. */
+  latex?: string;
 }
 
 /**
@@ -206,8 +216,14 @@ export function walkTextSegments(doc: any): TextSegment[] {
   let offset = 0;
   let blockIndex = 0;
   visitTextNodes(doc, {
-    text: (t) => {
-      segments.push({ text: t, start: offset, end: offset + t.length, blockIndex });
+    text: (t, latex) => {
+      segments.push({
+        text: t,
+        start: offset,
+        end: offset + t.length,
+        blockIndex,
+        ...(latex ? { latex } : {}),
+      });
       offset += t.length;
     },
     blockGap: () => {

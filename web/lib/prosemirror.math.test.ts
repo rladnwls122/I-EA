@@ -120,7 +120,8 @@ describe('오프셋 정합 — extractPlainText ↔ walkTextSegments', () => {
     const segs = walkTextSegments(doc([para(text('앞'), inlineMath('x^2'), text('뒤'))]));
     expect(segs).toEqual([
       { text: '앞', start: 0, end: 1, blockIndex: 0 },
-      { text: '$x^2$', start: 1, end: 6, blockIndex: 0 },
+      // latex를 곁들여도 평문 오프셋은 `$x^2$` 길이 그대로다(화면 KaTeX 렌더용 메타데이터).
+      { text: '$x^2$', start: 1, end: 6, blockIndex: 0, latex: 'x^2' },
       { text: '뒤', start: 6, end: 7, blockIndex: 0 },
     ]);
   });
@@ -144,5 +145,28 @@ describe('isRichEmpty — 수식만 있는 문서는 비어 있지 않다', () =
 
   it('진짜 빈 문서는 여전히 비어 있다', () => {
     expect(isRichEmpty(doc([para()]))).toBe(true);
+  });
+});
+
+describe('walkTextSegments — 수식 조각의 latex 동반', () => {
+  it('수식 조각은 원본 latex를 함께 들고 온다 — 화면이 KaTeX로 그릴 수 있어야 한다', () => {
+    const seg = walkTextSegments(buildRichDoc('값은 $x^2$ 이다')).find((s) => s.latex);
+    expect(seg).toBeDefined();
+    expect(seg!.latex).toBe('x^2');
+    // 평문에서 차지하는 자리는 `$latex$` 그대로여야 오프셋이 어긋나지 않는다.
+    expect(seg!.text).toBe('$x^2$');
+  });
+
+  it('일반 텍스트 조각에는 latex가 없다', () => {
+    const segs = walkTextSegments(buildRichDoc('수식 없는 문장'));
+    expect(segs.every((s) => s.latex === undefined)).toBe(true);
+  });
+
+  it('latex를 곁들여도 오프셋은 그대로다 — 주석 앵커의 전제', () => {
+    const doc = buildRichDoc('앞 $a+b$ 뒤');
+    const plain = extractPlainText(doc);
+    for (const s of walkTextSegments(doc)) {
+      expect(plain.slice(s.start, s.end)).toBe(s.text);
+    }
   });
 });

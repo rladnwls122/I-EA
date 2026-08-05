@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useMyNotes, useSubjects } from "@/lib/hooks";
 import { WeaknessCard } from "./WeaknessCard";
+import { RubricScoreCard } from "./RubricScoreCard";
 import { useNotesFilterStore } from "@/lib/notes-filter-store";
 import { extractPlainText } from "@/lib/prosemirror";
 import type { ReasonStat } from "@/lib/types";
@@ -180,6 +181,10 @@ export function NotesDashboard() {
           {/* 약점 진단(#37) — 진단 규칙은 서버가 계산해 내려준다(weakness.util).
               subjectId가 있어야 "공략 세트" 조립이 가능해 필터의 과목을 그대로 넘긴다. */}
           <WeaknessCard report={data?.summary.weakness} subjectId={applied.subjectId} />
+
+          {/* 서술형 득점률(#43 gap 8 후속) — 정오로 접히기 전의 부분점수.
+              판정 불가(표본 부족·서술형 채점 이력 없음)면 서버가 null을 내리고 카드는 사라진다. */}
+          <RubricScoreCard score={data?.summary.rubricScore} />
 
           {/* 원인 분석 — 도넛 + 원인별 랭킹 */}
           <section className="mb-6 rounded-xl border border-border bg-card p-6">

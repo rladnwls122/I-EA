@@ -38,6 +38,11 @@ jobs:
         run: npx eslint "src/**/*.ts"
       - name: Typecheck
         run: npx tsc --noEmit -p tsconfig.json
+
+      # scripts/는 루트 tsconfig(rootDir: src)의 검사 범위 밖이라 따로 본다 —
+      # 안 보면 토큰을 쓰는 수동 스크립트가 실행할 때만 깨진 걸 알게 된다.
+      - name: Typecheck (scripts)
+        run: npx tsc --noEmit -p tsconfig.scripts.json
       - name: Test
         run: npx jest --ci
         env:

@@ -19,6 +19,7 @@ import {
   fetchAnnotations,
   fetchMyNotes,
   fetchReviewSummary,
+  fetchReviewQueue,
   fetchMyExamSessions,
   createQuestion,
   updateQuestion,
@@ -52,6 +53,7 @@ import {
 import type {
   Subject,
   QuestionStatus,
+  SelfGradeInput,
   SubmitAnswerInput,
 } from './types';
 
@@ -353,6 +355,26 @@ export function useMyNotes(
 }
 
 /** 복습 요약(due 배지용) — 마운트 시 1회 조회, 폴링 없음. 비로그인이면 enabled=false로 게이트. */
+/**
+ * 복습 큐. 필터·마스터 토글이 바뀌면 다시 받는다 — 조립이 서버로 갔으므로
+ * 화면은 결과만 쓴다(예전엔 /me/notes 전량을 받아 useMemo로 조립했다).
+ */
+export function useReviewQueue(
+  params?: {
+    examType?: string;
+    examCategory?: string;
+    subjectId?: string;
+    includeMastered?: boolean;
+  },
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['review-queue', params ?? null],
+    queryFn: () => fetchReviewQueue(params),
+    enabled,
+  });
+}
+
 export function useReviewSummary(enabled = true) {
   return useQuery({
     queryKey: ['review-summary'],
@@ -514,11 +536,9 @@ export function useSelfGrade() {
   return useMutation({
     mutationFn: ({
       sessionQuestionId,
-      isCorrect,
-    }: {
-      sessionQuestionId: string;
-      isCorrect: boolean;
-    }) => selfGradeSessionQuestion(sessionQuestionId, isCorrect),
+      ...input
+    }: { sessionQuestionId: string } & SelfGradeInput) =>
+      selfGradeSessionQuestion(sessionQuestionId, input as SelfGradeInput),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me'] });
       queryClient.invalidateQueries({ queryKey: ['milestones'] });

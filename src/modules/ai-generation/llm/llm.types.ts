@@ -32,6 +32,11 @@ export interface LlmQuestion {
    * 단일 지문/무지문 모드에서는 쓰지 않는다.
    */
   passageIndex?: number;
+  /**
+   * 지문 내장 빈칸 모드(#43 gap 9 — 토익 Part 6) 전용 — 이 문항이 맡은 지문 속 빈칸 번호(1부터).
+   * 지문 평문의 `[[n]]` 마커와 일대일로 대응하며, 파서가 대응 관계를 검증한다.
+   */
+  blankIndex?: number;
   difficulty: number;
 }
 
@@ -47,6 +52,30 @@ export interface LlmGenerationResult {
    */
   passages?: string[];
   questions: LlmQuestion[];
+}
+
+/**
+ * LLM 자기검증(#34 후속) — 생성 결과를 2차 호출로 다시 판정한 결과 한 건.
+ *
+ * 판정은 결정 3의 5개 축 중 **코드가 못 잡는 4축**만 본다(형식 규격은 파서가 이미 검증).
+ * 축을 문자열로 두지 않고 열거 값으로 고정해, 프롬프트가 흔들려도 기록이 통계로 모인다.
+ */
+export const REVIEW_AXES = ['발문형식', '오답매력도', '난이도일관성', '지문문항정합'] as const;
+export type ReviewAxis = (typeof REVIEW_AXES)[number];
+
+export interface LlmReviewVerdict {
+  /** 판정 대상 문항의 인덱스(questions 배열 순서, 0부터). */
+  index: number;
+  /** PASS = 시험에 낼 수 있다 / REVISE = 손봐야 한다. 어느 쪽이든 **버리지 않고 기록**한다. */
+  verdict: 'PASS' | 'REVISE';
+  /** 지적된 축(REVISE일 때 최소 1개). */
+  axes: ReviewAxis[];
+  /** 사람이 읽을 지적 사항. 검수 화면·로그에 그대로 실린다. */
+  issues: string[];
+}
+
+export interface LlmReviewResult {
+  verdicts: LlmReviewVerdict[];
 }
 
 /**
@@ -127,6 +156,12 @@ export interface LlmGenerationContext {
    * 발문 패턴·소재·선지 관행이 담기며, 프롬프트에서 examFormatHints 뒤에 그대로 실린다.
    */
   templateHints?: string[];
+  /**
+   * 지문 내장 빈칸 모드(#43 gap 9). true면 지문 평문에 `[[1]]`…`[[N]]` 마커를 넣고
+   * 문항마다 blankIndex로 자기 빈칸을 가리키게 한다(N = questionCount, 문항:빈칸 = 1:1).
+   * 생략/false면 종전 계약 그대로 — 마커는 등장하지 않는다.
+   */
+  blanksInPassage?: boolean;
   /**
    * 이미 존재하는 #키워드 풀(태그명). LLM이 새 키워드를 남발하지 않고 가능한 한
    * 이 목록에서 골라 쓰게 해, 오답노트 개념별 통계가 흩어지지 않고 모이게 한다.

@@ -24,6 +24,7 @@ import {
   ReorderQuestionsDto,
   UpdateWorkbookDto,
 } from './dto/workbook.dto';
+import { BatchAddQuestionsDto } from './dto/batch-add-questions.dto';
 
 /**
  * 문제집 — 탐색 / Pick & Mix / 포킹.
@@ -103,6 +104,22 @@ export class WorkbooksController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.service.addQuestion(id, dto, user.id);
+  }
+
+  @Post(':id/questions/batch')
+  @ApiOperation({
+    summary: '문항 일괄 생성+발행+담기. items 순서가 곧 문제집 순서다',
+    description:
+      '단건 경로가 문항 하나당 세 번(생성·발행·담기) 나가던 자리를 한 번으로 줄인다. ' +
+      '트랜잭션은 항목별이라 하나가 실패해도 나머지는 저장되고, 실패한 항목은 문항 행까지 ' +
+      '롤백돼 어느 문제집에도 안 담긴 유령 문항을 남기지 않는다.',
+  })
+  addQuestionsBatch(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: BatchAddQuestionsDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.service.addQuestionsBatch(id, dto, user.id);
   }
 
   @Delete(':id/questions/:questionId')

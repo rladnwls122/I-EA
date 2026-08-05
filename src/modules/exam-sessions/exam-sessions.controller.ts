@@ -36,13 +36,15 @@ export class ExamSessionsController {
   }
 
   @Put('questions/:sessionQuestionId/self-grade')
-  @ApiOperation({ summary: '서술형 자기채점 (제출된 세션의 서술형 문항 정오 확정)' })
+  @ApiOperation({
+    summary: '서술형 자기채점 (정오 확정 — 채점기준표가 있으면 기준별 부분점수)',
+  })
   selfGrade(
     @Param('sessionQuestionId', ParseUUIDPipe) sessionQuestionId: string,
     @CurrentUser() user: CurrentUserPayload,
     @Body() dto: SelfGradeDto,
   ) {
-    return this.service.selfGrade(sessionQuestionId, user.id, dto.isCorrect);
+    return this.service.selfGrade(sessionQuestionId, user.id, dto);
   }
 
   @Post(':id/submit')

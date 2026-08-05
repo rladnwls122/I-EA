@@ -15,11 +15,11 @@ function makeTx(over: any = {}) {
 }
 
 describe('WorkbooksService.awardPublishReward', () => {
-  // 생성자가 (PrismaService, ExamSessionsService) 2개 인자를 받는다 — 둘 다 mock 주입.
+  // 생성자가 (PrismaService, ExamSessionsService, QuestionsService) 3개를 받는다 — 전부 mock 주입.
   it('캡 미달이면 코인+EXP 지급 + authorRewardCount 갱신', async () => {
     const tx = makeTx();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const svc = new WorkbooksService({} as any, {} as any);
+    const svc = new WorkbooksService({} as any, {} as any, {} as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const r = await (svc as any).awardPublishReward(tx, 'author1', 'wb1', new Date('2026-07-13T00:00:00'));
     expect(tx.user.update).toHaveBeenCalled();
@@ -37,7 +37,7 @@ describe('WorkbooksService.awardPublishReward', () => {
       },
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const svc = new WorkbooksService({} as any, {} as any);
+    const svc = new WorkbooksService({} as any, {} as any, {} as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const r = await (svc as any).awardPublishReward(tx, 'author1', 'wb1', new Date('2026-07-13T00:00:00'));
     expect(r.rewarded).toBe(false);
@@ -84,7 +84,7 @@ describe('WorkbooksService.update() — becomingPublic 발행 보상 조기 중�
       $transaction: jest.fn((cb: any) => cb(tx)),
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const svc = new WorkbooksService(prisma as any, {} as any);
+    const svc = new WorkbooksService(prisma as any, {} as any, {} as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await svc.update('wb1', { visibility: 'PUBLIC' } as any, 'owner1');
 

@@ -17,18 +17,22 @@ import type {
   AiGenerationCreated,
   CreateAiGenerationInput,
   QuestionStats,
+  QuestionBatchResponse,
+  MediaBatchResponse,
   QuestionComment,
   UserQuestionAnnotation,
   AuthResponse,
   MeProfile,
   MyNotesResponse,
   ReviewSummaryResponse,
+  ReviewQueueResponse,
   MyExamSession,
   PaginatedResponse,
   SessionDetail,
   SubmitAnswerInput,
   SubmitAnswerResult,
   SubmitSessionResult,
+  SelfGradeInput,
   SelfGradeResult,
   QuestionReview,
   ReviewsResponse,
@@ -273,6 +277,50 @@ export function publishQuestion(id: string) {
   });
 }
 
+/**
+ * 선택지 재생성 (AI) — 동기 호출. 정답 1개를 포함한 선지 **전체 집합**을 새로 받는다.
+ *
+ * 저장하지 않는다(`persisted: false`) — 반환값은 후보고, 캔버스가 사용자에게 보여준 뒤
+ * 저장 시점에 함께 나간다. `:id`가 필요해 **이미 저장된 문항에서만** 부를 수 있다:
+ * 서버가 소유권과 과목·난이도를 그 행에서 읽기 때문이다.
+ */
+export function regenerateChoices(
+  id: string,
+  data: { stemText: string; choiceCount: number; difficulty?: number },
+) {
+  return apiFetch<{
+    choices: { content: string; isCorrect: boolean; explanation?: string }[];
+    persisted: boolean;
+  }>(`/questions/${id}/choices/regenerate`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * 한 배치 요청에 실을 수 있는 문항 수 상한.
+ *
+ * ⚠️ 백엔드 `QUESTION_BATCH_MAX`의 **사본**이다. 값이 갈라지면 조용하지 않다 —
+ * 여기가 더 크면 저장이 통째로 400을 맞고, 더 작으면 왕복이 필요 이상으로 늘어난다.
+ * `src/common/constants/question.batch.web-mirror.spec.ts`가 두 파일을 대조한다.
+ */
+export const QUESTION_BATCH_MAX = 50;
+
+/**
+ * 문항 일괄 갱신 — 문항 수만큼 PATCH를 쏘던 자리를 한 번으로 줄인다 (#41 Phase 3 마감).
+ *
+ * 항목별 결과가 돌아온다. 하나가 실패해도 나머지는 저장되므로, 호출부는
+ * `results[].status`를 항목마다 봐야 한다(전체 성공 여부로 뭉개면 안 된다).
+ */
+export function updateQuestionsBatch(
+  items: ({ id: string } & Record<string, unknown>)[],
+) {
+  return apiFetch<QuestionBatchResponse>('/questions/batch', {
+    method: 'PATCH',
+    body: JSON.stringify({ items }),
+  });
+}
+
 /** 문제 통계 조회 */
 export function fetchQuestionStats(id: string) {
   return apiFetch<QuestionStats>(`/questions/${id}/stats`);
@@ -385,6 +433,26 @@ export function addQuestionToWorkbook(
   );
 }
 
+/**
+ * 문항을 한 번에 만들어 발행하고 문제집에 담는다 (#41 Phase 3 마감).
+ *
+ * 단건 경로는 문항 하나당 세 번(생성·발행·담기) 나갔다 — 20문항 첫 저장이면 60회다.
+ * **items 순서가 곧 문제집 순서다**(서버가 그 순서로 displayOrder를 매긴다).
+ * 항목별 결과가 돌아오고, 실패한 항목은 문항 행까지 롤백돼 유령 문항을 남기지 않는다.
+ */
+export function addQuestionsToWorkbookBatch(
+  workbookId: string,
+  items: Record<string, unknown>[],
+) {
+  return apiFetch<QuestionBatchResponse>(
+    `/workbooks/${workbookId}/questions/batch`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    },
+  );
+}
+
 /** 문제집에서 문제 제거 */
 export function removeQuestionFromWorkbook(
   workbookId: string,
@@ -398,15 +466,21 @@ export function removeQuestionFromWorkbook(
   );
 }
 
-/** 문제집 문제 순서 변경 */
+/**
+ * 문제집 문제 순서 변경 — 전체 순서를 통째로 보낸다(서버가 빠짐없는 집합을 요구한다).
+ *
+ * 메서드·경로가 서버와 어긋나 있었다(`PATCH .../questions/reorder` vs 실제
+ * `PUT .../questions/order`). 캔버스 저장은 이 실패를 삼키고 "순서를 저장하지 못했어요"
+ * 토스트만 띄우게 돼 있어서, 드래그로 바꾼 순서가 조용히 반영되지 않고 있었다.
+ */
 export function reorderWorkbookQuestions(
   workbookId: string,
   questionIds: string[],
 ) {
   return apiFetch<void>(
-    `/workbooks/${workbookId}/questions/reorder`,
+    `/workbooks/${workbookId}/questions/order`,
     {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify({ questionIds }),
     },
   );
@@ -481,6 +555,37 @@ export function registerMediaAsset(data: {
   return apiFetch<{ id: string; storageUrl: string }>('/media-assets', {
     method: 'POST',
     body: JSON.stringify({ assetType: 'IMAGE', ...data }),
+  });
+}
+
+/**
+ * 한 배치 요청에 실을 수 있는 미디어 등록 건수 상한.
+ *
+ * ⚠️ 백엔드 `MEDIA_BATCH_MAX`의 **사본**이다(문항 상한과 같은 관행 —
+ * `src/modules/media/media.batch.web-mirror.spec.ts`가 두 파일을 대조한다).
+ */
+export const MEDIA_BATCH_MAX = 100;
+
+/**
+ * 3단계 일괄 — 이미지 등록을 한 번에 (#33 도그푸딩 잔여 3).
+ *
+ * 문항 저장이 배치가 된 뒤 남은 왕복의 대부분이 이미지 등록이었다: 그림 20장이면
+ * `POST /media-assets`가 20번 나갔다. 결과는 **항목별**이라 하나가 실패해도 나머지는
+ * 등록되고, 등록은 멱등이라 같은 그림을 다시 보내도 행이 늘지 않는다.
+ */
+export function registerMediaAssetsBatch(
+  items: {
+    storageUrl: string;
+    assetType?: 'IMAGE';
+    questionId?: string;
+    passageId?: string;
+    widthPx?: number;
+    heightPx?: number;
+  }[],
+) {
+  return apiFetch<MediaBatchResponse>('/media-assets/batch', {
+    method: 'POST',
+    body: JSON.stringify({ items: items.map((i) => ({ assetType: 'IMAGE', ...i })) }),
   });
 }
 
@@ -616,6 +721,30 @@ export function fetchMyNotes(params?: {
   );
 }
 
+/**
+ * 복습 큐 — 지금 풀어야 할 문항 id를 급한 순으로.
+ *
+ * 예전엔 화면이 `/me/notes` 전량을 받아 직접 조립했는데, 그 응답은 채점 이력 상한(500)에
+ * 잘려서 오래 푼 사용자일수록 복습 문항이 조용히 빠졌다. 서버가 복습 상태를 직접 읽는다.
+ */
+export function fetchReviewQueue(params?: {
+  examType?: string;
+  examCategory?: string;
+  subjectId?: string;
+  includeMastered?: boolean;
+  limit?: number;
+}) {
+  const query = new URLSearchParams();
+  if (params?.examType) query.set('examType', params.examType);
+  if (params?.examCategory) query.set('examCategory', params.examCategory);
+  if (params?.subjectId) query.set('subjectId', params.subjectId);
+  if (params?.includeMastered) query.set('includeMastered', 'true');
+  if (params?.limit) query.set('limit', String(params.limit));
+
+  const qs = query.toString();
+  return apiFetch<ReviewQueueResponse>(`/me/review-queue${qs ? `?${qs}` : ''}`);
+}
+
 /** 복습 요약 — due 배지용 경량 카운트 (전량 로드 없음) */
 export function fetchReviewSummary() {
   return apiFetch<ReviewSummaryResponse>('/me/review-summary');
@@ -672,16 +801,20 @@ export function submitSession(id: string) {
   });
 }
 
-/** 서술형 자기채점 확정(SUBMITTED 세션에서만 호출 가능) */
+/**
+ * 서술형 자기채점 확정(SUBMITTED 세션에서만 호출 가능).
+ * 채점기준표가 있는 문항은 `{ checkedCriterionIds }`로, 없으면 `{ isCorrect }`로 보낸다 —
+ * 서버가 둘을 함께 받으면 400이다(점수의 근거가 하나여야 한다).
+ */
 export function selfGradeSessionQuestion(
   sessionQuestionId: string,
-  isCorrect: boolean,
+  input: SelfGradeInput,
 ) {
   return apiFetch<SelfGradeResult>(
     `/exam-sessions/questions/${sessionQuestionId}/self-grade`,
     {
       method: 'PUT',
-      body: JSON.stringify({ isCorrect }),
+      body: JSON.stringify(input),
     },
   );
 }

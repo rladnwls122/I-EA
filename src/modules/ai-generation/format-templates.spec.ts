@@ -70,6 +70,8 @@ describe('format-templates', () => {
         passageLabels: [],
         questionType: undefined,
         answerMode: 'single',
+        // 지문 내장 빈칸(#43 gap 9)은 템플릿이 켜야만 켜진다 — 기본은 항상 꺼짐.
+        blanksInPassage: false,
         promptHints: [],
       });
     });
@@ -163,6 +165,29 @@ describe('format-templates', () => {
     it('다중지문 세트의 권장 문항 수 힌트는 세트 전체 기준으로 문구가 바뀐다', () => {
       const r = resolveTemplateFormat(getTemplate('toeic-part7-double'), {});
       expect(r.promptHints.join(' ')).toContain('지문 2개 세트 전체에 문항 5개');
+    });
+
+    // 지문 내장 빈칸(#43 gap 9 — 토익 Part 6)
+    it('toeic-part6은 지문 1개 위의 빈칸형으로 해석된다(4지·영어·객관식)', () => {
+      const r = resolveTemplateFormat(getTemplate('toeic-part6'), {});
+      expect(r.blanksInPassage).toBe(true);
+      expect(r.passageCount).toBe(1);
+      expect(r.choiceCount).toBe(4);
+      expect(r.language).toBe('en');
+      expect(r.questionType).toBe('객관식');
+    });
+
+    it('지문을 끄면 빈칸 모드도 함께 꺼진다 — 빈칸은 지문 안에만 존재한다', () => {
+      const r = resolveTemplateFormat(getTemplate('toeic-part6'), { includePassage: false });
+      expect(r.blanksInPassage).toBe(false);
+      expect(r.passageCount).toBe(0);
+    });
+
+    it('빈칸형이 아닌 템플릿은 blanksInPassage가 꺼져 있다', () => {
+      expect(resolveTemplateFormat(getTemplate('toeic-part7-single'), {}).blanksInPassage).toBe(
+        false,
+      );
+      expect(resolveTemplateFormat(getTemplate('toeic-part5'), {}).blanksInPassage).toBe(false);
     });
   });
 });

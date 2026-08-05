@@ -10,6 +10,8 @@ import {
   type ParsedQuestion,
 } from "@/lib/authoring-chat";
 import type { CanvasCard, AiSettings } from "./AuthoringCanvas";
+import type { SelfReviewNote } from "@/lib/types";
+import { SelfReviewChip } from "./SelfReviewChip";
 import { toast } from "sonner";
 
 interface Msg {
@@ -17,6 +19,12 @@ interface Msg {
   text: string;
   questions?: ParsedQuestion[];
   appliedKeys?: Set<string>; // 이미 적용한 제안 인덱스(멱등)
+  /**
+   * AI 자기검증 판정 — 제안 인덱스별(#34, #33 잔여 1). 문항이 뜬 **뒤에** 도착한다.
+   * `undefined`는 "아직 기다리는 중", `null`은 "판정이 없다"(검증 꺼짐·판정 실패)로
+   * 뚜렷이 구분한다 — 뭉개면 배지가 영원히 스피너로 남거나, 판정 못 한 문항이 통과로 보인다.
+   */
+  reviews?: Record<number, SelfReviewNote> | null;
 }
 
 /** 설정 패널의 유형 칩 — null은 "자동"(AI가 알아서). */
@@ -68,7 +76,11 @@ export function AuthoringChatPanel({
    * 지문세트(예: (가)(나) 주제통합)를 하나로 묶는 데만 쓴다 — 응답이 다르면
    * 지문 평문이 우연히 같아도 남남이다.
    */
-  onApplyQuestion: (q: ParsedQuestion, originKey: string) => string | null;
+  onApplyQuestion: (
+    q: ParsedQuestion,
+    originKey: string,
+    review?: SelfReviewNote,
+  ) => string | null;
   /** 카드 ✨AI 버튼이 넣어주는 입력창 프리필(예: "문제 2 수정: "). */
   prefill?: string | null;
   onPrefillConsumed?: () => void;
@@ -140,10 +152,18 @@ export function AuthoringChatPanel({
       return;
     }
     setInput("");
+    /**
+     * 이 턴의 응답이 앉을 자리. ref와 **따로** 들고 있는 이유: 자기검증 판정은 본문(done)
+     * 뒤에 도착하는데, done 시점에 입력창이 이미 풀리므로 그 사이 사용자가 다음 질문을
+     * 보낼 수 있다. 그러면 ref는 새 턴을 가리키고, 늦게 온 판정이 **엉뚱한 메시지**에
+     * 붙는다. 자기 자리를 알고 있어야 한다.
+     */
+    let myIdx = -1;
     setMessages((p) => {
       // 플레이스홀더 인덱스 고정 — updater 안에서 계산해야 직전 append와 어긋나지 않는다.
       // (StrictMode 이중 실행에도 같은 p로 같은 값이 들어가므로 안전.)
       streamIdxRef.current = p.length + 1;
+      myIdx = p.length + 1;
       return [...p, { role: "user", text: msg }, { role: "ai", text: "" }];
     });
     setStreaming(true);
@@ -155,14 +175,14 @@ export function AuthoringChatPanel({
       const explanation = extractPlainText(c.explanation).trim();
       const answer =
         c.type === "객관식"
-          ? c.choices[c.correct]?.text.trim() || undefined
+          ? extractPlainText(c.choices[c.correct]?.content).trim() || undefined
           : c.answerText.trim() || undefined;
       return {
         index: i + 1,
         questionType: c.type,
         stem: extractPlainText(c.stem).slice(0, 4000),
         ...(c.type === "객관식" && c.choices.length
-          ? { choices: c.choices.map((ch) => ch.text) }
+          ? { choices: c.choices.map((ch) => extractPlainText(ch.content)) }
           : {}),
         ...(answer ? { answer: answer.slice(0, 2000) } : {}),
         ...(explanation ? { explanation: explanation.slice(0, 4000) } : {}),
@@ -216,8 +236,34 @@ export function AuthoringChatPanel({
             text,
             questions: questions.length ? questions : undefined,
             appliedKeys: new Set(),
+            // 문항이 있으면 판정이 뒤따라온다 — undefined로 두어 "검수 중"을 띄운다.
+            // 문항이 없는 턴은 애초에 판정 대상이 아니므로 기다리지 않는다.
+            reviews: questions.length ? undefined : null,
           });
           setStreaming(false);
+        },
+        onReview: (payload) => {
+          // 판정은 본문(done) 뒤에 도착하므로 **이 턴의 자리**(myIdx)에 붙인다.
+          // verdict의 index는 파싱된 문항 배열의 자리 — 서버도 같은 파서로 같은 배열을
+          // 만들기 때문에 제안 카드와 그대로 대응한다.
+          const byIndex: Record<number, SelfReviewNote> = {};
+          if (payload) {
+            for (const v of payload.verdicts) {
+              byIndex[v.index] = {
+                model: payload.model,
+                at: payload.at,
+                verdict: v.verdict,
+                axes: v.axes,
+                issues: v.issues,
+              };
+            }
+          }
+          setMessages((p) => {
+            if (myIdx < 0 || myIdx >= p.length || p[myIdx].role !== "ai") return p;
+            const copy = [...p];
+            copy[myIdx] = { ...copy[myIdx], reviews: payload ? byIndex : null };
+            return copy;
+          });
         },
         onError: (m) => {
           patchStreamMsg({ role: "ai", text: `⚠ ${m}` });
@@ -227,10 +273,11 @@ export function AuthoringChatPanel({
     );
   };
 
-  const apply = (mi: number, qi: number, q: ParsedQuestion) => {
+  const apply = (mi: number, qi: number, q: ParsedQuestion, review?: SelfReviewNote) => {
     // 스레드는 append와 제자리 갱신만 하고 중간을 지우지 않으므로, 인덱스가 그대로
     // 그 응답의 식별자가 된다.
-    const reason = onApplyQuestion(q, `msg-${mi}`);
+    // 판정도 함께 넘긴다 — 카드에 붙어 저장까지 따라가야 나중에 문항 상세에서도 보인다.
+    const reason = onApplyQuestion(q, `msg-${mi}`, review);
     if (reason) {
       // 조용히 버리지 않는다 — 실패 사유를 스레드에 남겨 사용자가 재요청할 수 있게.
       setMessages((p) => [
@@ -370,9 +417,11 @@ export function AuthoringChatPanel({
             </div>
             {m.questions?.map((q, qi) => {
               const applied = m.appliedKeys?.has(String(qi));
+              // reviews가 undefined면 아직 기다리는 중, null이면 판정 없음(칩이 셋을 구분한다).
+              const review = m.reviews === undefined ? undefined : (m.reviews?.[qi] ?? null);
               return (
                 <div key={qi} className="rounded-xl border border-purple/30 bg-purple/5 p-3 text-sm">
-                  <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5 text-xs font-medium text-muted-foreground">
                     <span>{q.questionType}</span>
                     {q.passage && (
                       <span className="rounded bg-surface-raised px-1.5 py-0.5 text-[10px]">지문 포함</span>
@@ -382,6 +431,9 @@ export function AuthoringChatPanel({
                         문제 {q.target.slice(8)} 교체안
                       </span>
                     )}
+                    {/* 적용할지 정하는 자리에 검수 결과를 붙인다 — 적용한 뒤 문항 상세를
+                        열어야 알 수 있으면 고치는 비용이 훨씬 커진다. */}
+                    <SelfReviewChip review={review} className="ml-auto" />
                   </div>
                   {q.passage && (
                     <p className="mb-2 max-h-24 overflow-y-auto whitespace-pre-wrap rounded-lg bg-surface-raised px-2.5 py-2 text-xs leading-relaxed text-muted-foreground">
@@ -422,7 +474,7 @@ export function AuthoringChatPanel({
                     <p className="mt-2 text-xs text-primary">✓ 문제집에 추가되었어요</p>
                   ) : (
                     <button
-                      onClick={() => apply(mi, qi, q)}
+                      onClick={() => apply(mi, qi, q, review ?? undefined)}
                       className="mt-2 w-full rounded-lg bg-primary py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
                     >
                       {q.target?.startsWith("replace:") ? "이 문항으로 교체하기" : "문제집에 적용하기"}

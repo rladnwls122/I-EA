@@ -34,6 +34,30 @@ export interface Tag {
 /** 문제 유형 — VARCHAR, enum 아님 */
 export type QuestionType = '객관식' | '주관식';
 
+/**
+ * 서술형 채점기준 하나. 서버 `src/common/constants/rubric.ts`의 계약을 그대로 비춘 것이다.
+ * `id`는 선지(`c1`..`c8`)와 같은 문항 로컬 문자열이고, 채점 결과에 "체크한 기준 id"로 박힌다.
+ */
+export interface RubricCriterion {
+  id: string;
+  /** 기준 서술(평문). 리치텍스트가 아니다. */
+  text: string;
+  /** 이 기준을 충족했을 때 얻는 점수(0 초과). */
+  points: number;
+}
+
+/**
+ * 자기채점 부분점수 결과. 서버가 `exam_session_answers.annotations.rubricGrading`에 남기므로
+ * 결과 화면은 새로고침 뒤에도 어떤 기준을 체크해 몇 점을 받았는지 다시 그릴 수 있다.
+ */
+export interface RubricGrading {
+  checkedIds: string[];
+  earnedPoints: number;
+  totalPoints: number;
+  /** 서버가 정한 기준선(만점의 60%)으로 접은 정오 — 통계·복습·XP의 입력이다. */
+  isCorrect: boolean;
+}
+
 /** 문제 상태 */
 export type QuestionStatus = 'DRAFT' | 'IN_REVIEW' | 'PUBLISHED' | 'ARCHIVED';
 
@@ -60,14 +84,24 @@ export interface Question {
   explanation?: any | null;
   /** 주관식 정답 텍스트 (단답형 자동 채점용) */
   correctAnswerText?: string | null;
+  /**
+   * 서술형 채점기준표 — 자기채점이 기준별 배점 합으로 부분점수를 낸다(#43 gap 8).
+   * 없으면(null) 기존 정오 2지선다 자기채점이다. 객관식에는 쓰지 않는다.
+   * 응시 중 마스킹 대상이라 진행 중 세션 소유자에겐 null로 내려온다.
+   */
+  rubric?: RubricCriterion[] | null;
   /** 난이도 1~5 */
   difficulty: number;
   /** 배점 */
   points: number;
   /** 문제 상태 */
   status: QuestionStatus;
-  /** 추가 메타데이터 (JSON) */
-  metadata?: any | null;
+  /**
+   * 추가 메타데이터 (JSON). AI 자기검증 기록(`review`)과 Part 6 빈칸 번호(`blankIndex`) 등.
+   * `review`는 **출제자 본인에게만** 내려온다 — 지적 사항이 정답 힌트가 되기 때문에
+   * 서버가 다른 요청자에게는 떼고 보낸다(`stripInternalReview`).
+   */
+  metadata?: (Record<string, any> & { review?: SelfReviewNote }) | null;
   /** 힌트 내용 */
   hintContent?: any | null;
 
@@ -91,6 +125,22 @@ export interface Question {
   /** 상세 조회(GET /questions/:id)에서만 내려옴 — 이 유저가 제출된 세션에서 실제로 풀었는지. */
   solvedByMe?: boolean;
   correctRatePercent?: number | null;
+}
+
+/**
+ * AI 자기검증 기록(#34) — `questions.metadata.review`. 출제자에게만 내려온다.
+ * `ERROR`는 "판정을 못 했다"는 뜻이라 통과와 구분해서 표시해야 한다.
+ */
+export interface SelfReviewNote {
+  /** 판정에 쓴 모델명. 모델이 바뀌면 옛 판정은 근거가 약해진다. */
+  model: string;
+  /** 판정 시각(ISO). */
+  at: string;
+  verdict: 'PASS' | 'REVISE' | 'ERROR';
+  /** 지적된 축(발문형식·오답매력도·난이도일관성·지문문항정합). */
+  axes?: string[];
+  /** 사람이 읽을 지적 사항. */
+  issues?: string[];
 }
 
 // ─── 문제집 ─────────────────────────────────────────────────────────
@@ -136,6 +186,44 @@ export interface WorkbookQuestion {
 
   // ── 관계 ──
   question?: Question;
+}
+
+// ─── 문항 배치 (#41 저장 왕복 배칭) ─────────────────────────────────
+//
+// 배치는 "전부 성공 아니면 전부 실패"가 아니다. 캔버스 저장은 문항 하나가 실패하면
+// 그 문항만 실패로 세고 기준선을 갱신하지 않아 다음 저장에서 다시 시도한다 —
+// 그 정밀도를 유지하려면 서버가 **항목별** 결과를 돌려줘야 한다.
+
+export interface QuestionBatchItemResult {
+  /** 요청 배열에서의 위치. 응답 순서에 기대지 않고 되짚기 위한 것. */
+  index: number;
+  status: 'ok' | 'failed';
+  /** 성공 시 — 만들어졌거나 갱신된 문항 id. */
+  questionId?: string;
+  /** 성공 시 — 문제집에 담긴 자리(생성 배치 전용). */
+  displayOrder?: number;
+  /** 실패 시 — 그대로 사용자에게 보여도 되는 사유. */
+  error?: string;
+}
+
+export interface QuestionBatchResponse {
+  results: QuestionBatchItemResult[];
+  okCount: number;
+  failedCount: number;
+}
+
+/** 미디어 일괄 등록 결과 항목 (#33 잔여 3). 등록이 멱등이라 mediaId는 기존 행의 것일 수 있다. */
+export interface MediaBatchItemResult {
+  index: number;
+  status: 'ok' | 'failed';
+  mediaId?: string;
+  error?: string;
+}
+
+export interface MediaBatchResponse {
+  results: MediaBatchItemResult[];
+  okCount: number;
+  failedCount: number;
 }
 
 // ─── AI 생성 (비동기 파이프라인) ────────────────────────────────────
@@ -374,6 +462,12 @@ export interface MyNotesResponse {
     ungradedCount?: number;
     /** 약점 진단(#37) — 서버가 표본 하한·점수식을 적용해 계산해 내려준다. */
     weakness?: WeaknessReport;
+    /**
+     * 서술형 평균 득점률(#43 gap 8 후속) — 채점기준표로 채점된 답안만, 1차 응시 기준.
+     * 표본 하한 미만이거나 서술형 채점 이력이 없으면 서버가 null로 내린다 = 판정 불가.
+     * null을 0%로 그리지 마라 — 화면에 아무것도 띄우지 않는다.
+     */
+    rubricScore?: RubricScore | null;
   };
   wrongQuestions: WrongQuestionItem[];
   /** 채점 이력이 서버 조회 상한(500)에 걸려 잘렸는지 */
@@ -394,6 +488,49 @@ export interface Weakness {
   /** CONCEPT=개념 약점(다시 배우기) / DRILL=훈련 부족(알지만 실수) — 처방이 다르다 */
   kind: 'CONCEPT' | 'DRILL';
   dominantReason: { code: string; label: string; count: number } | null;
+  /**
+   * 복습 실패율(#37) — X 상태에서 다시 틀린 전이(X→X)의 비율.
+   * 전이 표본이 하한(3) 미만이면 서버가 null로 내린다 = 판정 불가, 화면에 아무것도 띄우지 않는다.
+   * kind와 겹치지 않는 별개 축이다(kind는 "왜 틀렸나", 이건 "다시 풀려도 고쳐지나").
+   */
+  reviewFailure?: {
+    /** 분모 — X 상태에서 일어난 전이 수 */
+    total: number;
+    /** 분자 — 그중 또 틀린 전이 수 */
+    failed: number;
+    /** failed / total (0~1, 소수 둘째 자리) */
+    ratio: number;
+    /** 절반 이상 재오답 = "한 번 더 풀어도 안 되는" 축 */
+    stuck: boolean;
+  } | null;
+}
+
+/**
+ * 서술형 부분점수 지표(#43 gap 8 후속) — 계산은 서버(rubric-score.util)가 한다.
+ * 표본 하한도 서버 규칙이다. 화면에서 다시 판정하지 마라.
+ */
+export interface RubricScore {
+  /** 표본 수(채점기준표로 채점된 답안 수) — 비율만 보여주면 3문항과 300문항이 같아 보인다 */
+  count: number;
+  /** 획득 점수 합 */
+  earnedPoints: number;
+  /** 만점 합(분모) */
+  totalPoints: number;
+  /** earnedPoints / totalPoints (0~1, 소수 둘째 자리) */
+  ratio: number;
+  /**
+   * 분류축(하위요소)별 득점률 (#33 도그푸딩 잔여 2) — **낮은 순**으로 서버가 정렬해 준다.
+   * 전체 하나로는 "서술형이 약하다"까지만 알 수 있고 어느 서술형인지는 여기서 나온다.
+   * 표본 하한(3)을 넘긴 축만 들어 있다.
+   */
+  byDetail?: RubricAxisScore[];
+  /** 표본이 모자라 판정을 미룬 축 — 숨기면 "내가 푼 서술형은 어디 갔지"가 된다. */
+  needsMoreData?: { key: string; label: string; count: number }[];
+}
+
+export interface RubricAxisScore extends RubricScore {
+  key: string;
+  label: string;
 }
 
 export interface WeaknessReport {
@@ -403,6 +540,14 @@ export interface WeaknessReport {
 }
 
 /** GET /me/review-summary 응답 — 전역 내비 due 배지용 경량 카운트 */
+/** GET /me/review-queue 응답 — 조립은 서버가 한다(#39 B-3 후속). */
+export interface ReviewQueueResponse {
+  /** 급한 순으로 정렬된 문항 id. 이미 limit까지 잘려 있다. */
+  questionIds: string[];
+  /** 상한을 넘은 잔여분 — "남은 N문항은 다음 복습에서" 안내용. */
+  remaining: number;
+}
+
 export interface ReviewSummaryResponse {
   /** 재노출 예정일이 도래한 복습 대기 문항 수(마스터 제외) */
   due: number;
@@ -465,6 +610,11 @@ export interface SessionQuestionSnapshot {
   explanation?: any;
   /** 주관식 단답 정답. IN_PROGRESS에는 없음(undefined) */
   correctAnswerText?: string | null;
+  /**
+   * 서술형 채점기준표. 있으면 결과 화면 자기채점이 정오 2지선다 대신 기준 체크리스트가 된다.
+   * IN_PROGRESS에는 없음(마스킹). 채점기준표 도입 전 세션 스냅샷에도 없다.
+   */
+  rubric?: RubricCriterion[] | null;
   /** 조립 시점 풀이 통계 — 결과 화면 정답률 배지용(선택, 구세션 스냅샷엔 없음) */
   totalSolvedCount?: number;
   correctSolvedCount?: number;
@@ -475,6 +625,10 @@ export interface SessionQuestionSnapshot {
 export interface SessionAnswer {
   selectedChoiceIds: string[] | null;
   answerText: string | null;
+  /**
+   * 답안 부가기록 Json. 필기 스트로크와, 채점기준표 채점 결과(`rubricGrading` 예약 키)가 함께 산다.
+   * 읽을 때는 `readRubricGrading()`을 쓸 것 — 손상 데이터 방어가 한곳에 있다.
+   */
   annotations: any;
   /** IN_PROGRESS에는 undefined(마스킹). SUBMITTED에는 boolean|null(서술형 미채점) */
   isCorrect: boolean | null | undefined;
@@ -556,8 +710,18 @@ export interface SelfGradeReward {
 export interface SelfGradeResult {
   sessionQuestionId: string;
   isCorrect: boolean;
+  /** 채점기준표로 채점했으면 부분점수 결과, 아니면 null. */
+  rubricGrading: RubricGrading | null;
   reward: SelfGradeReward | null;
 }
+
+/**
+ * 자기채점 요청 — 문항이 채점기준표를 가졌는지에 따라 **둘 중 하나만** 보낸다.
+ * 서버가 둘을 함께 받으면 400으로 거부한다(점수의 근거가 하나여야 한다).
+ */
+export type SelfGradeInput =
+  | { isCorrect: boolean; checkedCriterionIds?: undefined }
+  | { checkedCriterionIds: string[]; isCorrect?: undefined };
 
 // ─── 문항 리뷰 (별점 + 체감 난이도) ─────────────────────────────────
 

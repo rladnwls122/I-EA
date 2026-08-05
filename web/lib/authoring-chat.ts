@@ -188,8 +188,32 @@ export interface AuthoringChatBody {
 }
 
 /**
- * SSE 스트림 소비. data 프레임 { delta } 누적, { done } 종료, event: error 처리.
- * 델타를 onDelta로 흘리고 완료 시 누적 전체를 onDone에 넘긴다.
+ * AI 자기검증 판정 한 건 — 서버 `event: review` 프레임의 원소.
+ * `index`는 **parseQuestionBlocks가 만든 배열의 자리**다(서버가 같은 파서로 같은 배열을 만든다).
+ */
+export interface ChatReviewVerdict {
+  index: number;
+  verdict: "PASS" | "REVISE";
+  axes?: string[];
+  issues?: string[];
+}
+
+export interface ChatReviewPayload {
+  model: string;
+  at: string;
+  verdicts: ChatReviewVerdict[];
+}
+
+/**
+ * SSE 스트림 소비. data 프레임 { delta } 누적, { done }으로 본문 완료, event: error 처리.
+ *
+ * **{ done } 이후에도 계속 읽는다** — 자기검증(#34)이 그 뒤에 `event: review`로 온다.
+ * 문항을 먼저 띄우고 검수 배지를 나중에 채우기 위한 순서라, 여기서 done에 끊으면
+ * 판정이 도착해도 화면이 보지 못한다.
+ *
+ * `onReview`는 스트림이 끝날 때 **정확히 한 번** 불린다 — 판정이 왔으면 그 값으로,
+ * 안 왔으면(검증 꺼짐·판정 실패·문항 없는 턴) null로. "기다리는 중"을 끝내는 신호가
+ * 없으면 배지가 영원히 스피너로 남는다.
  */
 export async function streamAuthoringChat(
   body: AuthoringChatBody,
@@ -197,6 +221,7 @@ export async function streamAuthoringChat(
     onDelta: (delta: string, full: string) => void;
     onDone: (full: string) => void;
     onError: (message: string) => void;
+    onReview?: (review: ChatReviewPayload | null) => void;
   },
 ): Promise<void> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -215,6 +240,7 @@ export async function streamAuthoringChat(
       handleUnauthorized();
     }
     handlers.onError(`요청 실패 (${res.status})`);
+    handlers.onReview?.(null); // 판정을 기다리는 화면이 있으면 닫아 준다
     return;
   }
 
@@ -222,38 +248,65 @@ export async function streamAuthoringChat(
   const decoder = new TextDecoder();
   let buffer = '';
   let full = '';
+  let doneSent = false;
+  let settled = false; // onReview를 이미 닫았는가
+  let errored = false;
+  let review: ChatReviewPayload | null = null;
+  /** 본문 완료(done)는 한 번만 알린다 — 오류로 끝난 턴에는 알리지 않는다. */
+  const finishBody = () => {
+    if (doneSent || errored) return;
+    doneSent = true;
+    handlers.onDone(full);
+  };
+  /** 판정 기다림을 한 번만 닫는다(값이 왔으면 그 값으로, 아니면 null). */
+  const settleReview = (value: ChatReviewPayload | null) => {
+    if (settled) return;
+    settled = true;
+    handlers.onReview?.(value);
+  };
 
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
-    // SSE 프레임은 빈 줄(\n\n)로 구분된다.
-    const frames = buffer.split('\n\n');
-    buffer = frames.pop() ?? '';
-    for (const frame of frames) {
-      const isError = frame.startsWith('event: error');
-      const dataLine = frame.split('\n').find((l) => l.startsWith('data: '));
-      if (!dataLine) continue;
-      let payload: any;
-      try {
-        payload = JSON.parse(dataLine.slice(6));
-      } catch {
-        continue;
-      }
-      if (isError) {
-        handlers.onError(payload.message ?? '오류가 발생했습니다.');
-        return;
-      }
-      if (payload.delta) {
-        full += payload.delta;
-        handlers.onDelta(payload.delta, full);
-      }
-      if (payload.done) {
-        handlers.onDone(full);
-        return;
+      // SSE 프레임은 빈 줄(\n\n)로 구분된다.
+      const frames = buffer.split('\n\n');
+      buffer = frames.pop() ?? '';
+      for (const frame of frames) {
+        const isError = frame.startsWith('event: error');
+        const isReview = frame.startsWith('event: review');
+        const dataLine = frame.split('\n').find((l) => l.startsWith('data: '));
+        if (!dataLine) continue;
+        let payload: any;
+        try {
+          payload = JSON.parse(dataLine.slice(6));
+        } catch {
+          continue;
+        }
+        if (isError) {
+          errored = true;
+          handlers.onError(payload.message ?? '오류가 발생했습니다.');
+          return; // 판정 기다림은 finally가 닫는다
+        }
+        if (isReview) {
+          review = Array.isArray(payload?.verdicts) ? (payload as ChatReviewPayload) : null;
+          continue;
+        }
+        if (payload.delta) {
+          full += payload.delta;
+          handlers.onDelta(payload.delta, full);
+        }
+        if (payload.done) {
+          // done에서 끊지 않는다 — 검수 프레임이 이 뒤에 온다.
+          finishBody();
+        }
       }
     }
+  } finally {
+    // 연결이 끊겼든 정상 종료든, 본문 완료와 판정 결과는 반드시 한 번씩 알린다.
+    finishBody();
+    settleReview(review);
   }
-  handlers.onDone(full);
 }

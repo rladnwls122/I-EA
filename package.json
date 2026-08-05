@@ -19,6 +19,7 @@
     "seed:master": "ts-node prisma/seed-master.ts",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "test": "jest",
+    "quality:generation": "ts-node -r tsconfig-paths/register scripts/generation-quality.ts",
     "postinstall": "prisma generate",
     "start:railway": "prisma db push --skip-generate && node dist/main.js"
   },

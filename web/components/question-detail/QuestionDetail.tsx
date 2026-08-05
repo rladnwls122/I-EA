@@ -8,6 +8,7 @@ import { QuestionArticle } from "./QuestionArticle";
 import { QuestionEditForm } from "./QuestionEditForm";
 import { ExplanationPanel } from "./ExplanationPanel";
 import { StatsPanel } from "./StatsPanel";
+import { SelfReviewPanel } from "./SelfReviewPanel";
 import { RatingPanel } from "./RatingPanel";
 import { CommentSidebar } from "./CommentSidebar";
 
@@ -165,6 +166,9 @@ export function QuestionDetail({
           ) : (
             <QuestionArticle question={question} reveal={reveal} />
           )}
+          {/* AI 자기검증 결과 — 출제자에게만 내려오므로 여기서 권한을 다시 따지지 않는다.
+              reveal(정답 공개)과 무관하다: 검수는 출제 품질 정보지 채점 결과가 아니다. */}
+          {!editing && <SelfReviewPanel review={question.metadata?.review} />}
           {!editing && reveal && <ExplanationPanel explanation={question.explanation} />}
           {reveal && <StatsPanel questionId={id} />}
           <RatingPanel questionId={id} />

@@ -9,7 +9,7 @@ import {
   uniquePassages,
   validateSave,
 } from './authoring-save';
-import { buildRichDoc, buildRichBlocks } from '@/lib/prosemirror-assemble';
+import { buildRichDoc } from '@/lib/prosemirror-assemble';
 import type { CanvasCard } from './AuthoringCanvas';
 
 const card = (over: Partial<CanvasCard> = {}): CanvasCard => ({
@@ -19,8 +19,8 @@ const card = (over: Partial<CanvasCard> = {}): CanvasCard => ({
   passage: null,
   passageGroupId: null,
   choices: [
-    { text: '선지1', explanation: '', showExplanation: false },
-    { text: '선지2', explanation: '', showExplanation: false },
+    { content: buildRichDoc('선지1'), explanation: buildRichDoc(''), showExplanation: false },
+    { content: buildRichDoc('선지2'), explanation: buildRichDoc(''), showExplanation: false },
   ],
   correct: 1,
   answerText: '',
@@ -183,47 +183,74 @@ describe('buildQuestionPayload', () => {
     expect(p.explanation).toEqual(rich.content);
   });
 
-  it('편집하지 않은 선지는 원본 노드를 그대로 돌려보낸다(서식 보존)', () => {
-    const source = buildRichBlocks('선지1');
+  it('선지 노드를 그대로 싣는다 — 평문을 거치지 않으므로 서식·수식이 살아남는다', () => {
+    // 예전엔 평문에서 다시 지었고(buildRichDoc), 원본을 되돌려주는 방어로 겨우 막았다.
+    // 선지를 rich로 올린 뒤로는 되돌릴 것도 잃을 것도 없다.
+    const withMath = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: '값은 ' },
+            { type: 'inlineMath', attrs: { latex: 'x^2' } },
+          ],
+        },
+      ],
+    };
     const p = buildQuestionPayload(
       card({
         choices: [
-          { text: '선지1', explanation: '', showExplanation: false, sourceContent: source },
-          { text: '선지2', explanation: '', showExplanation: false },
+          { content: withMath, explanation: buildRichDoc(''), showExplanation: false },
+          { content: buildRichDoc('선지2'), explanation: buildRichDoc(''), showExplanation: false },
         ],
       }),
       { tagIds: [] },
     ) as any;
-    expect(p.choices[0].content).toBe(source);
+    expect(p.choices[0].content).toBe(withMath);
   });
 
-  it('텍스트를 고친 선지는 평문으로 새로 짓는다', () => {
-    const source = buildRichBlocks('예전 텍스트');
-    const p = buildQuestionPayload(
-      card({
-        choices: [
-          { text: '새 텍스트', explanation: '', showExplanation: false, sourceContent: source },
-          { text: '선지2', explanation: '', showExplanation: false },
-        ],
-      }),
-      { tagIds: [] },
-    ) as any;
-    expect(p.choices[0].content).not.toBe(source);
-    expect(p.choices[0].content).toEqual(buildRichDoc('새 텍스트'));
+  it('선지 id는 저장 시점에 순서대로 다시 매긴다', () => {
+    const p = buildQuestionPayload(card(), { tagIds: [] }) as any;
+    expect(p.choices.map((c: any) => c.id)).toEqual(['c1', 'c2']);
+  });
+
+  it('정답 인덱스가 isCorrect로 옮겨간다', () => {
+    const p = buildQuestionPayload(card({ correct: 1 }), { tagIds: [] }) as any;
+    expect(p.choices.map((c: any) => c.isCorrect)).toEqual([false, true]);
   });
 
   it('선지 해설이 있으면 공개 여부까지 함께 싣는다', () => {
     const p = buildQuestionPayload(
       card({
         choices: [
-          { text: '선지1', explanation: '이유', showExplanation: true },
-          { text: '선지2', explanation: '', showExplanation: false },
+          { content: buildRichDoc('선지1'), explanation: buildRichDoc('이유'), showExplanation: true },
+          { content: buildRichDoc('선지2'), explanation: buildRichDoc(''), showExplanation: false },
         ],
       }),
       { tagIds: [] },
     ) as any;
     expect(p.choices[0].explanationVisible).toBe(true);
     expect(p.choices[1].explanation).toBeUndefined();
+  });
+
+  it('수식만 있는 선지 해설도 내용으로 본다 — 텍스트 길이로 판정하면 통째로 날아간다', () => {
+    const mathOnly = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'inlineMath', attrs: { latex: 'x=1' } }] },
+      ],
+    };
+    const p = buildQuestionPayload(
+      card({
+        choices: [
+          { content: buildRichDoc('선지1'), explanation: mathOnly, showExplanation: true },
+          { content: buildRichDoc('선지2'), explanation: buildRichDoc(''), showExplanation: false },
+        ],
+      }),
+      { tagIds: [] },
+    ) as any;
+    expect(p.choices[0].explanation).toBeDefined();
   });
 
   it('tagIds·passageId는 비어 있어도 반드시 싣는다 — 생략하면 삭제를 표현할 수 없다', () => {

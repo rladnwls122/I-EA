@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -6,6 +7,13 @@ import {
 import { Prisma, QuestionStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { PaginatedResult } from '@/common/dto/pagination.dto';
+import {
+  batchItemError,
+  toBatchResult,
+  type BatchItemResult,
+  type BatchResult,
+} from '@/common/dto/batch-result';
+import { validateBatchItems } from '@/common/dto/batch-validation';
 import { STATS_MIN_SAMPLE } from '@/common/constants/question';
 import { extractPlainText, PMNode } from '@/common/prosemirror/prosemirror.util';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
@@ -13,7 +21,11 @@ import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QueryQuestionDto } from './dto/query-question.dto';
 import { RegenerateChoicesDto } from './dto/regenerate-choices.dto';
-import { maskQuestionAnswers } from './answer-masking';
+import {
+  BatchUpdateQuestionItemDto,
+  BatchUpdateQuestionsDto,
+} from './dto/batch-update-question.dto';
+import { maskQuestionAnswers, stripInternalReview } from './answer-masking';
 
 // Prisma 생성 클라이언트가 InputJsonValue를 표면화하지 않으므로 Json 컬럼 쓰기 시 국소 캐스팅.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -142,13 +154,16 @@ export class QuestionsService {
         ? [{ ...question.passage, label: question.passage.label }]
         : [];
 
-    const payload = {
+    // 자기검증 기록은 출제자 전용이다 — 남에게 보이면 지적 사항이 정답 힌트가 된다.
+    // 응시 중 여부와 무관하게 뗀다(그 게이팅보다 넓은 기준).
+    const isCreator = question.creatorId === userId;
+    const payload = stripInternalReview({
       ...question,
       passages,
       tags: question.questionTags.map((qt) => qt.tag),
       correctRatePercent: correctRate,
       solvedByMe: solvedCount > 0,
-    };
+    }, isCreator);
 
     return inActiveSession
       ? { ...maskQuestionAnswers(payload), maskedForActiveSession: true as const }
@@ -164,37 +179,153 @@ export class QuestionsService {
     return active !== null;
   }
 
+  /**
+   * 채점기준표를 가질 수 있는 문항인지 — **저장 후 갖게 될 모습**으로 판정한다.
+   *
+   * DTO 혼자서는 못 하는 검사다: PATCH는 questionType 없이 rubric만 올 수 있어서
+   * 기존 행과 병합해야 실제 유형을 안다. 그래서 검증을 여기 저장 직전에 둔다.
+   *
+   * 막는 이유는 둘 다 "이 rubric이 절대 쓰이지 않는다"는 것이다 — 죽은 데이터가 저장되면
+   * 출제자는 기준을 적어 놓고도 화면에서 부분점수 채점을 못 보게 되고, 화면은 어느 채점 UI를
+   * 띄울지 모호해진다.
+   *   - 객관식: 정답 선지로 자동채점된다. 자기채점 자체가 없다.
+   *   - 단답 정답(correctAnswerText)이 있는 주관식: 문자열 비교로 자동채점된다(grade()).
+   * 빈 배열/미지정은 "기준 없음"이라 언제나 허용한다.
+   */
+  private assertRubricAllowed(effective: {
+    questionType: string;
+    correctAnswerText?: string | null;
+    rubric?: unknown;
+  }): void {
+    if (!Array.isArray(effective.rubric) || effective.rubric.length === 0) return;
+
+    if (effective.questionType === '객관식') {
+      throw new BadRequestException(
+        '객관식에는 채점기준표를 쓸 수 없습니다(정답 선지로 자동채점됩니다).',
+      );
+    }
+    if (effective.correctAnswerText?.trim()) {
+      throw new BadRequestException(
+        '단답 정답이 있는 문항은 자동채점됩니다 — 채점기준표는 정답 텍스트를 비운 서술형에만 쓸 수 있습니다.',
+      );
+    }
+  }
+
   /** 문항 직접 생성(DRAFT). tagIds가 있으면 question_tags도 함께 매핑한다. */
   async create(creatorId: string, dto: CreateQuestionDto) {
     await this.assertSubjectExists(dto.subjectId);
+    this.assertRubricAllowed(dto);
 
     return this.prisma.question.create({
-      data: {
-        creatorId,
-        subjectId: dto.subjectId,
-        passageId: dto.passageId ?? null,
-        questionType: dto.questionType,
-        stem: dto.stem as JsonWritable,
-        ...(dto.choices ? { choices: dto.choices as JsonWritable } : {}),
-        ...(dto.explanation ? { explanation: dto.explanation as JsonWritable } : {}),
-        ...(dto.correctAnswerText !== undefined ? { correctAnswerText: dto.correctAnswerText } : {}),
-        ...(dto.metadata ? { metadata: dto.metadata as JsonWritable } : {}),
-        ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
-        difficulty: dto.difficulty ?? 3,
-        points: dto.points ?? 1,
-        status: 'DRAFT',
-        searchText: this.buildSearchText(dto),
-        ...(dto.tagIds?.length
-          ? { questionTags: { create: dto.tagIds.map((tagId) => ({ tagId })) } }
-          : {}),
-      },
+      data: { ...this.buildCreateData(creatorId, dto), status: 'DRAFT' },
       select: { id: true, status: true, createdAt: true },
     });
+  }
+
+  /**
+   * 단건 생성과 배치 생성이 **같은 행 모양**을 쓰도록 모아 둔 곳. status만 호출부가 정한다.
+   * 두 경로가 각자 data를 조립하면 필드 하나가 한쪽에만 추가되는 식으로 조용히 갈라진다.
+   */
+  private buildCreateData(creatorId: string, dto: CreateQuestionDto) {
+    return {
+      creatorId,
+      subjectId: dto.subjectId,
+      passageId: dto.passageId ?? null,
+      questionType: dto.questionType,
+      stem: dto.stem as JsonWritable,
+      ...(dto.choices ? { choices: dto.choices as JsonWritable } : {}),
+      ...(dto.explanation ? { explanation: dto.explanation as JsonWritable } : {}),
+      ...(dto.correctAnswerText !== undefined ? { correctAnswerText: dto.correctAnswerText } : {}),
+      // 빈 배열은 "기준 없음"이라 컬럼에 넣지 않는다 — 읽는 쪽(readRubric)이 null과
+      // []를 똑같이 "정오 2지선다 자기채점"으로 다루게 하려면 저장 형태를 하나로 모아야 한다.
+      ...(dto.rubric?.length ? { rubric: dto.rubric as JsonWritable } : {}),
+      ...(dto.metadata ? { metadata: dto.metadata as JsonWritable } : {}),
+      ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
+      difficulty: dto.difficulty ?? 3,
+      points: dto.points ?? 1,
+      searchText: this.buildSearchText(dto),
+      ...(dto.tagIds?.length
+        ? { questionTags: { create: dto.tagIds.map((tagId) => ({ tagId })) } }
+        : {}),
+    };
+  }
+
+  /**
+   * 문항을 곧바로 PUBLISHED로 만든다. 배치 담기(`POST /workbooks/:id/questions/batch`)가
+   * **자기 트랜잭션 안에서** 부르는 생성 경로다 (#41 Phase 3 마감).
+   *
+   * 단건 경로의 "생성(DRAFT) → 발행" 두 왕복을 한 번으로 줄인 것이지 발행을 건너뛴 게 아니다.
+   * publish()가 create()에 더하는 규칙은 소유권 확인 하나인데, 여기서 만드는 문항의 작성자는
+   * 요청자 본인이라 그 검사가 항상 참이다. 나머지 검증(과목 존재·채점기준표 규칙·search_text)은
+   * create()와 **같은 코드**를 탄다 — 배치가 검증 우회로가 되면 안 된다.
+   *
+   * tx를 받는 이유: 문항 생성과 문제집 담기가 한 항목의 원자 단위여야 하기 때문이다.
+   * relationMode="prisma"(TiDB — DB에 FK가 없다)라 담기가 실패해도 DB가 문항을 정리해 주지
+   * 않는다. 같은 트랜잭션에 넣어 롤백으로 지운다 — 안 그러면 어느 문제집에도 안 담긴
+   * 발행 문항이 조용히 쌓이고, 그건 사용자에게 보이지도 않는 쓰레기다.
+   */
+  async createPublishedWithin(
+    tx: Prisma.TransactionClient,
+    creatorId: string,
+    dto: CreateQuestionDto,
+  ): Promise<{ id: string }> {
+    await this.assertSubjectExists(dto.subjectId, tx);
+    this.assertRubricAllowed(dto);
+
+    return tx.question.create({
+      data: {
+        ...this.buildCreateData(creatorId, dto),
+        status: 'PUBLISHED',
+        publishedAt: new Date(),
+      },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * 문항 일괄 갱신 (#41 Phase 3 마감). 캔버스 저장이 문항 수만큼 PATCH를 쏘던 자리다.
+   *
+   * 항목마다 단건 `update()`를 **그대로** 부른다. 배치용 쓰기 경로를 따로 만들면
+   * 소유권·채점기준표 규칙·선지 변경 시 통계 리셋이 한쪽에만 남는 날이 온다.
+   * update()가 이미 자기 트랜잭션을 열므로 원자 단위는 자연히 **항목별**이다.
+   *
+   * 순차로 돈다. 항목마다 트랜잭션이 하나씩 열리는데 병렬로 쏘면 배치 한 건이 커넥션 풀을
+   * 통째로 점유한다 — 줄이려는 것은 왕복 수(HTTP)지 서버 내부 동시성이 아니다.
+   *
+   * 형식 검증도 **항목별**이다(#33 잔여 4). 전역 파이프에 맡기면 difficulty가 6인 문항
+   * 하나가 나머지 19문항까지 400 하나로 되돌린다 — 서비스 실패는 격리해 놓고 형식 실패만
+   * 전부-아니면-전무가 되는 비대칭이라, 같은 DTO·같은 옵션으로 여기서 하나씩 검증한다.
+   */
+  async updateBatch(userId: string, dto: BatchUpdateQuestionsDto): Promise<BatchResult> {
+    const { valid, failures } = validateBatchItems(dto.items, BatchUpdateQuestionItemDto);
+    const results: BatchItemResult[] = [...failures];
+    for (const { index, dto: item } of valid) {
+      const { id, ...patch } = item;
+      try {
+        await this.update(id, userId, patch);
+        results.push({ index, status: 'ok', questionId: id });
+      } catch (e) {
+        results.push({ index, status: 'failed', questionId: id, error: batchItemError(e) });
+      }
+    }
+    // 검증 실패분을 앞에 모아 두고 처리했으므로 요청 순서로 되돌린다 — 클라이언트가
+    // index로 되짚긴 하지만, 응답을 사람이 읽을 때 자리가 뒤섞여 있으면 대조가 어렵다.
+    results.sort((a, b) => a.index - b.index);
+    return toBatchResult(results);
   }
 
   /** 부분 수정 — 작성자 본인만. 태그가 오면 전체 교체(set) 방식. */
   async update(id: string, userId: string, dto: UpdateQuestionDto) {
     const existing = await this.assertOwner(id, userId);
+
+    // 채점기준표 허용 여부는 "이번 수정을 반영한 뒤의 모습"으로 본다 — 유형만 객관식으로
+    // 바꾸는 요청도, rubric만 넣는 요청도 같은 규칙에 걸려야 한다.
+    this.assertRubricAllowed({
+      questionType: dto.questionType ?? existing.questionType,
+      correctAnswerText:
+        dto.correctAnswerText !== undefined ? dto.correctAnswerText : existing.correctAnswerText,
+      rubric: dto.rubric !== undefined ? dto.rubric : existing.rubric,
+    });
 
     // 콘텐츠가 바뀌면 search_text도 다시 계산(부분 필드만 온 경우 기존 값과 병합).
     const contentChanged =
@@ -235,6 +366,11 @@ export class QuestionsService {
           ...(dto.explanation !== undefined ? { explanation: dto.explanation as JsonWritable } : {}),
           ...(dto.correctAnswerText !== undefined
             ? { correctAnswerText: dto.correctAnswerText }
+            : {}),
+          // 빈 배열은 "기준 전부 삭제" — 편집기가 삭제를 표현할 수 있는 유일한 형태다
+          // (필드를 생략하면 PATCH 규약상 "안 건드림"이라 마지막 기준을 지울 방법이 없다).
+          ...(dto.rubric !== undefined
+            ? { rubric: dto.rubric.length ? (dto.rubric as JsonWritable) : Prisma.DbNull }
             : {}),
           ...(dto.metadata !== undefined ? { metadata: dto.metadata as JsonWritable } : {}),
           ...(dto.hintContent !== undefined ? { hintContent: dto.hintContent } : {}),
@@ -385,8 +521,12 @@ export class QuestionsService {
 
   // --- 내부 헬퍼 -------------------------------------------------------
 
-  private async assertSubjectExists(subjectId: string): Promise<void> {
-    const subject = await this.prisma.subject.findUnique({
+  /** 배치 생성은 자기 트랜잭션 안에서 확인해야 하므로 클라이언트를 갈아 끼울 수 있게 둔다. */
+  private async assertSubjectExists(
+    subjectId: string,
+    client: Prisma.TransactionClient = this.prisma,
+  ): Promise<void> {
+    const subject = await client.subject.findUnique({
       where: { id: subjectId },
       select: { id: true },
     });
@@ -405,6 +545,10 @@ export class QuestionsService {
         choices: true,
         explanation: true,
         correctAnswerText: true,
+        // 채점기준표 허용 규칙(assertRubricAllowed)이 "수정 후의 모습"을 보려면
+        // 이번 요청에 안 실린 쪽의 현재 값이 필요하다.
+        questionType: true,
+        rubric: true,
       },
     });
     if (!q) throw new NotFoundException('문제를 찾을 수 없습니다.');

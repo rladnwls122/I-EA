@@ -118,6 +118,8 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
   async function setupProcess(
     inputParams: Record<string, unknown>,
     generateResult: unknown = DEFAULT_RESULT,
+    // 자기검증(#34 후속)은 옵트인이다 — 기본 목은 스위치가 꺼진 상태를 그대로 흉내낸다.
+    llmExtra: Record<string, unknown> = {},
   ) {
     const generate = jest.fn().mockResolvedValue(generateResult);
     let passageSeq = 0;
@@ -145,14 +147,15 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
         .fn()
         .mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx)),
     };
+    const llm = { generate, ...llmExtra };
     const module = await Test.createTestingModule({
       providers: [
         AiGenerationProcessor,
         { provide: PrismaService, useValue: prisma },
-        { provide: GeminiLlmService, useValue: { generate } },
+        { provide: GeminiLlmService, useValue: llm },
       ],
     }).compile();
-    return { processor: module.get(AiGenerationProcessor), generate, tx };
+    return { processor: module.get(AiGenerationProcessor), generate, tx, llm };
   }
 
   it('템플릿 기본값이 LLM 컨텍스트에 깔린다(toeic-part5 → 4지·영어·지문 없음·단일정답)', async () => {
@@ -279,6 +282,147 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
     expect(searchTexts[0]).toContain('첫 번째 문서 본문');
     expect(searchTexts[0]).not.toContain('두 번째 문서 본문');
     expect(searchTexts[1]).toContain('두 번째 문서 본문');
+  });
+
+  // 지문 내장 빈칸(#43 gap 9 — 토익 Part 6)
+  describe('지문 내장 빈칸', () => {
+    const blankResult = {
+      passage: { bodyText: 'We are [[1]] to announce that our hours are [[2]] extended.' },
+      questions: [1, 2].map((n) => ({
+        questionType: '객관식',
+        stemText: `Which word fits [[${n}]]?`,
+        choices: [
+          { content: 'a', isCorrect: true },
+          { content: 'b', isCorrect: false },
+        ],
+        blankIndex: n,
+        difficulty: 3,
+      })),
+    };
+
+    const params = {
+      prompt: 'store hours notice',
+      difficulty: 3,
+      questionCount: 2,
+      templateId: 'toeic-part6',
+    };
+
+    it('템플릿이 빈칸 모드를 LLM 컨텍스트에 실어 준다', async () => {
+      const { processor, generate } = await setupProcess(params, blankResult);
+      await processor.process(makeJob());
+      expect(generate).toHaveBeenCalledWith(
+        expect.objectContaining({ blanksInPassage: true, includePassage: true, passageCount: 1 }),
+      );
+    });
+
+    it('지문·발문의 `[[n]]`이 저장 정본 `___(n)___`으로 정규화된다', async () => {
+      const { processor, tx } = await setupProcess(params, blankResult);
+      await processor.process(makeJob());
+
+      const passageText = JSON.stringify(tx.passage.create.mock.calls[0][0].data.content);
+      expect(passageText).toContain('___(1)___');
+      expect(passageText).toContain('___(2)___');
+      expect(passageText).not.toContain('[[1]]');
+
+      const stems = tx.question.create.mock.calls.map(
+        (c: [{ data: { stem: unknown } }]) => JSON.stringify(c[0].data.stem),
+      );
+      expect(stems[0]).toContain('___(1)___');
+      expect(stems[1]).toContain('___(2)___');
+    });
+
+    it('발문에 마커가 빠져 있으면 조립이 앞에 붙여 준다 — 응시 화면의 유일한 연결 고리다', async () => {
+      const { processor, tx } = await setupProcess(params, {
+        ...blankResult,
+        questions: blankResult.questions.map((q) => ({ ...q, stemText: 'Choose the best option.' })),
+      });
+      await processor.process(makeJob());
+      const stems = tx.question.create.mock.calls.map(
+        (c: [{ data: { stem: unknown } }]) => JSON.stringify(c[0].data.stem),
+      );
+      expect(stems[0]).toContain('___(1)___ Choose the best option.');
+    });
+
+    it('빈칸 번호를 metadata에도 남긴다(스키마 컬럼 추가 없이)', async () => {
+      const { processor, tx } = await setupProcess(params, blankResult);
+      await processor.process(makeJob());
+      const metadata = tx.question.create.mock.calls.map(
+        (c: [{ data: { metadata?: Record<string, unknown> } }]) => c[0].data.metadata,
+      );
+      expect(metadata[0]).toEqual({ blankIndex: 1 });
+      expect(metadata[1]).toEqual({ blankIndex: 2 });
+    });
+
+    it('빈칸 모드가 아닌 생성은 metadata를 만들지 않는다 — 종전 동작 그대로', async () => {
+      const { processor, tx } = await setupProcess({
+        prompt: '문항',
+        difficulty: 3,
+        questionCount: 1,
+      });
+      await processor.process(makeJob());
+      expect(tx.question.create.mock.calls[0][0].data.metadata).toBeUndefined();
+    });
+  });
+
+  // LLM 자기검증(#34 후속) — 옵트인. 꺼진 경로의 동작·비용이 종전과 같아야 한다.
+  describe('자기검증', () => {
+    const params = { prompt: '문항', difficulty: 3, questionCount: 1 };
+
+    it('스위치가 꺼져 있으면 판정 호출이 0회다', async () => {
+      const reviewGeneration = jest.fn();
+      const { processor, tx } = await setupProcess(params, DEFAULT_RESULT, {
+        isSelfReviewEnabled: false,
+        reviewGeneration,
+      });
+      await processor.process(makeJob());
+      expect(reviewGeneration).not.toHaveBeenCalled();
+      expect(tx.question.create.mock.calls[0][0].data.metadata).toBeUndefined();
+    });
+
+    it('켜면 판정 결과를 metadata.review에 기록한다 — 문항은 버리지 않는다', async () => {
+      const reviewGeneration = jest.fn().mockResolvedValue({
+        verdicts: [
+          { index: 0, verdict: 'REVISE', axes: ['오답매력도'], issues: ['2번 선지가 한눈에 버려진다'] },
+        ],
+      });
+      const { processor, tx } = await setupProcess(params, DEFAULT_RESULT, {
+        isSelfReviewEnabled: true,
+        selfReviewModel: 'gemini-2.5-flash',
+        reviewGeneration,
+      });
+      await processor.process(makeJob());
+
+      expect(reviewGeneration).toHaveBeenCalledTimes(1);
+      // 판정이 REVISE여도 문항은 그대로 저장된다(조용히 버리지 않는다).
+      expect(tx.question.create).toHaveBeenCalledTimes(1);
+      const review = tx.question.create.mock.calls[0][0].data.metadata.review;
+      expect(review).toEqual(
+        expect.objectContaining({
+          verdict: 'REVISE',
+          axes: ['오답매력도'],
+          issues: ['2번 선지가 한눈에 버려진다'],
+          model: 'gemini-2.5-flash',
+        }),
+      );
+    });
+
+    it('판정 호출이 실패해도 생성 배치는 완료된다 — 부가 기능이 본 기능을 깨지 않는다', async () => {
+      const reviewGeneration = jest.fn().mockRejectedValue(new Error('판정 모델 호출 실패'));
+      const { processor, tx } = await setupProcess(params, DEFAULT_RESULT, {
+        isSelfReviewEnabled: true,
+        selfReviewModel: 'gemini-2.5-flash',
+        reviewGeneration,
+      });
+      await processor.process(makeJob());
+
+      expect(tx.aiGeneration.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'COMPLETED' } }),
+      );
+      // "판정 못 함"은 통과와 구분해 남긴다 — 조용히 PASS로 기록하지 않는다.
+      const review = tx.question.create.mock.calls[0][0].data.metadata.review;
+      expect(review.verdict).toBe('ERROR');
+      expect(review.issues).toEqual(['판정 모델 호출 실패']);
+    });
   });
 
   it('레지스트리에 없는 templateId는 경고만 남기고 무템플릿으로 진행한다(FAILED 아님)', async () => {

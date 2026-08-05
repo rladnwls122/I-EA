@@ -25,3 +25,16 @@ export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 /** presigned URL 유효 시간(초). 5분. */
 export const PRESIGN_EXPIRES_SEC = 300;
+
+/**
+ * 미디어 등록 배치 한 요청의 항목 수 상한 (#33 도그푸딩 잔여 3).
+ *
+ * 문항 배치(QUESTION_BATCH_MAX = 50)보다 크게 잡는다: 이미지는 문항 하나에 여러 장이
+ * 붙을 수 있어(발문 그림 + 선지 그림) 같은 저장 한 번에서 문항 수보다 많이 나온다.
+ * 반면 항목 하나는 URL·크기 몇 개뿐이라 페이로드가 문항과 비교가 안 되게 작고,
+ * 처리도 존재 확인 + INSERT 한 번이다.
+ *
+ * ⚠️ 프런트가 같은 값으로 나눠 보낸다 — `web/lib/api.ts`의 사본과
+ * `media.batch.web-mirror.spec.ts`가 대조한다.
+ */
+export const MEDIA_BATCH_MAX = 100;

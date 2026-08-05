@@ -1,12 +1,51 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Loader2, Send, Sparkles, X } from "lucide-react";
 import {
   fetchReviewTutorHistory,
+  splitTutorMath,
   streamReviewTutorChat,
   REVIEW_TUTOR_SUGGESTIONS,
   type ReviewTutorTurn,
+  type TutorSegment,
 } from "@/lib/review-tutor";
+import { RichContent } from "@/components/editor/RichContent";
+
+/**
+ * 튜터 답변 한 덩어리. 평문은 평문 그대로 두고 `$...$`/`$$...$$` 구간만 수식으로 그린다.
+ * (자르는 규칙과 그 판단 근거는 `splitTutorMath` 주석에 있다.)
+ *
+ * **KaTeX 주입 경계를 새로 만들지 않는다.** 수식 렌더는 `RichContent`의 math 노드
+ * 경로에 그대로 태운다 — `dangerouslySetInnerHTML`은 저장소 전체에서 그 파일의
+ * `MathNode` 한 함수에만 있고, 안전한 이유도 거기 적혀 있다. 여기서 katex를 다시
+ * 부르면 그 경계가 두 곳으로 늘어나고 한쪽만 `trust:false`를 잃는 사고가 가능해진다.
+ * 그래서 노드 한 개짜리 배열을 만들어 넘긴다.
+ */
+function TutorAnswer({ text, streaming = false }: { text: string; streaming?: boolean }) {
+  return (
+    // 평문 답변의 생김새는 예전 그대로다 — 줄바꿈은 여전히 whitespace-pre-wrap이 살린다.
+    <div className="whitespace-pre-wrap leading-relaxed">
+      {splitTutorMath(text, { streaming }).map((seg, i) => (
+        <TutorSegmentView key={i} segment={seg} />
+      ))}
+    </div>
+  );
+}
+
+function TutorSegmentView({ segment }: { segment: TutorSegment }) {
+  if (segment.kind === "text") return <Fragment>{segment.text}</Fragment>;
+
+  if (segment.kind === "math") {
+    const node = segment.block
+      ? { type: "blockMath", attrs: { latex: segment.latex } }
+      : { type: "inlineMath", attrs: { latex: segment.latex } };
+    // 인라인 수식은 RichContent의 래퍼 div를 글줄 안에 흘려보내야 한다(별행은 블록 그대로).
+    return <RichContent value={[node]} className={segment.block ? "" : "inline"} />;
+  }
+
+  // 아직 닫히지 않은 수식 — 원문을 흐린 고정폭으로 보여준다. 숨기지 않는다.
+  return <span className="font-mono text-muted-foreground">{segment.source}</span>;
+}
 
 /**
  * 오답 복습 AI 코치 패널 (#40 프로토타입).
@@ -130,13 +169,19 @@ export function ReviewTutorPanel({
                 : "max-w-[95%] rounded-lg bg-surface-raised px-3 py-2"
             }
           >
-            <p className="whitespace-pre-wrap leading-relaxed">{t.text}</p>
+            {/* 학생이 쓴 말은 평문 그대로 둔다 — `$100` 같은 표기를 우리가 수식으로
+                해석해 버리면 학생이 친 글자가 다르게 보인다. */}
+            {t.role === "user" ? (
+              <p className="whitespace-pre-wrap leading-relaxed">{t.text}</p>
+            ) : (
+              <TutorAnswer text={t.text} />
+            )}
           </div>
         ))}
 
         {streamed && (
           <div className="max-w-[95%] rounded-lg bg-surface-raised px-3 py-2">
-            <p className="whitespace-pre-wrap leading-relaxed">{streamed}</p>
+            <TutorAnswer text={streamed} streaming />
           </div>
         )}
         {streaming && !streamed && (

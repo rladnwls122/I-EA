@@ -6,6 +6,11 @@
  * 겹치는 주석은 createdAt ASC 정렬 후 마지막(최신)이 위에 렌더.
  */
 import { useMemo } from 'react';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+// `\ce{H2O}` — 백엔드 파스 검증·에디터·RichContent와 같은 모듈. 한쪽만 빠지면
+// 저장은 통과한 수식이 여기서만 빨간 에러로 보인다.
+import 'katex/contrib/mhchem';
 import { extractPlainText, walkTextSegments, type TextSegment } from '@/lib/prosemirror';
 import { resolveAnnotation, colorHex } from '@/lib/annotations';
 import type { UserQuestionAnnotation } from '@/lib/types';
@@ -56,7 +61,39 @@ export function AnnotatedText({
     return [...map.entries()].sort((a, b) => a[0] - b[0]);
   }, [segments]);
 
+  /**
+   * 수식 조각을 KaTeX로 그린다. `RichContent.MathNode`와 같은 판단 —
+   * 주입되는 HTML은 저장된 HTML이 아니라 latex 문자열에서 방금 만든 것이고,
+   * `trust: false`가 `\href`·`\htmlClass` 같은 임의 URL/속성 명령을 전부 거부한다.
+   */
+  const renderMath = (latex: string, key: string, bg?: string) => {
+    const html = katex.renderToString(latex, { displayMode: false, throwOnError: false, trust: false });
+    return (
+      <span
+        key={key}
+        style={bg ? { backgroundColor: bg } : undefined}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  };
+
   const renderSegment = (seg: TextSegment) => {
+    /**
+     * 수식은 쪼갤 수 없다 — KaTeX 출력은 통짜 HTML이라 "`$x^`까지만 하이라이트"를
+     * 표현할 방법이 없다. 그래서 마크가 이 조각을 **통째로** 덮을 때만 렌더하고,
+     * 일부만 걸치면 원문(`$x^2$`)을 그대로 보여준다 — 사용자가 실제로 칠한 범위와
+     * 화면이 어긋나는 것보다, 그 한 조각만 날것으로 보이는 편이 정직하다.
+     */
+    if (seg.latex) {
+      const covering = marks.filter((m) => m.start <= seg.start && m.end >= seg.end);
+      const partial = marks.some(
+        (m) => m.start < seg.end && m.end > seg.start && !(m.start <= seg.start && m.end >= seg.end),
+      );
+      if (!partial) {
+        const top = covering[covering.length - 1];
+        return renderMath(seg.latex, `m${seg.start}`, top ? colorHex(top.ann.color) : undefined);
+      }
+    }
     // 세그먼트 내부를 마크 경계로 자른다
     const cuts = new Set<number>([seg.start, seg.end]);
     for (const m of marks) {
