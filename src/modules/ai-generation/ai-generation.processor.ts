@@ -97,48 +97,50 @@ export class AiGenerationProcessor extends WorkerHost {
       includePassage: params.includePassage != null ? Boolean(params.includePassage) : undefined,
       questionType: (params.questionType as QuestionKind | null) ?? undefined,
     });
-    // 유사(변형) 생성 — 원본은 스냅샷이 아니라 **실행 시점에** 로드한다(수정됐다면 최신을 변형).
-    // 없으면 조용히 무관한 문항을 만드는 대신 잡을 실패시킨다 — 변형 요청에 변형이 아닌
-    // 결과를 돌려주는 것이 이 저장소가 피해 온 "조용한 소실"이다.
-    const sourceQuestion = params.sourceQuestionId
-      ? await this.loadSourceQuestion(String(params.sourceQuestionId))
-      : undefined;
-    const ctx: LlmGenerationContext = {
-      prompt: String(params.prompt ?? ''),
-      difficulty: Number(params.difficulty ?? 3),
-      questionCount: Number(params.questionCount ?? 1),
-      // 원본에 지문이 있으면(명시·템플릿 지정이 없을 때) 변형도 지문을 갖는 쪽이 기본이다 —
-      // 지문 근거 문항의 변형이 무지문으로 나오면 같은 유형이라 할 수 없다.
-      includePassage:
-        format.includePassage ||
-        (!template && params.includePassage == null && !!sourceQuestion?.passageText),
-      // 지문 수(0~3). 2 이상이면 다중지문 세트 모드(gap 3) — LLM 계약이 passages[]로 바뀐다.
-      passageCount: format.passageCount,
-      passageLabels: format.passageLabels,
-      // 변형은 정의상 원본과 같은 유형이다 — 명시·템플릿이 없으면 원본을 따른다.
-      questionType: format.questionType ?? sourceQuestion?.questionType,
-      ox: Boolean(params.ox ?? false),
-      // 템플릿·요청 어느 쪽에도 없으면 undefined — 시험별 관행은 프롬프트 지시로만 유도하고
-      // 개수 검증은 걸지 않는다(모델이 하나 어긋났다고 배치 전체를 FAILED로 떨구지 않기 위함).
-      // 단, 변형 생성은 원본의 선지 개수를 기본으로 강제한다(5지 문항의 변형이 4지로 나오지 않게).
-      choiceCount: format.choiceCount ?? this.sourceChoiceCount(sourceQuestion),
-      // 템플릿·요청 어느 쪽에도 없으면 시험/대분류로 추정한다(토익 → 영어, 영어 대분류 → 지문 영어 + 발문 한국어).
-      language:
-        format.language ??
-        resolveOutputLanguage(generation.subject?.examType, generation.subject?.examCategory),
-      // 복수정답 모드(#43 gap 4)와 템플릿 형식 지시 — 프롬프트 조립·검증 완화에 쓰인다.
-      answerMode: format.answerMode,
-      // 지문 내장 빈칸(#43 gap 9) — 지문 평문의 `[[n]]` 마커 + 문항별 blankIndex 계약으로 바뀐다.
-      blanksInPassage: format.blanksInPassage,
-      templateHints: format.promptHints,
-      subjectName: generation.subject?.name,
-      examCategory: generation.subject?.examCategory,
-      examType: generation.subject?.examType,
-      existingKeywords: await this.fetchExistingKeywords(generation.subjectId),
-      sourceQuestion,
-    };
-
     try {
+      // 유사(변형) 생성 — 원본은 스냅샷이 아니라 **실행 시점에** 로드한다(수정됐다면 최신을 변형).
+      // 없으면 조용히 무관한 문항을 만드는 대신 잡을 실패시킨다 — 변형 요청에 변형이 아닌
+      // 결과를 돌려주는 것이 이 저장소가 피해 온 "조용한 소실"이다.
+      // ⚠ try **안**이어야 한다: 원본 소실 예외가 catch 밖에서 터지면 마지막 시도의
+      //   FAILED 확정이 실행되지 않아 행이 PENDING으로 영구 잔류한다.
+      const sourceQuestion = params.sourceQuestionId
+        ? await this.loadSourceQuestion(String(params.sourceQuestionId), generation.creatorId)
+        : undefined;
+      const ctx: LlmGenerationContext = {
+        prompt: String(params.prompt ?? ''),
+        difficulty: Number(params.difficulty ?? 3),
+        questionCount: Number(params.questionCount ?? 1),
+        // 원본에 지문이 있으면(명시·템플릿 지정이 없을 때) 변형도 지문을 갖는 쪽이 기본이다 —
+        // 지문 근거 문항의 변형이 무지문으로 나오면 같은 유형이라 할 수 없다.
+        includePassage:
+          format.includePassage ||
+          (!template && params.includePassage == null && !!sourceQuestion?.passageText),
+        // 지문 수(0~3). 2 이상이면 다중지문 세트 모드(gap 3) — LLM 계약이 passages[]로 바뀐다.
+        passageCount: format.passageCount,
+        passageLabels: format.passageLabels,
+        // 변형은 정의상 원본과 같은 유형이다 — 명시·템플릿이 없으면 원본을 따른다.
+        questionType: format.questionType ?? sourceQuestion?.questionType,
+        ox: Boolean(params.ox ?? false),
+        // 템플릿·요청 어느 쪽에도 없으면 undefined — 시험별 관행은 프롬프트 지시로만 유도하고
+        // 개수 검증은 걸지 않는다(모델이 하나 어긋났다고 배치 전체를 FAILED로 떨구지 않기 위함).
+        // 단, 변형 생성은 원본의 선지 개수를 기본으로 강제한다(5지 문항의 변형이 4지로 나오지 않게).
+        choiceCount: format.choiceCount ?? this.sourceChoiceCount(sourceQuestion),
+        // 템플릿·요청 어느 쪽에도 없으면 시험/대분류로 추정한다(토익 → 영어, 영어 대분류 → 지문 영어 + 발문 한국어).
+        language:
+          format.language ??
+          resolveOutputLanguage(generation.subject?.examType, generation.subject?.examCategory),
+        // 복수정답 모드(#43 gap 4)와 템플릿 형식 지시 — 프롬프트 조립·검증 완화에 쓰인다.
+        answerMode: format.answerMode,
+        // 지문 내장 빈칸(#43 gap 9) — 지문 평문의 `[[n]]` 마커 + 문항별 blankIndex 계약으로 바뀐다.
+        blanksInPassage: format.blanksInPassage,
+        templateHints: format.promptHints,
+        subjectName: generation.subject?.name,
+        examCategory: generation.subject?.examCategory,
+        examType: generation.subject?.examType,
+        existingKeywords: await this.fetchExistingKeywords(generation.subjectId),
+        sourceQuestion,
+      };
+
       const generated = await this.llm.generate(ctx);
       // 지문 내장 빈칸(gap 9): LLM 입력 문법 `[[n]]`을 저장·표시 정본 `___(n)___`으로 한 번만 정규화한다.
       // 빈칸 모드가 아니면 결과 객체를 손대지 않는다 — 기존 전 경로의 출력은 바이트 단위로 동일하다.
@@ -347,16 +349,27 @@ export class AiGenerationProcessor extends WorkerHost {
   /**
    * 변형 생성의 원본 문항을 평문화해 로드한다. 저장은 ProseMirror JSON이지만
    * LLM 입출력은 평문이라는 대전제(prosemirror.util)를 지키기 위해 여기서 걷어낸다.
-   * 원본이 삭제됐으면 예외 → 재시도 소진 후 FAILED. 접근 권한은 요청 진입점
-   * (ai-generation.service)이 이미 검증했다 — 큐 뒤에는 요청자 컨텍스트가 없다.
+   * 원본이 삭제됐으면 예외 → 재시도 소진 후 FAILED.
+   *
+   * 접근 검증은 요청 진입점(ai-generation.service)이 했지만 **여기서 다시 확인한다** —
+   * 요청과 큐 처리 사이(재시도 백오프로 늘어날 수 있는 창)에 원본이 PUBLISHED에서
+   * 내려갔다면, 더 이상 접근할 수 없는 콘텐츠와 정답이 시드로 쓰여선 안 된다.
    */
-  private async loadSourceQuestion(questionId: string): Promise<LlmSourceQuestion> {
+  private async loadSourceQuestion(
+    questionId: string,
+    requesterId: string,
+  ): Promise<LlmSourceQuestion> {
     const q = await this.prisma.question.findUnique({
       where: { id: questionId },
       include: { passage: { select: { content: true } } },
     });
     if (!q) {
       throw new Error(`유사 문항 생성의 원본 문항(${questionId})을 찾을 수 없습니다.`);
+    }
+    if (q.creatorId !== requesterId && q.status !== 'PUBLISHED') {
+      throw new Error(
+        `유사 문항 생성의 원본 문항(${questionId})에 더 이상 접근할 수 없습니다(비공개 전환).`,
+      );
     }
     const choices = Array.isArray(q.choices)
       ? (q.choices as { content?: unknown; isCorrect?: unknown }[]).map((c) => ({

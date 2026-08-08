@@ -34,12 +34,21 @@ export default function WorkbookPrintPage() {
       try {
         const wb = await fetchWorkbook(id);
         // 문항 본문 합성 — 삭제·비공개 문항은 건너뛰고 개수만 알린다(전체 실패로 만들지 않는다).
-        const results = await Promise.allSettled(
-          (wb.questions ?? [])
-            .slice()
-            .sort((a, b) => a.displayOrder - b.displayOrder)
-            .map((wq) => fetchQuestion(wq.questionId)),
-        );
+        // 대형 문제집에서 수십 건을 동시 발사하면 레이트리밋·브라우저 연결 한도에 걸리므로
+        // 청크(8건) 단위로 동시성을 제한한다.
+        const ordered = (wb.questions ?? [])
+          .slice()
+          .sort((a, b) => a.displayOrder - b.displayOrder);
+        const results: PromiseSettledResult<Question>[] = [];
+        const CHUNK = 8;
+        for (let start = 0; start < ordered.length; start += CHUNK) {
+          if (cancelled) return;
+          results.push(
+            ...(await Promise.allSettled(
+              ordered.slice(start, start + CHUNK).map((wq) => fetchQuestion(wq.questionId)),
+            )),
+          );
+        }
         if (cancelled) return;
         setWorkbook(wb);
         setQuestions(
@@ -190,12 +199,16 @@ export default function WorkbookPrintPage() {
               const correctMarkers = choices
                 .map((c, ci) => (c.isCorrect === true ? (CHOICE_MARKERS[ci] ?? `(${ci + 1})`) : null))
                 .filter(Boolean);
-              const answerLabel =
-                q.questionType === "객관식"
+              // 응시 중 마스킹된 문항은 유형과 무관하게 정답류가 전부 null로 온다 —
+              // 주관식을 "서술형"으로 잘못 표기하지 않도록 마스킹 여부를 먼저 본다.
+              const answerLabel = q.maskedForActiveSession
+                ? "비공개(응시 중)"
+                : q.questionType === "객관식"
                   ? correctMarkers.length > 0
                     ? correctMarkers.join(", ")
                     : "비공개"
-                  : (q.correctAnswerText ?? (q.rubric?.length ? "서술형 — 채점기준표 참조" : "서술형"));
+                  : (q.correctAnswerText ??
+                    (q.rubric?.length ? "서술형 — 채점기준표 참조" : "서술형"));
               return (
                 <li key={q.id} className="break-inside-avoid text-[13px] leading-relaxed">
                   <p>
