@@ -966,6 +966,31 @@ export class GeminiLlmService {
         'OX 스타일: 객관식 문항은 OX(참/거짓) 2지선다 형태로 만들어줘. 선택지는 정확히 2개("O","X" 또는 "참","거짓")로 하고, isCorrect는 정답 선지 1개에만 true.',
       );
     }
+    // 유사(변형) 문항 생성 — 원본을 정답 표시까지 직렬화한다(자기검증 직렬화와 같은 이유:
+    // 정답을 알아야 "정답 위치를 바꿔라"가 성립한다). 실패 모드 두 가지를 모두 금지한다:
+    // 문장만 바꾼 복제(재노출 시 답 암기로 풀림)와 다른 개념으로의 이탈(변형이 아님).
+    if (ctx.sourceQuestion) {
+      const s = ctx.sourceQuestion;
+      lines.push(
+        '',
+        '[유사(변형) 문항 출제]',
+        '아래 원본 문항과 같은 개념·같은 유형·같은 난이도의 변형 문항을 만든다.',
+        '- 소재·수치·상황·정답 위치를 바꾼다. 원본의 발문·선지 문구를 그대로 재사용하지 않는다.',
+        '- 단어 몇 개만 바꾼 복제는 금지. 원본과 다른 개념을 묻는 이탈도 금지 — 원본을 틀린 학습자가 같은 개념을 다시 연습할 수 있어야 한다.',
+        ...(s.passageText
+          ? ['- 원본에 지문이 있으므로 변형도 스스로 완결된 새 지문을 만든다(원본 지문 재사용 금지).']
+          : []),
+        '',
+        `원본 유형: ${s.questionType}${s.difficulty != null ? ` / 원본 난이도: ${s.difficulty}` : ''}`,
+      );
+      if (s.passageText) lines.push('원본 지문:', s.passageText);
+      lines.push(`원본 발문: ${s.stemText}`);
+      for (const [ci, c] of (s.choices ?? []).entries()) {
+        lines.push(`  ${ci + 1}) ${c.content}${c.isCorrect ? '  ← 정답' : ''}`);
+      }
+      if (s.answerText) lines.push(`원본 정답(주관식): ${s.answerText}`);
+      if (s.explanationText) lines.push(`원본 해설: ${s.explanationText}`);
+    }
     lines.push('', `출제 지시: ${ctx.prompt}`);
     return lines.join('\n');
   }

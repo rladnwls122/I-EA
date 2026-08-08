@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, Loader2, Play, ShoppingBasket } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Play, Printer, ShoppingBasket } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -218,6 +218,15 @@ export function WorkbookPreviewSidebar({
               )}
               이 문제집 풀기
             </Button>
+            {/* 시험지 인쇄 — 종이 배포 흐름(족보닷컴 벤치마킹). 문항 본문은 인쇄 뷰가 합성한다. */}
+            <button
+              type="button"
+              onClick={() => workbook && router.push(`/workbook/${workbook.id}/print`)}
+              disabled={isLoading || !workbook}
+              className="flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-border text-sm font-medium text-muted-foreground transition-colors duration-150 hover:border-primary/40 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
+            >
+              <Printer size={15} /> 시험지 인쇄
+            </button>
             <button
               type="button"
               onClick={onClose}

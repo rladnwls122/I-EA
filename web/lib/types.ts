@@ -115,6 +115,9 @@ export interface Question {
   /** 전문 검색용 평문 캐시 */
   searchText?: string | null;
 
+  /** 요청자가 이 문항을 품은 진행 중 세션을 갖고 있어 정답류가 마스킹된 응답인지(getById 전용) */
+  maskedForActiveSession?: boolean;
+
   createdAt: string;
   updatedAt: string;
 
@@ -261,6 +264,13 @@ export interface CreateAiGenerationInput {
    * 'en-passage-ko-stem' = 지문·선지 영어 + 발문·해설 한국어.
    */
   language?: "ko" | "en" | "en-passage-ko-stem";
+  /** 출제 형식 템플릿 ID (GET /ai-generations/templates) */
+  templateId?: string;
+  /**
+   * 유사(변형) 문항 생성의 원본 문항 ID. 같은 개념·유형·난이도에서 소재·수치·정답 위치를
+   * 바꾼 변형을 만든다. subjectId는 원본의 세부과목과 일치해야 한다(불일치 400).
+   */
+  sourceQuestionId?: string;
 }
 
 /** POST /ai-generations 응답 (즉시 202) */
@@ -415,7 +425,7 @@ export interface ReasonStat {
 
 // ─── 복습 상태 (오답 복습 기능, 이슈 #15) ───────────────────────────
 
-/** O=처음부터 맞음 / TRIANGLE(세모)=재도전 성공 / X=연속 틀림 / MASTERED=2연속 정답(복습 졸업) */
+/** O=처음부터 맞음 / TRIANGLE(세모)=재도전 성공(간격 3→7일 누진) / X=연속 틀림 / MASTERED=3연속 정답(복습 졸업) */
 export type ReviewStatus = 'O' | 'TRIANGLE' | 'X' | 'MASTERED';
 
 export interface ReviewState {
@@ -555,6 +565,26 @@ export interface ReviewSummaryResponse {
   ungraded: number;
 }
 
+/**
+ * GET /ai-generations/review-stats — AI 자기검증 판정 집계(#33, 본인 문항만).
+ * 헤드라인(reviewed·counts·reviseRatio)은 전 기간 정확, byAxis/byDay는 최근 표본(sampled·capped).
+ */
+export interface ReviewStats {
+  /** 판정이 남은 문항 수(PASS+REVISE+ERROR) */
+  reviewed: number;
+  counts: { PASS: number; REVISE: number; ERROR: number };
+  /** 판정된 것(PASS+REVISE) 중 REVISE 비율. ERROR는 분모 제외. 판정 0건이면 null */
+  reviseRatio: number | null;
+  /** REVISE에서 지적된 축 — 많이 걸린 순 */
+  byAxis: { axis: string; count: number }[];
+  /** 일자별 추이 — 최신이 앞 */
+  byDay: { date: string; pass: number; revise: number; error: number }[];
+  /** 축·일자 분해에 실제로 쓴 표본 행 수 */
+  sampled: number;
+  /** 표본이 상한(2000행)에 닿았는지 — true면 분해는 "최근"이지 "전부"가 아니다 */
+  capped: boolean;
+}
+
 /** GET /me/exam-sessions 응답 항목 */
 export interface MyExamSession {
   id: string;
@@ -645,6 +675,27 @@ export interface SessionQuestionItem {
   reviewState?: ReviewState | null;
 }
 
+/** 세션 결과 축별 리포트의 한 축(키워드/하위요소). */
+export interface SessionAxisBucket {
+  key: string;
+  label: string;
+  total: number;
+  correct: number;
+}
+
+/**
+ * 세션 결과 축별 리포트 — "이번 시험에서 어느 축에서 잃었나"(산타식 응시 직후 분석).
+ * 제출 후에만 내려온다(진행 중 null). 축 정렬은 오답 많은 순.
+ */
+export interface SessionAxisReport {
+  graded: number;
+  /** 0이 아니면 아직 자기채점 전 문항이 있다 — 리포트가 부분 집계임을 알린다. */
+  ungraded: number;
+  byDifficulty: { difficulty: number; total: number; correct: number }[];
+  byKeyword: SessionAxisBucket[];
+  bySubjectDetail: SessionAxisBucket[];
+}
+
 export interface SessionDetail {
   id: string;
   subject: { id: string; name: string } | null;
@@ -656,6 +707,8 @@ export interface SessionDetail {
   durationSec: number | null;
   /** 복습 세션 여부(정답 시 REVIEW_CORRECT 보너스, 전체 통계 미반영) */
   isReview?: boolean;
+  /** 축별 득점률 리포트 — 제출 후에만(진행 중 null) */
+  axisReport?: SessionAxisReport | null;
   questions: SessionQuestionItem[];
 }
 

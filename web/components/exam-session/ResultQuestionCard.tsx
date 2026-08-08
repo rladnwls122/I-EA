@@ -98,7 +98,7 @@ export function ResultQuestionCard({
         {isReview && item.reviewState && (
           <>
             <ReviewStateBadge status={item.reviewState.status} />
-            {/* 재풀이 결과로 언제 다시 나오는지(✗ 1일 · △ 3일)를 결과 화면에서 바로 보여준다. */}
+            {/* 재풀이 결과로 언제 다시 나오는지(✗ 1일 · △ 3→7일 누진)를 결과 화면에서 바로 보여준다. */}
             <ReviewDueLabel nextReviewAt={item.reviewState.nextReviewAt} />
           </>
         )}

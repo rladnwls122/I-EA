@@ -51,12 +51,19 @@ describe('AiGenerationService.createGeneration', () => {
     questionCount: 2,
   };
 
-  function makeCreateService(subject: unknown) {
+  function makeCreateService(
+    subject: unknown,
+    opts: { sourceQuestion?: unknown; activeSession?: boolean } = {},
+  ) {
     const create = jest
       .fn()
       .mockResolvedValue({ id: 'gen-1', status: 'PENDING', createdAt: new Date('2026-01-01') });
     const prisma = {
       subject: { findUnique: jest.fn().mockResolvedValue(subject) },
+      question: { findUnique: jest.fn().mockResolvedValue(opts.sourceQuestion ?? null) },
+      examSessionQuestion: {
+        findFirst: jest.fn().mockResolvedValue(opts.activeSession ? { id: 'esq-1' } : null),
+      },
       aiGeneration: { create },
     } as unknown as PrismaService;
     const queue = { add: jest.fn().mockResolvedValue(undefined) };
@@ -147,6 +154,80 @@ describe('AiGenerationService.createGeneration', () => {
         }),
       }),
     );
+  });
+
+  // 유사(변형) 문항 생성 — 원본 접근·분류 일치·응시 중 차단 검증.
+  describe('sourceQuestionId (유사 문항 생성)', () => {
+    const VARIANT_DTO = { ...BASE_DTO, sourceQuestionId: 'q-src' };
+    const SOURCE = { id: 'q-src', creatorId: 'u1', subjectId: 'subj-1', status: 'DRAFT' };
+
+    it('본인 문항이면 DRAFT여도 원본으로 쓸 수 있고 inputParams에 스냅샷된다', async () => {
+      const { service, create } = makeCreateService(SUBJECT, { sourceQuestion: SOURCE });
+      await service.createGeneration('u1', VARIANT_DTO);
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            inputParams: expect.objectContaining({ sourceQuestionId: 'q-src' }),
+          }),
+        }),
+      );
+    });
+
+    it('남의 PUBLISHED 문항은 허용된다', async () => {
+      const { service } = makeCreateService(SUBJECT, {
+        sourceQuestion: { ...SOURCE, creatorId: 'other', status: 'PUBLISHED' },
+      });
+      await expect(service.createGeneration('u1', VARIANT_DTO)).resolves.toMatchObject({
+        id: 'gen-1',
+      });
+    });
+
+    it('남의 DRAFT는 404 — 존재 여부도 노출하지 않는다', async () => {
+      const { service } = makeCreateService(SUBJECT, {
+        sourceQuestion: { ...SOURCE, creatorId: 'other', status: 'DRAFT' },
+      });
+      await expect(service.createGeneration('u1', VARIANT_DTO)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('없는 원본은 404', async () => {
+      const { service } = makeCreateService(SUBJECT);
+      await expect(service.createGeneration('u1', VARIANT_DTO)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('subjectId가 원본과 다르면 400 — 변형은 같은 세부과목이어야 한다', async () => {
+      const { service } = makeCreateService(SUBJECT, {
+        sourceQuestion: { ...SOURCE, subjectId: 'subj-2' },
+      });
+      await expect(service.createGeneration('u1', VARIANT_DTO)).rejects.toThrow(
+        '유사 문항은 원본 문항과 같은 세부과목이어야 합니다.',
+      );
+    });
+
+    it('원본을 품은 진행 중 세션이 있으면 400 — 응시 중 마스킹의 우회로가 된다', async () => {
+      const { service } = makeCreateService(SUBJECT, {
+        sourceQuestion: SOURCE,
+        activeSession: true,
+      });
+      await expect(service.createGeneration('u1', VARIANT_DTO)).rejects.toThrow(
+        '응시 중인 문항으로는 유사 문항을 생성할 수 없습니다.',
+      );
+    });
+
+    it('sourceQuestionId 미지정이면 null로 스냅샷되고 원본 조회를 하지 않는다(종전 경로)', async () => {
+      const { service, create } = makeCreateService(SUBJECT);
+      await service.createGeneration('u1', BASE_DTO);
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            inputParams: expect.objectContaining({ sourceQuestionId: null }),
+          }),
+        }),
+      );
+    });
   });
 });
 

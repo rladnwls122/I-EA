@@ -15,11 +15,18 @@ import {
   buildRichDoc,
   extractPlainText,
   normalizeBlankMarkers,
+  PMNode,
 } from '@/common/prosemirror/prosemirror.util';
 import { QuestionKind } from '@/common/constants/question';
 import { KEYWORD_TAG_CATEGORY } from '@/common/constants/tag';
 import { GeminiLlmService } from './llm/gemini-llm.service';
-import { LlmGenerationContext, LlmGenerationResult, LlmQuestion, ReviewAxis } from './llm/llm.types';
+import {
+  LlmGenerationContext,
+  LlmGenerationResult,
+  LlmQuestion,
+  LlmSourceQuestion,
+  ReviewAxis,
+} from './llm/llm.types';
 import { OutputLanguage, resolveOutputLanguage } from './exam-format';
 import { getTemplate, resolveTemplateFormat } from './format-templates';
 import { AI_GENERATION_QUEUE } from './ai-generation.constants';
@@ -90,19 +97,31 @@ export class AiGenerationProcessor extends WorkerHost {
       includePassage: params.includePassage != null ? Boolean(params.includePassage) : undefined,
       questionType: (params.questionType as QuestionKind | null) ?? undefined,
     });
+    // 유사(변형) 생성 — 원본은 스냅샷이 아니라 **실행 시점에** 로드한다(수정됐다면 최신을 변형).
+    // 없으면 조용히 무관한 문항을 만드는 대신 잡을 실패시킨다 — 변형 요청에 변형이 아닌
+    // 결과를 돌려주는 것이 이 저장소가 피해 온 "조용한 소실"이다.
+    const sourceQuestion = params.sourceQuestionId
+      ? await this.loadSourceQuestion(String(params.sourceQuestionId))
+      : undefined;
     const ctx: LlmGenerationContext = {
       prompt: String(params.prompt ?? ''),
       difficulty: Number(params.difficulty ?? 3),
       questionCount: Number(params.questionCount ?? 1),
-      includePassage: format.includePassage,
+      // 원본에 지문이 있으면(명시·템플릿 지정이 없을 때) 변형도 지문을 갖는 쪽이 기본이다 —
+      // 지문 근거 문항의 변형이 무지문으로 나오면 같은 유형이라 할 수 없다.
+      includePassage:
+        format.includePassage ||
+        (!template && params.includePassage == null && !!sourceQuestion?.passageText),
       // 지문 수(0~3). 2 이상이면 다중지문 세트 모드(gap 3) — LLM 계약이 passages[]로 바뀐다.
       passageCount: format.passageCount,
       passageLabels: format.passageLabels,
-      questionType: format.questionType,
+      // 변형은 정의상 원본과 같은 유형이다 — 명시·템플릿이 없으면 원본을 따른다.
+      questionType: format.questionType ?? sourceQuestion?.questionType,
       ox: Boolean(params.ox ?? false),
       // 템플릿·요청 어느 쪽에도 없으면 undefined — 시험별 관행은 프롬프트 지시로만 유도하고
       // 개수 검증은 걸지 않는다(모델이 하나 어긋났다고 배치 전체를 FAILED로 떨구지 않기 위함).
-      choiceCount: format.choiceCount,
+      // 단, 변형 생성은 원본의 선지 개수를 기본으로 강제한다(5지 문항의 변형이 4지로 나오지 않게).
+      choiceCount: format.choiceCount ?? this.sourceChoiceCount(sourceQuestion),
       // 템플릿·요청 어느 쪽에도 없으면 시험/대분류로 추정한다(토익 → 영어, 영어 대분류 → 지문 영어 + 발문 한국어).
       language:
         format.language ??
@@ -116,6 +135,7 @@ export class AiGenerationProcessor extends WorkerHost {
       examCategory: generation.subject?.examCategory,
       examType: generation.subject?.examType,
       existingKeywords: await this.fetchExistingKeywords(generation.subjectId),
+      sourceQuestion,
     };
 
     try {
@@ -320,6 +340,49 @@ export class AiGenerationProcessor extends WorkerHost {
       this.logger.warn(`생성 작업 ${generationId} 자기검증 실패 — 문항은 그대로 저장합니다: ${reason}`);
       return result.questions.map(() => ({ model, at, verdict: 'ERROR' as const, issues: [reason] }));
     }
+  }
+
+  // --- 유사(변형) 문항 생성 ---------------------------------------------
+
+  /**
+   * 변형 생성의 원본 문항을 평문화해 로드한다. 저장은 ProseMirror JSON이지만
+   * LLM 입출력은 평문이라는 대전제(prosemirror.util)를 지키기 위해 여기서 걷어낸다.
+   * 원본이 삭제됐으면 예외 → 재시도 소진 후 FAILED. 접근 권한은 요청 진입점
+   * (ai-generation.service)이 이미 검증했다 — 큐 뒤에는 요청자 컨텍스트가 없다.
+   */
+  private async loadSourceQuestion(questionId: string): Promise<LlmSourceQuestion> {
+    const q = await this.prisma.question.findUnique({
+      where: { id: questionId },
+      include: { passage: { select: { content: true } } },
+    });
+    if (!q) {
+      throw new Error(`유사 문항 생성의 원본 문항(${questionId})을 찾을 수 없습니다.`);
+    }
+    const choices = Array.isArray(q.choices)
+      ? (q.choices as { content?: unknown; isCorrect?: unknown }[]).map((c) => ({
+          content: extractPlainText(c?.content as PMNode | PMNode[] | null | undefined),
+          isCorrect: c?.isCorrect === true,
+        }))
+      : undefined;
+    const passageText = q.passage ? extractPlainText(q.passage.content as PMNode).trim() : '';
+    const explanationText = q.explanation
+      ? extractPlainText(q.explanation as PMNode | PMNode[]).trim()
+      : '';
+    return {
+      questionType: this.normalizeType(q.questionType),
+      stemText: extractPlainText(q.stem as PMNode),
+      ...(choices?.length ? { choices } : {}),
+      ...(q.correctAnswerText ? { answerText: q.correctAnswerText } : {}),
+      ...(explanationText ? { explanationText } : {}),
+      ...(passageText ? { passageText } : {}),
+      ...(q.difficulty != null ? { difficulty: q.difficulty } : {}),
+    };
+  }
+
+  /** 원본 선지 개수(2~8 범위일 때만). 범위 밖이면 강제하지 않는다 — 검증이 배치를 떨군다. */
+  private sourceChoiceCount(source?: LlmSourceQuestion): number | undefined {
+    const n = source?.choices?.length;
+    return n && n >= 2 && n <= 8 ? n : undefined;
   }
 
   // --- 노드 조립 헬퍼 ---------------------------------------------------

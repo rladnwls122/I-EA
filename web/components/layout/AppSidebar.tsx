@@ -46,7 +46,7 @@ export function AppSidebar() {
   return (
     <>
       {/* 데스크톱 — 좌측 고정 레일(md 이상) */}
-      <aside className="fixed left-0 top-0 bottom-0 z-50 hidden w-[64px] flex-col items-center border-r border-border bg-sidebar py-5 md:flex">
+      <aside className="fixed left-0 top-0 bottom-0 z-50 hidden w-[64px] flex-col items-center border-r border-border bg-sidebar py-5 md:flex print:hidden">
         <Link
           href="/"
           aria-label="홈"
@@ -111,7 +111,7 @@ export function AppSidebar() {
 
       {/* 모바일 — 하단 탭바(엄지 도달 영역, md 미만). 좌측 레일과 항목 구성 동일 + 라벨 노출. */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 flex items-stretch justify-around border-t border-border bg-sidebar pb-[env(safe-area-inset-bottom)] md:hidden"
+        className="fixed inset-x-0 bottom-0 z-50 flex items-stretch justify-around border-t border-border bg-sidebar pb-[env(safe-area-inset-bottom)] md:hidden print:hidden"
         aria-label="주요 메뉴"
       >
         {nav.map(({ href, label, icon: Icon }) => {

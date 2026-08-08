@@ -1,8 +1,17 @@
 // =====================================================================
-// 오답 복습 상태 전이(이슈 #15 확정 결정) — 순수 함수.
+// 오답 복습 상태 전이(이슈 #15 확정 → 2026-08-08 누진 간격 확장) — 순수 함수.
 //   상태 4종: O(맞음) / TRIANGLE(재도전 성공, 세모) / X(틀림) / MASTERED(마스터)
-//   상태별 고정 간격: X = +1일, TRIANGLE = +3일 후 재노출. O/MASTERED = 복습 제외(null).
-//   마스터 조건: 틀린 문항을 2연속 정답(X → TRIANGLE → MASTERED)하면 복습에서 제외.
+//   간격: X = +1일. TRIANGLE은 연속 정답 횟수에 따라 3일 → 7일 누진(사다리).
+//   마스터 조건: 틀린 문항을 3연속 정답(X → 세모(3일) → 세모(7일) → MASTERED).
+//
+//   누진 사다리의 근거(벤치마킹 2026-08-08): Anki(SM-2)·클래스카드가 검증한
+//   간격 반복의 핵심은 "정답할수록 간격이 길어지고, 길어진 간격을 버텨야 졸업"이다.
+//   종전 규칙(2연속 즉시 마스터)은 1·3일 두 간격만 경험시키고 영구 졸업이라
+//   장기 기억 확인이 없었다. ease factor(가변 배수)는 도입하지 않는다 —
+//   사용 데이터 없이 튜닝하면 SM-2의 알려진 부작용(ease hell)만 복제한다.
+//
+//   기존 행 호환: TRIANGLE(consecutiveCorrect=1) 행은 다음 정답에서 7일 단계로
+//   올라간다 — 스키마 변경도, 데이터 마이그레이션도 없다.
 // grading.util.ts처럼 DB 무관 순수 함수로 두어 서비스 트랜잭션 어디서든 재사용한다.
 // =====================================================================
 
@@ -10,21 +19,29 @@
 export const REVIEW_STATUS = {
   /** 처음부터 맞음 — 복습 대상 아님 */
   O: 'O',
-  /** 틀렸다가 재도전 성공(세모) — 3일 후 재노출 */
+  /** 틀렸다가 재도전 성공(세모) — 누진 간격(3일 → 7일)으로 재노출 */
   TRIANGLE: 'TRIANGLE',
   /** 틀림 — 1일 후 재노출 */
   X: 'X',
-  /** 2연속 정답 — 복습 제외 */
+  /** 3연속 정답 — 복습 제외 */
   MASTERED: 'MASTERED',
 } as const;
 
 export type ReviewStatus = (typeof REVIEW_STATUS)[keyof typeof REVIEW_STATUS];
 
-/** 상태별 고정 재노출 간격(일). O/MASTERED는 재노출 없음(null). */
-export const REVIEW_INTERVAL_DAYS: Readonly<Record<'X' | 'TRIANGLE', number>> = {
+/** X(오답)의 고정 재노출 간격(일). O/MASTERED는 재노출 없음(null). */
+export const REVIEW_INTERVAL_DAYS: Readonly<Record<'X', number>> = {
   X: 1,
-  TRIANGLE: 3,
 };
+
+/**
+ * 세모(TRIANGLE)의 누진 간격 사다리(일) — 인덱스는 연속 정답 횟수 - 1.
+ * 1연속(재도전 성공 직후) = 3일, 2연속 = 7일. 사다리를 다 오르면 마스터다.
+ */
+export const TRIANGLE_INTERVAL_LADDER_DAYS: readonly number[] = [3, 7];
+
+/** 마스터에 필요한 연속 정답 횟수(오답 이후 기준). 사다리 길이 + 1과 항상 같아야 한다. */
+export const MASTER_CONSECUTIVE_CORRECT = TRIANGLE_INTERVAL_LADDER_DAYS.length + 1;
 
 /** 전이 계산에 필요한 기존 상태의 최소 형태(DB 행에서 발췌). */
 export interface ReviewStatePrev {
@@ -49,12 +66,13 @@ function addDays(now: Date, days: number): Date {
  *
  *   없음      + 정답 → O         (1, null)  — 처음부터 맞음, 복습 대상 아님
  *   O         + 정답 → O 유지    (+1, null)
- *   X         + 정답 → TRIANGLE  (1, +3일)  — 재도전 성공
- *   TRIANGLE  + 정답 → MASTERED  (2, null)  — 2연속 정답, 복습 제외
+ *   X         + 정답 → TRIANGLE  (1, +3일)  — 재도전 성공, 사다리 1단
+ *   TRIANGLE  + 정답 → TRIANGLE  (2, +7일)  — 사다리 2단
+ *                    → MASTERED  (3, null)  — 사다리를 다 오르면(3연속) 복습 제외
  *   MASTERED  + 정답 → MASTERED 유지 (+1, null)
  *   (any)     + 오답 → X         (0, +1일)
  *     — MASTERED + 오답도 X로 리셋한다(이슈 #15에서 미확정이었으나 리셋 채택:
- *       마스터한 문항을 다시 틀렸다면 더 이상 마스터가 아니다).
+ *       마스터한 문항을 다시 틀렸다면 더 이상 마스터가 아니다). 사다리도 처음부터다.
  */
 export function transitionReviewState(
   prev: ReviewStatePrev | null,
@@ -75,15 +93,30 @@ export function transitionReviewState(
       // 계속 맞는 문항 — 복습 대상 아님, 연속 정답만 누적.
       return { status: REVIEW_STATUS.O, consecutiveCorrect: prev.consecutiveCorrect + 1, nextReviewAt: null };
     case REVIEW_STATUS.X:
-      // 틀렸던 문항 재도전 성공 — 세모, 3일 후 한 번 더 확인.
+      // 틀렸던 문항 재도전 성공 — 세모, 사다리 1단(3일) 후 한 번 더 확인.
       return {
         status: REVIEW_STATUS.TRIANGLE,
         consecutiveCorrect: 1,
-        nextReviewAt: addDays(now, REVIEW_INTERVAL_DAYS.TRIANGLE),
+        nextReviewAt: addDays(now, TRIANGLE_INTERVAL_LADDER_DAYS[0]),
       };
-    case REVIEW_STATUS.TRIANGLE:
-      // 2연속 정답 달성 — 마스터, 복습 큐에서 제외.
-      return { status: REVIEW_STATUS.MASTERED, consecutiveCorrect: 2, nextReviewAt: null };
+    case REVIEW_STATUS.TRIANGLE: {
+      // 사다리 다음 단 — 다 올랐으면(3연속) 마스터, 아니면 더 긴 간격으로 재확인.
+      // consecutiveCorrect가 어긋난 행(구데이터·VARCHAR 방어)은 1로 간주해 사다리를 다시 탄다.
+      const climbed = Math.max(prev.consecutiveCorrect, 1) + 1;
+      if (climbed >= MASTER_CONSECUTIVE_CORRECT) {
+        return { status: REVIEW_STATUS.MASTERED, consecutiveCorrect: climbed, nextReviewAt: null };
+      }
+      return {
+        status: REVIEW_STATUS.TRIANGLE,
+        consecutiveCorrect: climbed,
+        nextReviewAt: addDays(
+          now,
+          TRIANGLE_INTERVAL_LADDER_DAYS[
+            Math.min(climbed - 1, TRIANGLE_INTERVAL_LADDER_DAYS.length - 1)
+          ],
+        ),
+      };
+    }
     case REVIEW_STATUS.MASTERED:
       // 이미 마스터 — 유지.
       return {

@@ -25,6 +25,7 @@ import type {
   MeProfile,
   MyNotesResponse,
   ReviewSummaryResponse,
+  ReviewStats,
   ReviewQueueResponse,
   MyExamSession,
   PaginatedResponse,
@@ -748,6 +749,14 @@ export function fetchReviewQueue(params?: {
 /** 복습 요약 — due 배지용 경량 카운트 (전량 로드 없음) */
 export function fetchReviewSummary() {
   return apiFetch<ReviewSummaryResponse>('/me/review-summary');
+}
+
+/**
+ * AI 자기검증 판정 집계(#33) — 본인이 만든 문항만.
+ * 헤드라인(PASS/REVISE/ERROR·비율)은 전 기간 정확, 축·일자 분해는 최근 표본(capped 참조).
+ */
+export function fetchReviewStats() {
+  return apiFetch<ReviewStats>('/ai-generations/review-stats');
 }
 
 /** 태그 목록 (category로 선택 필터) */

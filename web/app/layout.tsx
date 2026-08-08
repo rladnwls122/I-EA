@@ -26,7 +26,8 @@ export const metadata: Metadata = { title: "IΔEA | 공부의 흐름을 설계�
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ko" suppressHydrationWarning className={`${pretendard.variable} ${geistMono.variable}`}>
-      <body className="bg-background text-foreground min-h-screen pb-14 font-sans antialiased md:pb-0 md:pl-[64px]">
+      {/* print: 시험지 인쇄 뷰(workbook/[id]/print)에서 레일 여백이 종이에 남지 않도록 리셋 */}
+      <body className="bg-background text-foreground min-h-screen pb-14 font-sans antialiased md:pb-0 md:pl-[64px] print:!bg-white print:!p-0">
         <Providers>
           <AppSidebar />
           <main className="w-full min-h-screen selection:bg-primary selection:text-primary-foreground">

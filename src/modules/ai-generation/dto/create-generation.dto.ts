@@ -86,4 +86,12 @@ export class CreateGenerationDto {
   @IsOptional()
   @IsIn(FORMAT_TEMPLATE_IDS, { message: '알 수 없는 출제 형식 템플릿입니다.' })
   templateId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      '유사(변형) 문항 생성의 원본 문항 ID. 지정하면 같은 개념·유형·난이도에서 소재·수치·정답 위치를 바꾼 변형을 만든다. 본인 문항 또는 PUBLISHED 문항만 허용, subjectId는 원본의 세부과목과 일치해야 한다(400).',
+  })
+  @IsOptional()
+  @IsUUID()
+  sourceQuestionId?: string;
 }

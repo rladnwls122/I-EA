@@ -262,4 +262,51 @@ describe('GeminiLlmService.generate', () => {
       expect(systemPrompt).toContain('지문을 읽어야만');
     });
   });
+
+  // 유사(변형) 문항 생성 — 원본 직렬화와 변형 규칙이 사용자 프롬프트에 실리는지.
+  describe('유사(변형) 문항 생성 (sourceQuestion)', () => {
+    const sourceCtx: LlmGenerationContext = {
+      ...baseCtx,
+      sourceQuestion: {
+        questionType: '객관식',
+        stemText: '밑줄 친 부분의 서술상 특징으로 가장 적절한 것은?',
+        choices: [
+          { content: '원본 선지1', isCorrect: false },
+          { content: '원본 선지2', isCorrect: true },
+        ],
+        explanationText: '원본 해설 문장',
+        difficulty: 4,
+      },
+    };
+
+    it('원본 발문·선지(정답 표시)·해설과 변형 규칙이 프롬프트에 실린다', async () => {
+      const spy = spyCall(response(2));
+      await service.generate(sourceCtx);
+      const userPrompt = spy.mock.calls[0][1] as string;
+      expect(userPrompt).toContain('[유사(변형) 문항 출제]');
+      expect(userPrompt).toContain('원본 발문: 밑줄 친 부분의 서술상 특징으로 가장 적절한 것은?');
+      expect(userPrompt).toContain('원본 선지2  ← 정답');
+      expect(userPrompt).toContain('원본 해설: 원본 해설 문장');
+      // 두 실패 모드(복제·이탈)를 모두 금지하는 지시가 있어야 한다.
+      expect(userPrompt).toContain('복제는 금지');
+      expect(userPrompt).toContain('이탈도 금지');
+    });
+
+    it('원본에 지문이 있으면 새 지문 지시와 원본 지문이 함께 실린다', async () => {
+      const spy = spyCall(response(2));
+      await service.generate({
+        ...sourceCtx,
+        sourceQuestion: { ...sourceCtx.sourceQuestion!, passageText: '원본 지문 본문' },
+      });
+      const userPrompt = spy.mock.calls[0][1] as string;
+      expect(userPrompt).toContain('원본 지문 재사용 금지');
+      expect(userPrompt).toContain('원본 지문 본문');
+    });
+
+    it('sourceQuestion이 없으면 변형 섹션이 실리지 않는다(종전 경로 무변화)', async () => {
+      const spy = spyCall(response(5));
+      await service.generate(baseCtx);
+      expect(spy.mock.calls[0][1] as string).not.toContain('[유사(변형) 문항 출제]');
+    });
+  });
 });
