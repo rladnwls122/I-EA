@@ -50,6 +50,12 @@ export class AiGenerationService {
       }
     }
 
+    // 유사(변형) 문항 생성 — 원본 접근 검증은 진입점에서 끝낸다. 프로세서는 큐 뒤에서
+    // 요청자 컨텍스트 없이 돌므로, 여기서 안 막으면 남의 DRAFT를 시드로 쓰는 경로가 열린다.
+    if (dto.sourceQuestionId) {
+      await this.assertVariantSource(creatorId, dto);
+    }
+
     const generation = await this.prisma.aiGeneration.create({
       data: {
         creatorId,
@@ -71,6 +77,9 @@ export class AiGenerationService {
           language: dto.language ?? null,
           // 출제 형식 템플릿(#43). 프로세서가 기본값 해석에 쓰고, 재생성 시 그대로 재사용된다.
           templateId: dto.templateId ?? null,
+          // 유사(변형) 생성의 원본 문항. 프로세서가 실행 시점에 로드한다 — 본문을 스냅샷하지
+          // 않는 이유는 원본이 그 사이 수정됐다면 최신 내용을 변형하는 쪽이 맞기 때문.
+          sourceQuestionId: dto.sourceQuestionId ?? null,
         },
       },
       select: { id: true, status: true, createdAt: true },
@@ -88,6 +97,36 @@ export class AiGenerationService {
     );
 
     return generation;
+  }
+
+  /**
+   * 유사(변형) 문항 생성의 원본 접근 검증.
+   *
+   * - 본인 문항이거나 PUBLISHED여야 한다. 남의 DRAFT는 존재 여부까지 감춰 404
+   *   (getGeneration의 IDOR 규칙과 같은 이유).
+   * - subjectId가 원본과 다르면 400 — 변형은 정의상 같은 세부과목이고, 어긋난 분류로
+   *   저장되면 오답노트·복습 통계가 엉뚱한 축에 쌓인다.
+   * - 요청자가 원본을 품은 진행 중 세션을 갖고 있으면 400. 변형 프롬프트에 원본
+   *   정답·해설이 실리므로, 응시 중 마스킹(answer-masking)의 우회로가 된다.
+   */
+  private async assertVariantSource(creatorId: string, dto: CreateGenerationDto) {
+    const source = await this.prisma.question.findUnique({
+      where: { id: dto.sourceQuestionId },
+      select: { id: true, creatorId: true, subjectId: true, status: true },
+    });
+    if (!source || (source.creatorId !== creatorId && source.status !== 'PUBLISHED')) {
+      throw new NotFoundException('원본 문항을 찾을 수 없습니다.');
+    }
+    if (source.subjectId !== dto.subjectId) {
+      throw new BadRequestException('유사 문항은 원본 문항과 같은 세부과목이어야 합니다.');
+    }
+    const active = await this.prisma.examSessionQuestion.findFirst({
+      where: { questionId: source.id, examSession: { userId: creatorId, status: 'IN_PROGRESS' } },
+      select: { id: true },
+    });
+    if (active) {
+      throw new BadRequestException('응시 중인 문항으로는 유사 문항을 생성할 수 없습니다.');
+    }
   }
 
   /** 출제 형식 템플릿 목록(#43). examType을 주면 그 시험에 노출되는 것만 필터한다. */

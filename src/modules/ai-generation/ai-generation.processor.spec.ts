@@ -96,8 +96,8 @@ describe('AiGenerationProcessor.resolveKeywordTagIds', () => {
 
 // #43 템플릿 해석 — input_params 스냅샷의 templateId가 LLM 컨텍스트로 풀리는 경로.
 describe('AiGenerationProcessor.process — 템플릿 해석', () => {
-  const makeJob = () =>
-    ({ data: { generationId: 'gen-1' }, attemptsMade: 0, opts: { attempts: 2 } }) as unknown as Job<{
+  const makeJob = (attemptsMade = 0) =>
+    ({ data: { generationId: 'gen-1' }, attemptsMade, opts: { attempts: 2 } }) as unknown as Job<{
       generationId: string;
     }>;
 
@@ -120,6 +120,8 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
     generateResult: unknown = DEFAULT_RESULT,
     // 자기검증(#34 후속)은 옵트인이다 — 기본 목은 스위치가 꺼진 상태를 그대로 흉내낸다.
     llmExtra: Record<string, unknown> = {},
+    // 유사(변형) 생성 — loadSourceQuestion이 읽는 원본 문항 행(없으면 null).
+    sourceQuestionRow: unknown = null,
   ) {
     const generate = jest.fn().mockResolvedValue(generateResult);
     let passageSeq = 0;
@@ -143,6 +145,7 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
         update: jest.fn(),
       },
       tag: { findMany: jest.fn().mockResolvedValue([]) },
+      question: { findUnique: jest.fn().mockResolvedValue(sourceQuestionRow) },
       $transaction: jest
         .fn()
         .mockImplementation(async (fn: (t: unknown) => Promise<void>) => fn(tx)),
@@ -155,7 +158,7 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
         { provide: GeminiLlmService, useValue: llm },
       ],
     }).compile();
-    return { processor: module.get(AiGenerationProcessor), generate, tx, llm };
+    return { processor: module.get(AiGenerationProcessor), generate, tx, llm, prisma };
   }
 
   it('템플릿 기본값이 LLM 컨텍스트에 깔린다(toeic-part5 → 4지·영어·지문 없음·단일정답)', async () => {
@@ -422,6 +425,100 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
       const review = tx.question.create.mock.calls[0][0].data.metadata.review;
       expect(review.verdict).toBe('ERROR');
       expect(review.issues).toEqual(['판정 모델 호출 실패']);
+    });
+  });
+
+  // 유사(변형) 문항 생성 — 원본 로드·기본값 승계·소실 시 FAILED 확정.
+  describe('유사(변형) 생성 (sourceQuestionId)', () => {
+    const variantParams = {
+      prompt: '유사 문항을 만들어줘',
+      difficulty: 3,
+      questionCount: 1,
+      sourceQuestionId: 'q-src',
+    };
+    const doc = (text: string) => ({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    });
+    const SOURCE_ROW = {
+      id: 'q-src',
+      creatorId: 'u1',
+      status: 'DRAFT',
+      questionType: '객관식',
+      stem: doc('원본 발문 텍스트'),
+      choices: [
+        { id: 'c1', isCorrect: false, content: [doc('원본 선지1')] },
+        { id: 'c2', isCorrect: true, content: [doc('원본 선지2')] },
+        { id: 'c3', isCorrect: false, content: [doc('원본 선지3')] },
+      ],
+      correctAnswerText: null,
+      explanation: null,
+      difficulty: 4,
+      passage: null,
+    };
+
+    it('원본을 평문화해 LLM 컨텍스트에 싣고, 선지 개수 기본값을 원본에서 승계한다', async () => {
+      const { processor, generate } = await setupProcess(
+        variantParams,
+        {
+          questions: [
+            {
+              questionType: '객관식',
+              stemText: '변형 발문',
+              choices: [
+                { content: 'a', isCorrect: true },
+                { content: 'b', isCorrect: false },
+                { content: 'c', isCorrect: false },
+              ],
+              difficulty: 3,
+            },
+          ],
+        },
+        {},
+        SOURCE_ROW,
+      );
+      await processor.process(makeJob());
+      expect(generate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          choiceCount: 3,
+          sourceQuestion: expect.objectContaining({
+            questionType: '객관식',
+            stemText: '원본 발문 텍스트',
+            choices: [
+              { content: '원본 선지1', isCorrect: false },
+              { content: '원본 선지2', isCorrect: true },
+              { content: '원본 선지3', isCorrect: false },
+            ],
+            difficulty: 4,
+          }),
+        }),
+      );
+    });
+
+    it('원본이 삭제됐으면 마지막 시도에서 FAILED로 확정한다 — PENDING 영구 잔류 금지', async () => {
+      const { processor, prisma } = await setupProcess(variantParams, DEFAULT_RESULT, {}, null);
+      await expect(processor.process(makeJob(1))).rejects.toThrow(/원본 문항.*찾을 수 없습니다/);
+      expect(prisma.aiGeneration.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'FAILED' } }),
+      );
+    });
+
+    it('요청 후 원본이 비공개로 내려갔으면(남의 DRAFT) 시드로 쓰지 않고 실패시킨다', async () => {
+      const { processor, prisma } = await setupProcess(variantParams, DEFAULT_RESULT, {}, {
+        ...SOURCE_ROW,
+        creatorId: 'someone-else',
+        status: 'DRAFT',
+      });
+      await expect(processor.process(makeJob(1))).rejects.toThrow(/더 이상 접근할 수 없습니다/);
+      expect(prisma.aiGeneration.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'FAILED' } }),
+      );
+    });
+
+    it('재시도가 남아 있으면 FAILED로 확정하지 않고 다시 던진다(백오프 재시도)', async () => {
+      const { processor, prisma } = await setupProcess(variantParams, DEFAULT_RESULT, {}, null);
+      await expect(processor.process(makeJob(0))).rejects.toThrow();
+      expect(prisma.aiGeneration.update).not.toHaveBeenCalled();
     });
   });
 

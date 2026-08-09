@@ -37,6 +37,8 @@ import {
 import { gradeByRubric, readRubric, RubricGrading } from './rubric-grading.util';
 import { PMNode } from '@/common/prosemirror/prosemirror.util';
 import { transitionReviewState } from './review-state.util';
+import { buildSessionAxisReport, SessionAxisReport } from './session-report.util';
+import { KEYWORD_TAG_CATEGORY } from '@/common/constants/tag';
 
 // Json 컬럼 쓰기용 국소 캐스팅(생성 클라이언트가 InputJsonValue를 표면화하지 않음).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -236,6 +238,41 @@ export class ExamSessionsService {
 
     const inProgress = session.status === 'IN_PROGRESS';
 
+    // 제출 후 결과 화면용 — 축별(난이도·키워드·하위요소) 득점률 리포트(벤치마킹: 산타·매쓰플랫).
+    // 축 메타(하위요소·키워드)는 스냅샷에 없어 실문항을 조인한다 — 삭제된 문항은 메타 없이
+    // 난이도 축(스냅샷 출처)에만 잡힌다(buildSessionAxisReport가 처리).
+    let axisReport: SessionAxisReport | null = null;
+    if (!inProgress && session.sessionQuestions.length > 0) {
+      const metaRows = await this.prisma.question.findMany({
+        where: { id: { in: session.sessionQuestions.map((sq) => sq.questionId) } },
+        select: {
+          id: true,
+          detail: { select: { id: true, name: true } },
+          questionTags: {
+            where: { tag: { category: KEYWORD_TAG_CATEGORY } },
+            select: { tag: { select: { id: true, name: true } } },
+          },
+        },
+      });
+      const metaByQuestion = new Map(
+        metaRows.map((row) => [
+          row.id,
+          {
+            detail: row.detail,
+            keywords: row.questionTags.map((qt: { tag: { id: string; name: string } }) => qt.tag),
+          },
+        ]),
+      );
+      axisReport = buildSessionAxisReport(
+        session.sessionQuestions.map((sq) => ({
+          questionId: sq.questionId,
+          difficulty: (sq.snapshot as unknown as QuestionSnapshot).difficulty,
+          isCorrect: sq.answer?.isCorrect ?? null,
+        })),
+        metaByQuestion,
+      );
+    }
+
     // 제출 후 결과 화면용 — 문항별 복습 상태(O/세모/X/마스터)를 한 번의 조회로 배치 로드(N+1 금지).
     // 진행 중에는 채점 전이라 의미가 없으므로 조회하지 않는다.
     const reviewStateByQuestion = new Map<
@@ -267,6 +304,8 @@ export class ExamSessionsService {
       startedAt: session.startedAt,
       submittedAt: session.submittedAt,
       durationSec: session.durationSec,
+      // 제출 후에만 — 진행 중에는 채점 전이라 null(정오 힌트가 되기도 한다).
+      axisReport,
       questions: session.sessionQuestions.map((sq) => {
         const snapshot = sq.snapshot as unknown as QuestionSnapshot;
         return {
@@ -577,8 +616,8 @@ export class ExamSessionsService {
 
       // 복습 상태 전이 — 최초 확정(prev === null)에만 적용한다(isReview 여부와는 무관).
       // 재채점(같은 값 재전송·정오 번복)은 실제 재도전이 아니라 채점 '정정'이므로 전이 입력으로
-      // 세지 않는다 — 같은 정답을 두 번 보내는 것만으로 2연속 정답이 돼 즉시 MASTERED로
-      // 졸업하는 오염을 막기 위함이다.
+      // 세지 않는다 — 같은 정답을 반복 전송하는 것만으로 연속 정답이 쌓여 사다리를 건너뛰고
+      // MASTERED로 졸업하는 오염을 막기 위함이다.
       if (prev === null || prev === undefined) {
         await this.applyReviewTransitions(tx, userId, [{ id: sq.questionId, correct: isCorrect }], new Date());
       }

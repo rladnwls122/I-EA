@@ -1,6 +1,8 @@
 import {
+  MASTER_CONSECUTIVE_CORRECT,
   REVIEW_INTERVAL_DAYS,
   REVIEW_STATUS,
+  TRIANGLE_INTERVAL_LADDER_DAYS,
   transitionReviewState,
 } from './review-state.util';
 
@@ -13,9 +15,10 @@ describe('transitionReviewState', () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
   const afterDays = (d: number) => new Date(now.getTime() + d * DAY_MS);
 
-  it('상수 sanity — 고정 간격은 X=1일, 세모=3일', () => {
+  it('상수 sanity — X=1일, 세모 사다리=[3,7]일, 마스터=3연속(사다리 길이+1)', () => {
     expect(REVIEW_INTERVAL_DAYS.X).toBe(1);
-    expect(REVIEW_INTERVAL_DAYS.TRIANGLE).toBe(3);
+    expect(TRIANGLE_INTERVAL_LADDER_DAYS).toEqual([3, 7]);
+    expect(MASTER_CONSECUTIVE_CORRECT).toBe(TRIANGLE_INTERVAL_LADDER_DAYS.length + 1);
   });
 
   it('없음 + 정답 → O (1, null) — 처음부터 맞아 복습 대상 아님', () => {
@@ -50,7 +53,7 @@ describe('transitionReviewState', () => {
     });
   });
 
-  it('X + 정답 → TRIANGLE (1, +3일) — 재도전 성공', () => {
+  it('X + 정답 → TRIANGLE (1, +3일) — 재도전 성공, 사다리 1단', () => {
     expect(transitionReviewState({ status: 'X', consecutiveCorrect: 0 }, true, now)).toEqual({
       status: REVIEW_STATUS.TRIANGLE,
       consecutiveCorrect: 1,
@@ -66,11 +69,27 @@ describe('transitionReviewState', () => {
     });
   });
 
-  it('TRIANGLE + 정답 → MASTERED (2, null) — 2연속 정답, 복습 제외', () => {
+  it('TRIANGLE(1연속) + 정답 → TRIANGLE (2, +7일) — 사다리 2단, 아직 마스터 아님', () => {
     expect(transitionReviewState({ status: 'TRIANGLE', consecutiveCorrect: 1 }, true, now)).toEqual({
-      status: REVIEW_STATUS.MASTERED,
+      status: REVIEW_STATUS.TRIANGLE,
       consecutiveCorrect: 2,
+      nextReviewAt: afterDays(7),
+    });
+  });
+
+  it('TRIANGLE(2연속) + 정답 → MASTERED (3, null) — 사다리를 다 오르면 복습 제외', () => {
+    expect(transitionReviewState({ status: 'TRIANGLE', consecutiveCorrect: 2 }, true, now)).toEqual({
+      status: REVIEW_STATUS.MASTERED,
+      consecutiveCorrect: 3,
       nextReviewAt: null,
+    });
+  });
+
+  it('TRIANGLE(연속정답 0 — 어긋난 구데이터) + 정답 → 사다리 2단으로 정상화', () => {
+    expect(transitionReviewState({ status: 'TRIANGLE', consecutiveCorrect: 0 }, true, now)).toEqual({
+      status: REVIEW_STATUS.TRIANGLE,
+      consecutiveCorrect: 2,
+      nextReviewAt: afterDays(7),
     });
   });
 
@@ -83,9 +102,9 @@ describe('transitionReviewState', () => {
   });
 
   it('MASTERED + 정답 → MASTERED 유지 (연속정답 +1, null)', () => {
-    expect(transitionReviewState({ status: 'MASTERED', consecutiveCorrect: 2 }, true, now)).toEqual({
+    expect(transitionReviewState({ status: 'MASTERED', consecutiveCorrect: 3 }, true, now)).toEqual({
       status: REVIEW_STATUS.MASTERED,
-      consecutiveCorrect: 3,
+      consecutiveCorrect: 4,
       nextReviewAt: null,
     });
   });

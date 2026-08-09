@@ -660,8 +660,8 @@ model UserQuestionAnnotation {
 //   유저×문항당 1행. 상태 4종(O/세모/X/마스터)과 재노출 시각을 관리한다.
 //     status             = 'O' | 'TRIANGLE' | 'X' | 'MASTERED'
 //                          (questionType과 같은 VARCHAR 패턴 — 앱단 상수 REVIEW_STATUS로 제약)
-//     consecutiveCorrect = 연속 정답 수. 2연속(X→세모→마스터) 도달 시 복습 제외.
-//     nextReviewAt       = 재노출 시각. X=+1일, 세모=+3일. O/마스터는 null(복습 대상 아님).
+//     consecutiveCorrect = 연속 정답 수. 3연속(X→세모(3일)→세모(7일)→마스터) 도달 시 복습 제외.
+//     nextReviewAt       = 재노출 시각. X=+1일, 세모=+3→7일 누진. O/마스터는 null(복습 대상 아님).
 //   전이 규칙의 단일 출처는 exam-sessions/review-state.util.ts(transitionReviewState).
 // ---------------------------------------------------------------------
 model UserQuestionReviewState {

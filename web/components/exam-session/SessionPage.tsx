@@ -15,6 +15,7 @@ import { SolveBottomBar } from "./SolveBottomBar";
 import { SubmitDialog } from "./SubmitDialog";
 import { DrawingOverlay } from "./DrawingOverlay";
 import { ResultBanner } from "./ResultBanner";
+import { AxisReportCard } from "./AxisReportCard";
 import { ResultQuestionCard } from "./ResultQuestionCard";
 import { BoxRewardCard } from "./BoxRewardCard";
 import { WorkbookCard } from "@/components/workbook/WorkbookCard";
@@ -198,6 +199,10 @@ export function SessionPage({ id }: { id: string }) {
         {/* 제출 보상으로 상자를 받았으면 결과 배너 바로 아래 노출 — 새로고침하면 justSubmitted가
             비어 사라진다(이미 개봉했더라도 재조회 값엔 상자 여부가 없으므로 자연히 숨겨짐). */}
         {justSubmitted?.box && <BoxRewardCard box={justSubmitted.box} />}
+
+        {/* 축별 득점률 — 이번 세션에서 어느 축(하위요소·키워드·난이도)에서 잃었는지 */}
+        <AxisReportCard report={session.axisReport} />
+
 
         {/* focus-width 단일 컬럼 — 결과 복기도 위에서 아래로 한 흐름 */}
         <div className="flex flex-col gap-4">

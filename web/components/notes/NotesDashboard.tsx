@@ -140,7 +140,7 @@ export function NotesDashboard() {
   const byKeyword = data?.summary?.byKeyword ?? [];
   const keywordMaxWrong = byKeyword.reduce((m, s) => Math.max(m, s.wrong), 0);
 
-  // 마스터(2연속 정답, 복습 졸업)는 기본 숨김 — "복습 대상 제외" 의미와 목록 노출을 일치시킨다.
+  // 마스터(3연속 정답, 복습 졸업)는 기본 숨김 — "복습 대상 제외" 의미와 목록 노출을 일치시킨다.
   const [showMastered, setShowMastered] = useState(false);
   const masteredCount = useMemo(
     () =>

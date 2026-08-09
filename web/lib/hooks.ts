@@ -19,6 +19,7 @@ import {
   fetchAnnotations,
   fetchMyNotes,
   fetchReviewSummary,
+  fetchReviewStats,
   fetchReviewQueue,
   fetchMyExamSessions,
   createQuestion,
@@ -379,6 +380,15 @@ export function useReviewSummary(enabled = true) {
   return useQuery({
     queryKey: ['review-summary'],
     queryFn: fetchReviewSummary,
+    enabled,
+  });
+}
+
+/** AI 자기검증 판정 집계(#33) — 본인 문항만. 출제 이력이 없으면 reviewed=0으로 온다. */
+export function useReviewStats(enabled = true) {
+  return useQuery({
+    queryKey: ['review-stats'],
+    queryFn: fetchReviewStats,
     enabled,
   });
 }

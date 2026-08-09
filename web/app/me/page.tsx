@@ -5,6 +5,7 @@ import { Flame, LogOut, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { ReviewStatsCard } from "@/components/me/ReviewStatsCard";
 import { useMe } from "@/lib/hooks";
 import { logoutAll } from "@/lib/api";
 
@@ -81,6 +82,9 @@ export default function MePage() {
           </div>
         </div>
       </section>
+
+      {/* 출제 품질(AI 자기검증) — 판정된 문항이 있는 사용자에게만 보인다 */}
+      <ReviewStatsCard enabled={checked} />
 
       {/* 화면 테마 — 모바일에선 좌측 레일 토글이 없으므로 여기서 전환 */}
       <section className="flex items-center justify-between rounded-2xl border border-border bg-card p-4 shadow-surface md:p-6">

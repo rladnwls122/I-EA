@@ -10,6 +10,7 @@ import { ExplanationPanel } from "./ExplanationPanel";
 import { StatsPanel } from "./StatsPanel";
 import { SelfReviewPanel } from "./SelfReviewPanel";
 import { RatingPanel } from "./RatingPanel";
+import { VariantPanel } from "./VariantPanel";
 import { CommentSidebar } from "./CommentSidebar";
 
 /**
@@ -171,6 +172,8 @@ export function QuestionDetail({
           {!editing && <SelfReviewPanel review={question.metadata?.review} />}
           {!editing && reveal && <ExplanationPanel explanation={question.explanation} />}
           {reveal && <StatsPanel questionId={id} />}
+          {/* 유사(변형) 문항 생성 — 응시 중 마스킹된 응답에서는 숨긴다(백엔드도 400으로 막는다). */}
+          {!editing && !question.maskedForActiveSession && <VariantPanel question={question} />}
           <RatingPanel questionId={id} />
         </main>
         <CommentSidebar questionId={id} />

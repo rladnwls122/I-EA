@@ -109,6 +109,21 @@ export interface TutorTurn {
   text: string;
 }
 
+/**
+ * 유사(변형) 문항 생성의 원본 문항(평문). 프로세서가 실행 시점에 DB에서 로드해
+ * extractPlainText로 평문화한 것 — LLM 입출력은 언제나 평문이라는 대전제를 지킨다.
+ * 정답 표시를 포함해야 "정답 위치를 바꿔라"는 변형 지시가 성립한다.
+ */
+export interface LlmSourceQuestion {
+  questionType: QuestionKind;
+  stemText: string;
+  choices?: { content: string; isCorrect: boolean }[];
+  answerText?: string;
+  explanationText?: string;
+  passageText?: string;
+  difficulty?: number;
+}
+
 /** 생성 파이프라인에 넘기는 컨텍스트 */
 export interface LlmGenerationContext {
   prompt: string;
@@ -167,5 +182,10 @@ export interface LlmGenerationContext {
    * 이 목록에서 골라 쓰게 해, 오답노트 개념별 통계가 흩어지지 않고 모이게 한다.
    */
   existingKeywords?: string[];
+  /**
+   * 유사(변형) 문항 생성 모드 — 있으면 프롬프트에 원본과 변형 규칙(같은 개념·유형·난이도,
+   * 다른 소재·수치·정답 위치)이 실린다. 매쓰플랫류 "쌍둥이 문제"의 생성형 대응.
+   */
+  sourceQuestion?: LlmSourceQuestion;
 }
 
