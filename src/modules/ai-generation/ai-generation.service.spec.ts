@@ -18,7 +18,7 @@ function makeService(row: unknown) {
   const prisma = {
     aiGeneration: { findUnique: jest.fn().mockResolvedValue(row) },
   } as unknown as PrismaService;
-  return new AiGenerationService(prisma, {} as GeminiLlmService, {} as never);
+  return new AiGenerationService(prisma, {} as GeminiLlmService, {} as never, {} as never);
 }
 
 describe('AiGenerationService.getGeneration — 소유자 검사(IDOR)', () => {
@@ -68,7 +68,7 @@ describe('AiGenerationService.createGeneration', () => {
     } as unknown as PrismaService;
     const queue = { add: jest.fn().mockResolvedValue(undefined) };
     const llm = { model: 'gemini-2.5-flash' } as GeminiLlmService;
-    return { service: new AiGenerationService(prisma, llm, queue as never), create, queue };
+    return { service: new AiGenerationService(prisma, llm, queue as never, {} as never), create, queue };
   }
 
   const SUBJECT = { id: 'subj-1', name: '문학', examCategory: '국어', examType: '수능' };
@@ -237,6 +237,7 @@ describe('AiGenerationService.listFormatTemplates', () => {
     {} as PrismaService,
     {} as GeminiLlmService,
     {} as never,
+    {} as never,
   );
 
   it('examType 미지정이면 전체 템플릿을 준다(id·label·description·structure 포함)', () => {
@@ -260,5 +261,38 @@ describe('AiGenerationService.listFormatTemplates', () => {
 
   it('모르는 시험이면 빈 배열', () => {
     expect(service.listFormatTemplates('편입')).toEqual([]);
+  });
+});
+
+describe('AiGenerationService.getGeneration — 죽은 PENDING 마감', () => {
+  /** findUnique + updateMany를 함께 가짜로 세운다(리퍼가 updateMany를 친다). */
+  function makeReaperService(row: unknown) {
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const prisma = {
+      aiGeneration: { findUnique: jest.fn().mockResolvedValue(row), updateMany },
+    } as unknown as PrismaService;
+    const service = new AiGenerationService(
+      prisma,
+      {} as GeminiLlmService,
+      {} as never,
+      {} as never,
+    );
+    return { service, updateMany };
+  }
+
+  const pending = (createdAt: Date) => ({ ...ROW, status: 'PENDING', createdAt, passages: [], questions: [] });
+
+  it('5분을 넘긴 PENDING은 FAILED로 마감한다 — 서버리스에는 재시도가 없어 영원히 폴링하게 된다', async () => {
+    const { service, updateMany } = makeReaperService(pending(new Date(Date.now() - 6 * 60 * 1000)));
+    await expect(service.getGeneration('gen-1', 'owner')).resolves.toMatchObject({ status: 'FAILED' });
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'gen-1', status: 'PENDING' }, data: { status: 'FAILED' } }),
+    );
+  });
+
+  it('아직 도는 PENDING은 건드리지 않는다', async () => {
+    const { service, updateMany } = makeReaperService(pending(new Date(Date.now() - 10 * 1000)));
+    await expect(service.getGeneration('gen-1', 'owner')).resolves.toMatchObject({ status: 'PENDING' });
+    expect(updateMany).not.toHaveBeenCalled();
   });
 });

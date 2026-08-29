@@ -1,0 +1,17 @@
+# Vercel CLI는 .gitignore를 따르지 않는다 — 업로드 대상을 여기서 직접 좁힌다.
+# .env가 배포 번들에 섞여 올라가면 시크릿이 빌드 아티팩트에 남는다(환경변수는 Vercel 대시보드/`vercel env`로 넣는다).
+.env
+.env.*
+!.env.example
+
+node_modules
+dist
+.git
+
+# 프론트엔드는 별도 Vercel 프로젝트(Root Directory = web)로 배포한다.
+# 백엔드 번들에 Next.js 소스까지 실어 보낼 이유가 없다.
+web
+
+# 로컬 일회성 스크립트/목 데이터
+_*.js
+prisma/mock

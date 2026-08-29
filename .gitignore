@@ -44,3 +44,6 @@ package-lock.json.head
 # 예전에 .gitmodules 없는 gitlink(mode 160000)로 커밋돼 CI checkout 정리가
 # 매번 exit 128로 실패했다.
 .claude/worktrees/
+.vercel
+.env*
+!.env.example

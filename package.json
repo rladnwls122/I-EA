@@ -4,7 +4,7 @@
   "description": "Q-Idea — AI 문항 출제/모의고사 플랫폼 API (NestJS + Prisma)",
   "license": "UNLICENSED",
   "engines": {
-    "node": "20.x"
+    "node": "24.x"
   },
   "scripts": {
     "build": "nest build",
@@ -16,12 +16,13 @@
     "prisma:deploy": "prisma migrate deploy",
     "db:push": "prisma db push",
     "db:seed": "ts-node prisma/seed.ts",
+    "db:seed:mock": "ts-node prisma/seed-mock.ts",
+    "db:seed:mock:check": "ts-node prisma/seed-mock.check.ts",
     "seed:master": "ts-node prisma/seed-master.ts",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "test": "jest",
     "quality:generation": "ts-node -r tsconfig-paths/register scripts/generation-quality.ts",
-    "postinstall": "prisma generate",
-    "start:railway": "prisma db push --skip-generate && node dist/main.js"
+    "postinstall": "prisma generate"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -60,6 +61,7 @@
     "@nestjs/swagger": "^11.4.7",
     "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^5.18.0",
+    "@vercel/functions": "^3.9.5",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.12.0",
     "class-transformer": "^0.5.1",

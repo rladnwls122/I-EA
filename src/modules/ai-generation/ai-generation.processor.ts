@@ -60,6 +60,19 @@ export class AiGenerationProcessor extends WorkerHost {
     super();
   }
 
+  /**
+   * 큐 없이 같은 처리 로직을 한 번 돌린다 — Vercel 서버리스 경로(waitUntil)가 쓴다.
+   * 서버리스에는 상주 워커가 없어 BullMQ 컨슈머가 뜨지 않는다. 재시도가 없으므로
+   * attempts=1로 넘겨서, 실패 시 process()가 곧바로 FAILED로 마감하게 한다.
+   */
+  async runNow(generationId: string): Promise<void> {
+    await this.process({
+      data: { generationId },
+      attemptsMade: 0,
+      opts: { attempts: 1 },
+    } as Job<GenerationJobData>);
+  }
+
   async process(job: Job<GenerationJobData>): Promise<void> {
     const { generationId } = job.data;
 

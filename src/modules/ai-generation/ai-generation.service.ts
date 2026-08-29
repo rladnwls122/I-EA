@@ -1,12 +1,20 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Queue } from 'bullmq';
+import { waitUntil } from '@vercel/functions';
 import { PrismaService } from '@/prisma/prisma.service';
 import { GeminiLlmService } from './llm/gemini-llm.service';
+import { AiGenerationProcessor } from './ai-generation.processor';
 import { CreateGenerationDto } from './dto/create-generation.dto';
 import { AI_GENERATION_JOB, AI_GENERATION_QUEUE, isAudioSubject } from './ai-generation.constants';
 import { getTemplate, listTemplates } from './format-templates';
 import { foldReviewRows, REVIEW_STATS_ROW_CAP } from './review-stats';
+
+/**
+ * 이 시간이 지나도 PENDING이면 죽은 잡으로 보고 마감한다.
+ * 서버리스 함수 maxDuration(60s)보다 넉넉히 크게 잡아, 아직 도는 잡을 죽이지 않는다.
+ */
+const STALE_PENDING_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class AiGenerationService {
@@ -14,6 +22,7 @@ export class AiGenerationService {
     private readonly prisma: PrismaService,
     private readonly llm: GeminiLlmService,
     @InjectQueue(AI_GENERATION_QUEUE) private readonly queue: Queue,
+    private readonly processor: AiGenerationProcessor,
   ) {}
 
   /**
@@ -85,16 +94,24 @@ export class AiGenerationService {
       select: { id: true, status: true, createdAt: true },
     });
 
-    await this.queue.add(
-      AI_GENERATION_JOB,
-      { generationId: generation.id },
-      {
-        attempts: 2,
-        backoff: { type: 'exponential', delay: 3000 },
-        removeOnComplete: 100,
-        removeOnFail: 500,
-      },
-    );
+    // Vercel 서버리스에는 상주 프로세스가 없다 — BullMQ 워커가 큐를 소비하지 못하므로
+    // 잡을 넣어봐야 영원히 PENDING으로 남는다. 대신 응답을 먼저 보낸 뒤 같은 인보케이션이
+    // 살아 있는 동안 생성을 끝내도록 waitUntil에 넘긴다(클라이언트 폴링 계약은 그대로).
+    // 상주 워커가 있는 환경(로컬/컨테이너)에서는 기존대로 큐에 적재해 재시도까지 받는다.
+    if (process.env.VERCEL) {
+      waitUntil(this.processor.runNow(generation.id));
+    } else {
+      await this.queue.add(
+        AI_GENERATION_JOB,
+        { generationId: generation.id },
+        {
+          attempts: 2,
+          backoff: { type: 'exponential', delay: 3000 },
+          removeOnComplete: 100,
+          removeOnFail: 500,
+        },
+      );
+    }
 
     return generation;
   }
@@ -199,6 +216,21 @@ export class AiGenerationService {
     // 존재 여부까지 감추도록 403이 아니라 위와 같은 404 메시지를 쓴다.
     if (generation.creatorId !== userId) {
       throw new NotFoundException('생성 작업을 찾을 수 없습니다.');
+    }
+
+    // 서버리스 경로(waitUntil)에는 재시도가 없다. 함수가 생성 도중 죽으면(타임아웃·크래시)
+    // 행이 PENDING으로 남아 클라이언트가 영원히 폴링한다. 별도 워커/크론을 두는 대신,
+    // 어차피 들어오는 폴링에서 오래된 PENDING을 FAILED로 마감한다.
+    // updateMany + status 조건이라 방금 완료된 건을 덮어쓰지 않는다(경합 안전).
+    if (
+      generation.status === 'PENDING' &&
+      Date.now() - generation.createdAt.getTime() > STALE_PENDING_MS
+    ) {
+      const { count } = await this.prisma.aiGeneration.updateMany({
+        where: { id: generation.id, status: 'PENDING' },
+        data: { status: 'FAILED' },
+      });
+      if (count > 0) generation.status = 'FAILED';
     }
 
     return {
