@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
+import { isPrismaConnectionError } from '../prisma-connection-error';
 
 /**
  * 처리되지 않은 예외의 최종 처리기.
@@ -51,9 +52,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
       toStack(exception),
     );
 
-    res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
-      statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-      message: '서버 내부 오류가 발생했습니다.',
+    /**
+     * 커넥션 장애는 500이 아니다. TiDB Serverless가 유휴 커넥션을 끊은 직후의 요청은
+     * 재시도하면 되는 일시 장애인데, 500으로 나가면 클라이언트도 모니터링도 "고쳐야 할
+     * 버그"로 읽는다. jwt.strategy는 같은 상황을 이미 503으로 올린다(인증 실패로
+     * 오인하지 않으려고) — 그 판정을 공유해 경로에 따라 얼굴이 달라지지 않게 한다.
+     */
+    const connectionFailure = isPrismaConnectionError(exception);
+    const status = connectionFailure
+      ? HttpStatus.SERVICE_UNAVAILABLE
+      : HttpStatus.INTERNAL_SERVER_ERROR;
+
+    res.status(status).json({
+      statusCode: status,
+      message: connectionFailure
+        ? '일시적인 DB 오류입니다. 잠시 후 다시 시도해주세요.'
+        : '서버 내부 오류가 발생했습니다.',
       path: req.url,
       // 운영에서는 원본을 절대 싣지 않는다(Prisma 오류의 테이블·컬럼명 유출 차단).
       ...(this.isProduction ? {} : { debug: describe(exception) }),

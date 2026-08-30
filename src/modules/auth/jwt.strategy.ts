@@ -7,8 +7,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
+import { isPrismaConnectionError } from '@/common/prisma-connection-error';
 import { CurrentUserPayload } from './current-user.interface';
 import { requireJwtSecret } from './jwt-secret';
 
@@ -85,7 +85,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         select: USER_SELECT,
       });
     } catch (err) {
-      if (!this.isConnectionError(err)) throw err;
+      if (!isPrismaConnectionError(err)) throw err;
       this.logger.warn('DB 커넥션 끊김 감지 — 재연결 후 재시도합니다.');
       try {
         await this.prisma.$connect();
@@ -101,15 +101,4 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
   }
 
-  /** 인증 실패가 아니라 인프라(커넥션) 장애로 봐야 할 오류인지 판정. */
-  private isConnectionError(err: unknown): boolean {
-    if (err instanceof Prisma.PrismaClientInitializationError) return true;
-    if (err instanceof Prisma.PrismaClientRustPanicError) return true;
-    if (err instanceof Prisma.PrismaClientUnknownRequestError) return true;
-    if (err instanceof Prisma.PrismaClientKnownRequestError) {
-      // P1001 서버 도달 불가, P1017 서버가 커넥션을 닫음.
-      return err.code === 'P1001' || err.code === 'P1017';
-    }
-    return false;
-  }
 }
