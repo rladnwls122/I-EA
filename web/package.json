@@ -43,7 +43,7 @@
     "vega-embed": "^7.1.0",
     "vega-lite": "^6.4.3",
     "zod": "^4.4.3",
-    "zustand": "^4.5.7"
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/dompurify": "^3.0.5",
