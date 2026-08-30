@@ -124,7 +124,7 @@ export class GeminiLlmService {
     } else {
       this.logger.log(`Gemini 키 풀 초기화: ${this.keyPool.size}개 키`);
     }
-    this.model = this.config.get<string>('GEMINI_MODEL') ?? 'gemini-2.5-flash';
+    this.model = this.config.get<string>('GEMINI_MODEL') ?? 'gemini-3.6-flash';
     this.maxTokens = Number(this.config.get<string>('GEMINI_MAX_TOKENS') ?? 4096);
     this.baseUrl =
       this.config.get<string>('GEMINI_BASE_URL') ??
@@ -234,7 +234,7 @@ export class GeminiLlmService {
    * generate/regenerateChoices와 달리:
    * - responseMimeType을 빼서 JSON이 아니라 산문을 받는다.
    * - streamGenerateContent?alt=sse 로 SSE 스트림을 받아 파싱한다.
-   * - thinkingBudget=0 으로 사고 토큰을 꺼 첫 델타 지연을 줄인다.
+   * - thinkingLevel='minimal'로 사고를 최소화해 첫 델타 지연을 줄인다.
    *
    * 재시도 정책: **첫 바이트를 받기 전(요청 자체 실패)에만** 예외를 던진다.
    * 스트림이 시작된 뒤의 중간 실패는 이미 델타를 보낸 상태라 재시도하면 중복이 되므로
@@ -260,7 +260,7 @@ export class GeminiLlmService {
       generationConfig: {
         maxOutputTokens: this.maxTokens,
         // 산문을 받는다 — responseMimeType(JSON 강제)을 켜지 않는다.
-        thinkingConfig: { thinkingBudget: 0 },
+        thinkingConfig: { thinkingLevel: 'minimal' },
       },
     });
 
@@ -397,7 +397,7 @@ export class GeminiLlmService {
    * - timeoutMs: 주면 그 시간 안에 응답이 없을 때 끊는다(비동기 배치는 무제한).
    * - attempts: 일시적 장애(429/5xx/타임아웃)에만 재시도한다. 기본 1회(재시도 없음).
    *   generate()는 BullMQ가 재시도하므로 여기서 다시 재시도하지 않는다.
-   * - disableThinking: gemini-2.5-*의 thinking 토큰을 끈다.
+   * - disableThinking: 사고를 최소 레벨로 낮춘다(Gemini 3는 완전히 끌 수 없다).
    */
   private async callGemini(
     system: string,
@@ -487,8 +487,9 @@ export class GeminiLlmService {
             maxOutputTokens: this.maxTokens,
             // JSON만 받도록 강제 → 코드펜스/서두 텍스트 혼입을 최소화한다.
             responseMimeType: 'application/json',
-            // gemini-2.5-*는 기본으로 thinking 토큰을 쓴다. 단순 작업에서는 지연만 늘린다.
-            ...(opts.disableThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+            // Gemini 3 계열은 사고를 끌 수 없고, 상한을 안 걸면 단순 요청에도 40초 넘게 생각한다.
+            // 서버리스 함수 시간 한도를 넘겨 헤더도 못 보내고 죽으므로 항상 레벨을 명시한다.
+            thinkingConfig: { thinkingLevel: opts.disableThinking ? 'minimal' : 'low' },
           },
         }),
         ...(opts.timeoutMs ? { signal: AbortSignal.timeout(opts.timeoutMs) } : {}),
