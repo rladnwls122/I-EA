@@ -2,6 +2,8 @@ import { ValidationPipe } from '@nestjs/common';
 import { BatchCreateMediaDto } from '@/modules/media/dto/batch-create-media.dto';
 import { BatchUpdateQuestionsDto } from '@/modules/questions/dto/batch-update-question.dto';
 import { BatchAddQuestionsDto } from '@/modules/workbooks/dto/batch-add-questions.dto';
+import { CreateQuestionDto } from '@/modules/questions/dto/create-question.dto';
+import { validateBatchItems } from '@/common/dto/batch-validation';
 import { TRANSFORM_OPTIONS, VALIDATOR_OPTIONS } from '@/common/validation-options';
 
 /**
@@ -40,5 +42,36 @@ describe('배치 DTO items — 전역 파이프가 원소를 뭉개지 않는다
       expect(typeof got).toBe('object');
       expect(got).toEqual(item);
     }
+  });
+
+  /**
+   * 파이프만 보면 반쪽이다. 실제 실패는 파이프를 지난 items가 그다음
+   * `validateBatchItems`에 들어갔을 때 났다 — 기존 배치 테스트들이 서비스를 직접
+   * 호출해 파이프를 건너뛰는 바람에 그 이음매가 통째로 비어 있었다. 두 단계를
+   * 이어서 한 번 태운다.
+   */
+  it('파이프를 지난 items가 validateBatchItems를 통과한다', async () => {
+    const doc = (text: string) => ({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+    });
+    const item = {
+      subjectId: '00000000-0000-4000-8000-000000000001',
+      questionType: '객관식',
+      stem: doc('발문'),
+      choices: [
+        { id: 'c1', content: doc('선지1'), isCorrect: true },
+        { id: 'c2', content: doc('선지2'), isCorrect: false },
+      ],
+    };
+
+    const out = await transform(BatchAddQuestionsDto, { items: [item] });
+    const { valid, failures } = validateBatchItems(out.items, CreateQuestionDto);
+
+    expect(failures).toEqual([]);
+    expect(valid).toHaveLength(1);
+    expect(valid[0].dto.subjectId).toBe(item.subjectId);
+    // 선지도 원형이어야 한다 — 여기서 뭉개지면 정답 정보가 통째로 사라진 채 저장된다.
+    expect(valid[0].dto.choices).toEqual(item.choices);
   });
 });
