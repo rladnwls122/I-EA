@@ -30,8 +30,13 @@ export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
 export class RedisModule implements OnModuleDestroy {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
 
-  /** 앱 종료 시 연결을 정리한다. */
+  /**
+   * 앱 종료 시 연결을 정리한다.
+   *
+   * 실패는 삼킨다. 이미 끊긴 연결에 quit을 보내거나 commandTimeout에 걸리면 예외가
+   * 나는데, 종료 중에 그걸 던져 봐야 정리 순서만 어그러진다(이 시점엔 정리할 것도 없다).
+   */
   async onModuleDestroy(): Promise<void> {
-    await this.redis.quit();
+    await this.redis.quit().catch(() => undefined);
   }
 }
