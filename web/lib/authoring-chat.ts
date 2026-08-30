@@ -225,14 +225,24 @@ export async function streamAuthoringChat(
   },
 ): Promise<void> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  const res = await fetch(`${API_BASE}/ai-generations/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-  });
+  const { fetchOrFail } = await import('./api');
+  let res: Response;
+  try {
+    res = await fetchOrFail(`${API_BASE}/ai-generations/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    // 연결 실패는 상태 코드가 없다 — 위의 `요청 실패 (${res.status})` 경로로 못 간다.
+    // 던져서 호출부가 각자 처리하게 두면 화면마다 문구가 갈리므로 여기서 onError로 모은다.
+    handlers.onError((e as Error).message);
+    handlers.onReview?.(null);
+    return;
+  }
   if (!res.ok || !res.body) {
     if (res.status === 401) {
       // 만료/무효 토큰 — 중앙 처리(토큰 클리어 + /login?callbackUrl=)로 위임.

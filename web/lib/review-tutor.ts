@@ -240,11 +240,14 @@ function authHeaders(): Record<string, string> {
 
 /** 저장된 대화 이력(Redis, 24h). 패널을 다시 열면 이어 보인다. */
 export async function fetchReviewTutorHistory(questionId: string): Promise<ReviewTutorTurn[]> {
-  const res = await fetch(
+  const { fetchOrFail } = await import('./api');
+  // 이력은 있으면 좋은 부가 정보다. 서버가 거절하면(!res.ok) 이미 빈 목록으로 넘어가는데,
+  // 연결 실패만 예외를 던져 패널을 통째로 깨뜨릴 이유가 없다 — 같은 취급으로 맞춘다.
+  const res = await fetchOrFail(
     `${API_BASE}/tutor/review-history?questionId=${encodeURIComponent(questionId)}`,
     { headers: authHeaders() },
-  );
-  if (!res.ok) return [];
+  ).catch(() => null);
+  if (!res || !res.ok) return [];
   const body = (await res.json()) as { turns?: ReviewTutorTurn[] };
   return body.turns ?? [];
 }
@@ -261,11 +264,19 @@ export async function streamReviewTutorChat(
     onError: (message: string) => void;
   },
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/tutor/review-chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify(body),
-  });
+  const { fetchOrFail } = await import('./api');
+  let res: Response;
+  try {
+    res = await fetchOrFail(`${API_BASE}/tutor/review-chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    // 연결 실패는 상태 코드가 없다 — 아래 `요청 실패 (${res.status})` 경로로 못 간다.
+    handlers.onError((e as Error).message);
+    return;
+  }
 
   if (!res.ok || !res.body) {
     if (res.status === 401) {

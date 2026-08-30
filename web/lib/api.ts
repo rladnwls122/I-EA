@@ -71,6 +71,34 @@ export function handleUnauthorized(): void {
 }
 
 /**
+ * 연결 자체가 실패했을 때 사용자에게 보여줄 문구.
+ *
+ * fetch는 서버에 닿지 못하면 `TypeError: Failed to fetch`를 던진다. 그 문자열이
+ * 화면까지 그대로 올라오면 한국어 UI에 영어 원문이 섞이고, 무엇보다 사용자가 다음에
+ * 뭘 해야 하는지 알 수 없다(응답을 받고 실패한 것과 구분도 안 된다).
+ */
+export const NETWORK_ERROR_MESSAGE =
+  '서버에 연결하지 못했어요. 네트워크 상태를 확인하고 잠시 후 다시 시도해주세요.';
+
+/**
+ * fetch를 감싸 연결 실패만 한국어 오류로 바꾼다. 응답을 **받은** 실패(4xx/5xx)는
+ * 건드리지 않는다 — 그건 서버가 사유를 주므로 호출부가 그대로 보여줘야 한다.
+ *
+ * 호출부마다 try/catch를 두면 새 호출부에서 또 빠진다. 스트리밍 경로(출제 채팅·오답
+ * 튜터)도 각자 fetch를 쓰므로 이 한 곳을 함께 쓴다. 원래 오류는 cause로 남긴다.
+ */
+export async function fetchOrFail(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (cause) {
+    throw new Error(NETWORK_ERROR_MESSAGE, { cause });
+  }
+}
+
+/**
  * 인증 토큰을 자동 첨부하는 범용 API 호출 래퍼.
  * 401 응답은 중앙에서 처리 — 만료/무효 토큰으로 인한 "로그인했는데 Unauthorized"를
  * 페이지마다 방치하지 않고 즉시 재로그인 흐름으로 보낸다.
@@ -84,7 +112,7 @@ async function apiFetch<T>(
       ? localStorage.getItem('token')
       : null;
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetchOrFail(`${API_BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -619,7 +647,7 @@ export async function uploadImage(file: File): Promise<{ publicUrl: string; key:
 
   // 우리 API가 아니라 S3로 직접 보낸다 — apiFetch(Authorization·JSON 헤더)를 쓰면 안 된다.
   // Content-Type은 브라우저가 boundary와 함께 붙이도록 지정하지 않는다.
-  const res = await fetch(presigned.url, { method: 'POST', body: form });
+  const res = await fetchOrFail(presigned.url, { method: 'POST', body: form });
   if (!res.ok) {
     // S3는 XML로 에러를 준다. 원문을 그대로 노출하지 않고 상태 코드만 남긴다.
     throw new Error(`이미지 업로드에 실패했어요. (S3 ${res.status})`);
