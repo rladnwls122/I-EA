@@ -1,12 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "npm run build",
+  "buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then npx prisma db push --skip-generate || (sleep 5 && npx prisma db push --skip-generate); else echo \"preview/dev 빌드 - 스키마 동기화를 건너뜁니다\"; fi && npm run build",
   "outputDirectory": "public",
   "functions": {
     "api/index.js": {
       "maxDuration": 300,
-      "memory": 1024,
       "includeFiles": "dist/**"
     }
   },
