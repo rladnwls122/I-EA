@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsUUID } from 'class-validator';
 import { QUESTION_BATCH_MAX } from '@/common/constants/question';
 import { UpdateQuestionDto } from './update-question.dto';
@@ -32,5 +33,12 @@ export class BatchUpdateQuestionsDto {
   @IsArray()
   @ArrayNotEmpty()
   @ArrayMaxSize(QUESTION_BATCH_MAX)
+  /**
+   * 원본 평문에서 items를 다시 읽어 원형을 보존한다(제거 금지). 없으면 전역 파이프의 enableImplicitConversion이
+   * 속성 타입(Array)을 원소에도 적용해 항목을 전부 빈 배열로 바꿔 놓는다
+   * (배치 전체가 '항목이 객체가 아닙니다'로 실패). QuestionContentDto의 choices/explanation과 같은 처방이다.
+   * 검증은 여전히 서비스가 항목별로 돌린다.
+   */
+  @Transform(({ obj }) => obj.items)
   items!: unknown[];
 }
