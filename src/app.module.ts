@@ -23,7 +23,9 @@ import { MeModule } from './modules/me/me.module';
 import { TutorModule } from './modules/tutor/tutor.module';
 import { LootBoxesModule } from './modules/loot-boxes/loot-boxes.module';
 import { ShopModule } from './modules/shop/shop.module';
-import { RedisModule } from './redis/redis.module';
+import type Redis from 'ioredis';
+import { REDIS_CLIENT, RedisModule } from './redis/redis.module';
+import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storage';
 
 @Module({
   imports: [
@@ -32,8 +34,21 @@ import { RedisModule } from './redis/redis.module';
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     // @Cron 데코레이터 활성화 — TiDB keep-alive 등 스케줄 잡이 쓴다.
     ScheduleModule.forRoot(),
-    // 전역 레이트리밋 기본선. 라우트별 강화는 @Throttle로 한다(throttler.config 참고).
-    ThrottlerModule.forRoot([DEFAULT_THROTTLE]),
+    /**
+     * 전역 레이트리밋 기본선. 라우트별 강화는 @Throttle로 한다(throttler.config 참고).
+     *
+     * 카운터는 **Redis에 둔다**. 기본 저장소는 프로세스 메모리라 인스턴스가 여러 개인
+     * 서버리스에서는 실효 한도가 인스턴스 수만큼 늘어난다 — 로그인 무차별 대입,
+     * 다중계정, Gemini 비용 방어가 전부 같이 헐거워진다(RedisThrottlerStorage 주석 참고).
+     */
+    ThrottlerModule.forRootAsync({
+      imports: [RedisModule],
+      inject: [REDIS_CLIENT],
+      useFactory: (redis: Redis) => ({
+        throttlers: [DEFAULT_THROTTLE],
+        storage: new RedisThrottlerStorage(redis),
+      }),
+    }),
     // BullMQ(Redis) 전역 연결 — AI 생성 등 비동기 잡 큐가 공유한다.
     BullModule.forRootAsync({
       imports: [ConfigModule],
