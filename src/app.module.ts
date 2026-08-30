@@ -25,6 +25,7 @@ import { LootBoxesModule } from './modules/loot-boxes/loot-boxes.module';
 import { ShopModule } from './modules/shop/shop.module';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT, RedisModule } from './redis/redis.module';
+import { redisConnectionOptions } from './redis/redis.options';
 import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storage';
 
 @Module({
@@ -49,18 +50,20 @@ import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storag
         storage: new RedisThrottlerStorage(redis),
       }),
     }),
-    // BullMQ(Redis) 전역 연결 — AI 생성 등 비동기 잡 큐가 공유한다.
+    /**
+     * BullMQ(Redis) 전역 연결 — AI 생성 등 비동기 잡 큐가 공유한다.
+     *
+     * 접속 정보는 redis.options.ts를 함께 읽는다(env 드리프트 방지). 다만 타임아웃 정책은
+     * 일반 클라이언트와 **일부러 다르다**: BullMQ는 블로킹 커맨드로 잡을 기다리므로
+     * maxRetriesPerRequest를 null(무제한)로 둬야 하고 commandTimeout을 걸면 안 된다.
+     */
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         connection: {
-          host: config.get<string>('REDIS_HOST') ?? '127.0.0.1',
-          port: Number(config.get<string>('REDIS_PORT') ?? 6379),
-          password: config.get<string>('REDIS_PASSWORD') || undefined,
-          // Aiven 등 관리형 Redis는 TLS(rediss://) 연결이 필수다.
-          // REDIS_TLS=true 로 켜고, TLS 없는 로컬/Railway Redis는 기본값(끔)으로 둔다.
-          ...(config.get<string>('REDIS_TLS') === 'true' ? { tls: {} } : {}),
+          ...redisConnectionOptions(config),
+          maxRetriesPerRequest: null,
         },
       }),
     }),

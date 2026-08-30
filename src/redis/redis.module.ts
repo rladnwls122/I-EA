@@ -1,6 +1,7 @@
 import { Global, Inject, Module, OnModuleDestroy } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
+import { sharedRedisOptions } from './redis.options';
 
 /**
  * ioredis 클라이언트 주입 토큰.
@@ -11,9 +12,8 @@ export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
 /**
  * 앱 전역에서 공유하는 단일 ioredis 인스턴스를 제공한다.
  *
- * BullMQ 등록부(app.module.ts)와 **같은 env**를 읽는다:
- * REDIS_HOST / REDIS_PORT / REDIS_PASSWORD / REDIS_TLS.
- * REDIS_TLS=true(Aiven 등 관리형)일 때만 TLS를 켜고 로컬/Railway는 끈다.
+ * 접속 정보와 타임아웃 정책은 `redis.options.ts`가 정본이다 — BullMQ 등록부도 같은 곳을
+ * 읽으므로 env가 한쪽에만 반영되는 드리프트가 생기지 않는다.
  */
 @Global()
 @Module({
@@ -22,15 +22,7 @@ export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
     {
       provide: REDIS_CLIENT,
       inject: [ConfigService],
-      useFactory: (config: ConfigService): Redis =>
-        new Redis({
-          host: config.get<string>('REDIS_HOST') ?? '127.0.0.1',
-          port: Number(config.get<string>('REDIS_PORT') ?? 6379),
-          password: config.get<string>('REDIS_PASSWORD') || undefined,
-          ...(config.get<string>('REDIS_TLS') === 'true' ? { tls: {} } : {}),
-          // 커맨드 재시도를 무한정 큐잉하지 않게 한다(BullMQ와 동일한 안정성 기조).
-          maxRetriesPerRequest: null,
-        }),
+      useFactory: (config: ConfigService): Redis => new Redis(sharedRedisOptions(config)),
     },
   ],
   exports: [REDIS_CLIENT],
