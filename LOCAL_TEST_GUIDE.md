@@ -687,7 +687,7 @@ docker rm -f qidea-mysql qidea-redis
 개발 테스트가 끝나고 배포할 때:
 1. MySQL → AWS RDS / TiDB 등 클라우드 DB
 2. Redis → ✅ 이미 Aiven으로 계획 중
-3. API 서버 → Vercel / Railway / AWS EC2 등 배포 플랫폼
+3. API 서버 → ✅ 이미 Vercel 서버리스로 배포 중(프로젝트 `i-ea`)
 4. `.env` → CI/CD 파이프라인에서 관리
 
 문제가 생기면 이 가이드의 해당 섹션을 참고하세요!

@@ -26,7 +26,7 @@ AI 문항 출제 및 모의고사 플랫폼 **IΔEA / Q-Idea** 프로젝트입�
 - **캐싱/세션**: [Redis](https://redis.io/)
 - **파일 스토리지**: [AWS S3](https://aws.amazon.com/s3/) (이미지 업로드)
 - **LLM 연동**: Google Gemini API
-- **배포**: [Railway](https://railway.app/)
+- **배포**: [Vercel](https://vercel.com/) 서버리스 함수
 
 NestJS는 모듈 기반 아키텍처를 채택하여 각 기능(예: `auth`, `questions`, `exam-sessions`, `ai-generation`)이 독립적인 모듈로 구성되어 있습니다. `JwtAuthGuard`를 통한 전역 인증 가드가 기본으로 적용되며, `@Public()` 데코레이터를 통해 특정 라우트만 인증을 우회할 수 있습니다. 인증 가드 **앞에** 전역 레이트리밋 가드(`ThrottlerGuard`)가 놓여 있습니다 — 인증이 매 요청 DB를 조회하므로, 무차별 대입이 DB에 닿기 전에 끊기 위해서입니다.
 
@@ -229,7 +229,7 @@ graph TD
     JWT_SECRET="<생성한 시크릿>"
     REDIS_HOST="127.0.0.1"
     REDIS_PORT=6379
-    # 관리형 Redis(Aiven 등)만 "true". 로컬/Railway는 비워둔다.
+    # 관리형 Redis(Aiven 등)만 "true". 로컬 개발에서는 비워둔다.
     REDIS_TLS=
     GEMINI_API_KEY="<Google AI Studio 키>"
     PORT=3000
@@ -265,10 +265,15 @@ graph TD
 
 ## 🚀 배포
 
-- **백엔드**: [Railway](https://railway.app/)를 통해 배포됩니다. `railway.json`에 정의된 시작 스크립트(`npm run start:railway`)가 `prisma db push --skip-generate` 후 서버를 띄웁니다. **프로덕션은 마이그레이션이 아니라 `db push`로 스키마를 동기화**하므로 `schema.prisma`가 항상 권위 있는 출처입니다.
+백엔드와 프론트엔드 모두 [Vercel](https://vercel.com/)에 **별도 프로젝트**로 배포됩니다.
+
+- **백엔드** (`i-ea`, `https://i-ea.vercel.app`): 서버리스 함수로 돕니다. `vercel.json`이 모든 경로를 `api/index.js`로 rewrite하고, 그 핸들러가 Nest 앱의 express 인스턴스를 그대로 씁니다. Railway를 떠나면서 `railway.json`과 `npm run start:railway`는 삭제됐습니다 — 옛 문서가 말하는 그 경로는 더 이상 없습니다.
+  - **프로덕션은 마이그레이션이 아니라 `db push`로 스키마를 동기화**하므로 `schema.prisma`가 항상 권위 있는 출처입니다. `vercel.json`의 `buildCommand`가 `VERCEL_ENV=production`일 때만 `prisma db push --skip-generate`를 돌립니다.
+  - 프리뷰 배포에서는 스키마 동기화를 **건너뜁니다**. 프리뷰도 같은 `DATABASE_URL`을 보기 때문에, 건너뛰지 않으면 기능 브랜치의 스키마가 운영 DB로 밀려 들어갑니다.
   - `--accept-data-loss`는 의도적으로 빼 두었습니다. 스키마 드리프트로 컬럼이 날아갈 상황이면 조용히 지우는 대신 **배포가 실패**합니다.
   - 배포 전 `ALLOWED_ORIGINS`와 32자 이상의 `JWT_SECRET`이 설정돼 있어야 합니다. 없으면 부팅되지 않습니다.
-- **프론트엔드**: [Vercel](https://vercel.com/)을 통해 배포됩니다. `https://i-ea.vercel.app`에서 서비스됩니다. 프리뷰 배포를 API가 받아주려면 `VERCEL_PREVIEW_PREFIX`에 프로젝트 접두를 넣어야 합니다(와일드카드 `*.vercel.app` 허용은 제거됨).
+- **프론트엔드** (`i-ea-web`, `https://i-ea-web.vercel.app`): Root Directory를 `web`으로 둔 Next.js 프로젝트입니다. `NEXT_PUBLIC_API_URL`은 `/api`까지 포함한 백엔드 주소여야 하며, 빌드 타임 값이라 바꾸면 프론트를 재배포해야 반영됩니다.
+  - 프리뷰 배포를 API가 받아주려면 `VERCEL_PREVIEW_PREFIX`에 프로젝트 접두를 넣어야 합니다(와일드카드 `*.vercel.app` 허용은 제거됨).
 
 ## ✅ CI
 

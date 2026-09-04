@@ -44,7 +44,7 @@ CI (`.github/workflows/ci.yml`) runs on every PR: backend lint/typecheck/test, f
 - **Hard-required always:** `DATABASE_URL`, `JWT_SECRET` (rejected if blank or a known example string like `change-me`).
 - **Hard-required when `NODE_ENV=production`:** `ALLOWED_ORIGINS` (comma-separated); `JWT_SECRET` must also be ≥32 chars.
 - **Optional, degrade at run time:** `GEMINI_API_KEY`/`GEMINI_MODEL`/`GEMINI_MAX_TOKENS` (generation jobs fail), `AWS_REGION`/`AWS_S3_BUCKET`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_S3_PUBLIC_BASE_URL` (presign returns 503).
-- **Other:** `REDIS_HOST/PORT/PASSWORD`, `REDIS_TLS` (`true` only for managed Redis like Aiven — leave unset for local/Railway), `VERCEL_PREVIEW_PREFIX` (narrows which `*.vercel.app` origins CORS accepts), `ENABLE_SWAGGER`.
+- **Other:** `REDIS_HOST/PORT/PASSWORD`, `REDIS_TLS` (`true` only for managed Redis like Aiven — leave unset for local dev), `VERCEL_PREVIEW_PREFIX` (narrows which `*.vercel.app` origins CORS accepts), `ENABLE_SWAGGER`.
 
 ## Architecture
 
@@ -60,7 +60,7 @@ Media/visuals are minimal in the MVP: images only. The client crops and uploads 
 - `@Roles(...)` + `RolesGuard` restrict CREATOR/ADMIN-only actions (master data, publishing). `RolesGuard` assumes `JwtAuthGuard` already populated `request.user`.
 - **Auth is email + password with bcrypt** (`auth.service.ts`: `register`/`login`, `passwordHash` column, 12 rounds — older 10-round hashes still verify since the cost is stored in the hash). `LOCAL_TEST_GUIDE.md` §3.1 walks through `POST /auth/register` then `/auth/login` with this scheme — keep it in sync if the DTOs change.
 - **Token revocation:** JWTs carry a `tv` claim = `users.token_version` at issue time, and `JwtStrategy.validate` rejects the token when it no longer matches. `POST /auth/logout-all` bumps the column. `validate` already reads the user row every request, so this costs nothing extra. Any future password-change flow must bump it too. Tokens issued before this existed have no `tv` and are treated as version 0.
-- **Rate limiting** (`ThrottlerGuard`) is registered as an `APP_GUARD` **before** `JwtAuthGuard` — order in the `providers` array is execution order, and auth hits the DB on every request, so throttling must come first. Defaults and per-route overrides live in `src/common/throttler/throttler.config.ts`. Auth routes additionally use `AuthThrottlerGuard`, which keys on the target **email** so a distributed attack on one account shares a bucket even across IPs. `app.set('trust proxy', 1)` in `main.ts` is what makes `req.ip` the real client behind Railway/Vercel — without it every user collapses into one bucket.
+- **Rate limiting** (`ThrottlerGuard`) is registered as an `APP_GUARD` **before** `JwtAuthGuard` — order in the `providers` array is execution order, and auth hits the DB on every request, so throttling must come first. Defaults and per-route overrides live in `src/common/throttler/throttler.config.ts`. Auth routes additionally use `AuthThrottlerGuard`, which keys on the target **email** so a distributed attack on one account shares a bucket even across IPs. `app.set('trust proxy', 1)` in `main.ts` is what makes `req.ip` the real client behind Vercel's proxy — without it every user collapses into one bucket.
 - **Login must not leak account existence.** Identical message *and* identical timing: a missing user still pays a dummy bcrypt compare (`burnCompare`). Don't "optimize" that early return back in.
 
 ### Classification & question types (MVP model)
