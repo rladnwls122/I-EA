@@ -1,8 +1,19 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { QuestionStatus } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsArray, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
-import { PaginationQueryDto } from '@/common/dto/pagination.dto';
+import {
+  IsArray,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import { PaginationQueryDto, SEARCH_QUERY_MAX } from '@/common/dto/pagination.dto';
 import { QUESTION_KINDS, QuestionKind } from '@/common/constants/question';
 
 /** 문제 은행 목록/검색 필터. */
@@ -39,9 +50,10 @@ export class QueryQuestionDto extends PaginationQueryDto {
   @Max(5)
   difficulty?: number;
 
-  @ApiPropertyOptional({ description: 'search_text LIKE 검색어' })
+  @ApiPropertyOptional({ description: 'search_text LIKE 검색어', maxLength: SEARCH_QUERY_MAX })
   @IsOptional()
   @IsString()
+  @MaxLength(SEARCH_QUERY_MAX)
   q?: string;
 
   @ApiPropertyOptional({ description: '정렬: latest(기본, 최신순) | popular(조회수순)', enum: ['latest', 'popular'] })
