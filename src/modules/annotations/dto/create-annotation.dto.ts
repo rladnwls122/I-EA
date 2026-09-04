@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 import {
+  ANNOTATION_SELECTED_TEXT_MAX,
   ANNOTATION_TARGETS,
   AnnotationTarget,
   MARK_STYLES,
@@ -8,6 +9,7 @@ import {
   REASON_CODES,
   ReasonCode,
 } from '@/common/constants/question';
+import { IsSelectionRange, SelectionRange } from './selection-range.validator';
 
 /** 오답노트 2.0 주석 생성. 앵커(selectedText+selectionRange) 없으면 문항 전체 일반 메모. */
 export class CreateAnnotationDto {
@@ -33,15 +35,25 @@ export class CreateAnnotationDto {
   @MaxLength(20)
   color?: string;
 
-  @ApiPropertyOptional({ description: '하이라이트 원본 문구(일반 메모는 생략)' })
+  @ApiPropertyOptional({
+    description: '하이라이트 원본 문구(일반 메모는 생략)',
+    maxLength: ANNOTATION_SELECTED_TEXT_MAX,
+  })
   @IsOptional()
   @IsString()
+  @MaxLength(ANNOTATION_SELECTED_TEXT_MAX)
   selectedText?: string;
 
-  @ApiPropertyOptional({ description: '정밀 오프셋 { startOffset, endOffset }', type: Object })
+  @ApiPropertyOptional({
+    description: '평문 기준 정밀 오프셋 { start, end } (end는 exclusive)',
+    type: Object,
+    example: { start: 12, end: 20 },
+  })
   @IsOptional()
   @IsObject()
-  selectionRange?: Record<string, unknown>;
+  // 형태가 깨진 앵커는 프런트가 조용히 버린다 — 저장 전에 400으로 알린다(selection-range.validator).
+  @IsSelectionRange()
+  selectionRange?: SelectionRange;
 
   @ApiPropertyOptional({ description: '오답 원인 태그', enum: REASON_CODES })
   @IsOptional()

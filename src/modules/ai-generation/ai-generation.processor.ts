@@ -154,12 +154,16 @@ export class AiGenerationProcessor extends WorkerHost {
         sourceQuestion,
       };
 
-      const generated = await this.llm.generate(ctx);
+      const generated = await this.llm.generate(ctx, {
+        userId: generation.creatorId,
+        feature: 'GENERATION',
+        generationId,
+      });
       // 지문 내장 빈칸(gap 9): LLM 입력 문법 `[[n]]`을 저장·표시 정본 `___(n)___`으로 한 번만 정규화한다.
       // 빈칸 모드가 아니면 결과 객체를 손대지 않는다 — 기존 전 경로의 출력은 바이트 단위로 동일하다.
       const result = ctx.blanksInPassage ? this.normalizeBlanks(generated) : generated;
       // LLM 자기검증(#34 후속) — 옵트인. 꺼져 있으면 호출도, 지연도, 비용도 종전 그대로다.
-      const reviews = await this.selfReview(ctx, result, generationId);
+      const reviews = await this.selfReview(ctx, result, generationId, generation.creatorId);
 
       await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // 다중지문 세트(gap 3): passages[]를 각각 Passage 행으로 만들고(스키마는 원래 1:N)
@@ -329,13 +333,18 @@ export class AiGenerationProcessor extends WorkerHost {
     ctx: LlmGenerationContext,
     result: LlmGenerationResult,
     generationId: string,
+    creatorId: string,
   ): Promise<ReviewNote[] | null> {
     if (!this.llm.isSelfReviewEnabled) return null;
 
     const at = new Date().toISOString();
     const model = this.llm.selfReviewModel;
     try {
-      const { verdicts } = await this.llm.reviewGeneration(ctx, result);
+      const { verdicts } = await this.llm.reviewGeneration(ctx, result, {
+        userId: creatorId,
+        feature: 'SELF_REVIEW',
+        generationId,
+      });
       const byIndex = new Map(verdicts.map((v) => [v.index, v]));
       return result.questions.map((_, i) => {
         const v = byIndex.get(i);

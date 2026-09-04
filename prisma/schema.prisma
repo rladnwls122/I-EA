@@ -141,8 +141,61 @@ model User {
   inventory         UserInventory[]
   purchases         Purchase[]
   coinHistory       CoinHistory[]
+  llmUsage          LlmUsage[]
 
   @@map("users")
+}
+
+// ---------------------------------------------------------------------
+// 1-b. llm_usage — LLM 호출 원가 원장(ledger).
+//
+//   AI 호출은 이 서비스에서 **유일하게 사용량에 비례해 돈이 나가는 자원**이다. 그런데
+//   Gemini 응답의 usageMetadata(토큰 수)를 버리고 있어서, 사용자 1명이 한 달에 얼마를
+//   태우는지 아무도 답할 수 없었다. 원가를 모르면 가격을 정할 수 없고, 어뷰징을
+//   탐지할 수도, 상한을 근거 있게 정할 수도 없다.
+//
+//   xp_history / coin_history와 같은 원장 패턴이다 — 자원을 소비하는 이벤트마다 1행.
+//   실패한 호출도 남긴다(4xx로 끝난 요청도 입력 토큰은 청구된다는 점, 그리고 실패율
+//   자체가 원가 지표라는 점 때문이다).
+// ---------------------------------------------------------------------
+model LlmUsage {
+  id      String @id @default(uuid()) @db.Char(36)
+  userId  String @map("user_id") @db.Char(36)
+  // 어느 기능이 태웠는지: GENERATION | SELF_REVIEW | CHOICES | TUTOR | AUTHORING.
+  // questionType과 같은 VARCHAR 패턴 — 값의 정본은 앱 상수(llm-usage.constants.ts)다.
+  feature String @db.VarChar(24)
+  // 호출 시점의 모델명. 모델을 바꾸면 단가가 바뀌므로 원가 분석에는 이 값이 필요하다.
+  model   String @db.VarChar(100)
+  // OK | FAILED. 실패 호출의 토큰은 대개 0이지만 행은 남긴다(위 주석 참고).
+  status  String @db.VarChar(12)
+
+  // usageMetadata 원본. thinking 토큰은 출력으로 과금되므로 따로 떼어 둔다 —
+  // 합쳐 두면 "사고를 줄여 원가를 낮출 여지"가 있는지 볼 수 없다.
+  promptTokens   Int @default(0) @map("prompt_tokens")
+  outputTokens   Int @default(0) @map("output_tokens")
+  thinkingTokens Int @default(0) @map("thinking_tokens")
+  totalTokens    Int @default(0) @map("total_tokens")
+
+  /// 추정 원가(USD 마이크로 단위, 1_000_000 = $1). 단가 env가 없으면 null —
+  /// 토큰 수는 사실이고 원가는 파생값이라, 단가를 모를 때 0으로 적으면 거짓이 된다.
+  costMicros Int? @map("cost_micros")
+
+  /// 집계용으로 꺼낸 날짜(YYYY-MM-DD). created_at에 DATE()를 씌우면 DB 타임존 기준이 되어
+  /// 앱의 "오늘"(무료 크레딧·스트릭 판정)과 하루 경계가 갈린다. 쓰는 쪽에서 앱과 같은
+  /// 기준으로 한 번 계산해 박아 두면 groupBy로 그대로 묶을 수 있다.
+  usageDate String @map("usage_date") @db.Char(10)
+
+  /// 문항 생성 호출이면 그 ai_generations 행. 한 생성이 본생성+자가검수로 여러 행을 만든다.
+  generationId String? @map("generation_id") @db.Char(36)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([usageDate])
+  @@index([feature, usageDate])
+  @@map("llm_usage")
 }
 
 // ---------------------------------------------------------------------

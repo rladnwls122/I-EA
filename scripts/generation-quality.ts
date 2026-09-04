@@ -21,6 +21,7 @@ import 'dotenv/config';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { ConfigService } from '@nestjs/config';
+import { LlmUsageRecorder } from '@/modules/ai-usage/llm-usage.recorder';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
 import {
   FORMAT_TEMPLATE_IDS,
@@ -34,6 +35,9 @@ import {
   templatesMissingGoldenPrompt,
   type ComplianceViolation,
 } from '@/modules/ai-generation/generation-quality';
+
+/** 기록기를 no-op으로 두므로 값은 쓰이지 않는다 — 타입 계약을 만족시키는 자리다. */
+const QUALITY_USAGE_META = { userId: 'quality-script', feature: 'GENERATION' } as const;
 
 /** 측정 기본값 — 한 템플릿을 몇 번 돌릴지. 비결정적 출력이라 1회는 표본이 아니다. */
 const DEFAULT_RUNS = 2;
@@ -91,7 +95,11 @@ async function main(): Promise<void> {
   }
 
   const config = { get: (k: string) => process.env[k] } as unknown as ConfigService;
-  const llm = new GeminiLlmService(config);
+  // 이 스크립트는 DB 없이 도는 수동 품질 측정 도구다 — 원장에 남길 사용자도, 남길 곳도 없다.
+  // 기록기는 no-op으로 갈아 끼운다(계측은 서버 경로의 책임이다).
+  const llm = new GeminiLlmService(config, {
+    record: async () => undefined,
+  } as unknown as LlmUsageRecorder);
   if (!llm.isConfigured) {
     console.error('GEMINI_API_KEY가 없습니다(.env 확인).');
     process.exit(2);
@@ -121,7 +129,7 @@ async function main(): Promise<void> {
           answerMode: format.answerMode,
           examType,
           templateHints: format.promptHints,
-        });
+        }, QUALITY_USAGE_META);
 
         outcomes.push({
           templateId: template.id,

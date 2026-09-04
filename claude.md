@@ -44,7 +44,7 @@ CI (`.github/workflows/ci.yml`) runs on every PR: backend lint/typecheck/test, f
 - **Hard-required always:** `DATABASE_URL`, `JWT_SECRET` (rejected if blank or a known example string like `change-me`).
 - **Hard-required when `NODE_ENV=production`:** `ALLOWED_ORIGINS` (comma-separated); `JWT_SECRET` must also be ≥32 chars.
 - **Optional, degrade at run time:** `GEMINI_API_KEY`/`GEMINI_MODEL`/`GEMINI_MAX_TOKENS` (generation jobs fail), `AWS_REGION`/`AWS_S3_BUCKET`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_S3_PUBLIC_BASE_URL` (presign returns 503).
-- **Other:** `REDIS_HOST/PORT/PASSWORD`, `REDIS_TLS` (`true` only for managed Redis like Aiven — leave unset for local/Railway), `VERCEL_PREVIEW_PREFIX` (narrows which `*.vercel.app` origins CORS accepts), `ENABLE_SWAGGER`.
+- **Other:** `REDIS_HOST/PORT/PASSWORD`, `REDIS_TLS` (`true` only for managed Redis like Aiven — leave unset for local dev), `VERCEL_PREVIEW_PREFIX` (narrows which `*.vercel.app` origins CORS accepts), `ENABLE_SWAGGER`.
 
 ## Architecture
 
@@ -60,7 +60,7 @@ Media/visuals are minimal in the MVP: images only. The client crops and uploads 
 - `@Roles(...)` + `RolesGuard` restrict CREATOR/ADMIN-only actions (master data, publishing). `RolesGuard` assumes `JwtAuthGuard` already populated `request.user`.
 - **Auth is email + password with bcrypt** (`auth.service.ts`: `register`/`login`, `passwordHash` column, 12 rounds — older 10-round hashes still verify since the cost is stored in the hash). `LOCAL_TEST_GUIDE.md` §3.1 walks through `POST /auth/register` then `/auth/login` with this scheme — keep it in sync if the DTOs change.
 - **Token revocation:** JWTs carry a `tv` claim = `users.token_version` at issue time, and `JwtStrategy.validate` rejects the token when it no longer matches. `POST /auth/logout-all` bumps the column. `validate` already reads the user row every request, so this costs nothing extra. Any future password-change flow must bump it too. Tokens issued before this existed have no `tv` and are treated as version 0.
-- **Rate limiting** (`ThrottlerGuard`) is registered as an `APP_GUARD` **before** `JwtAuthGuard` — order in the `providers` array is execution order, and auth hits the DB on every request, so throttling must come first. Defaults and per-route overrides live in `src/common/throttler/throttler.config.ts`. Auth routes additionally use `AuthThrottlerGuard`, which keys on the target **email** so a distributed attack on one account shares a bucket even across IPs. `app.set('trust proxy', 1)` in `main.ts` is what makes `req.ip` the real client behind Railway/Vercel — without it every user collapses into one bucket.
+- **Rate limiting** (`ThrottlerGuard`) is registered as an `APP_GUARD` **before** `JwtAuthGuard` — order in the `providers` array is execution order, and auth hits the DB on every request, so throttling must come first. Defaults and per-route overrides live in `src/common/throttler/throttler.config.ts`. Auth routes additionally use `AuthThrottlerGuard`, which keys on the target **email** so a distributed attack on one account shares a bucket even across IPs. `app.set('trust proxy', 1)` in `main.ts` is what makes `req.ip` the real client behind Vercel's proxy — without it every user collapses into one bucket.
 - **Login must not leak account existence.** Identical message *and* identical timing: a missing user still pays a dummy bcrypt compare (`burnCompare`). Don't "optimize" that early return back in.
 
 ### Classification & question types (MVP model)
@@ -86,6 +86,19 @@ Media/visuals are minimal in the MVP: images only. The client crops and uploads 
 - Clients poll `GET /ai-generations/:id` for `PENDING → COMPLETED/FAILED` and the resulting IDs.
 
 **LLM provider:** Gemini only. `GeminiLlmService` calls the Gemini REST API via `fetch`, and is the single class injected into `AiGenerationService` and `AiGenerationProcessor`. The vestigial `AnthropicLlmService` and the `@anthropic-ai/sdk` dependency were removed — do not reintroduce a second provider without a concrete need.
+
+### AI 원가 원장 (`llm_usage`)
+
+AI 호출은 이 서비스에서 **사용량에 비례해 실제로 돈이 나가는 유일한 자원**이다. 그래서 모든 Gemini 호출은 응답의 `usageMetadata`(토큰 수)를 읽어 `llm_usage`에 1행을 남긴다 — `xp_history`/`coin_history`와 같은 원장 패턴이다.
+
+- **기록 지점은 `GeminiLlmService` 한 곳**이다. `callGemini`가 성공·실패 양쪽을 감싸 기록하고, 스트리밍(`streamChat`)은 프레임마다 오는 누적 `usageMetadata`를 **덮어쓴 뒤**(더하면 프레임 수만큼 부풀려진다) 종료 시 한 번 기록한다. 그래서 공개 메서드는 전부 `meta: LlmCallMeta`(누가·어느 기능이)를 받는다 — LLM 서비스는 프롬프트만 알지 사용자를 모르므로 호출부가 넘겨야 한다. 새 LLM 호출 경로를 추가하면 `meta`를 넘기는 것이 **컴파일 에러로 강제된다**.
+- **실패한 호출도 남긴다.** 실패해도 입력 토큰은 청구될 수 있고, 실패율 자체가 원가 지표다. `status`로 갈라 적는다.
+- **기록기는 절대 던지지 않는다**(`LlmUsageRecorder`). 회계가 기능을 죽이면 안 된다 — 원장 쓰기 실패로 사용자가 기다린 생성을 되돌리는 쪽이 손해가 크다. 실패는 로그로만 남는다.
+- **원가는 파생값이다.** 토큰 수는 항상 기록하지만 금액(`costMicros`, USD 마이크로)은 `GEMINI_PRICE_INPUT_PER_MTOK`/`GEMINI_PRICE_OUTPUT_PER_MTOK`가 **둘 다** 설정됐을 때만 채우고, 아니면 `null`이다. 모델 단가를 코드에 박지 않는 이유는 우리가 통제하지 않는 값이고 조용히 틀린 숫자의 근거가 되기 때문이다. thinking 토큰은 출력 단가로 친다(따로 저장하므로 "사고를 줄여 원가를 낮출 여지"를 볼 수 있다).
+- **일자 축은 `usage_date`(YYYY-MM-DD)를 꺼내 저장한다.** `DATE(created_at)`을 쓰면 DB 타임존이 기준이 되어 앱의 "오늘"(무료 크레딧·스트릭)과 하루 경계가 갈린다. 쓰는 쪽에서 앱과 같은 기준으로 계산해 박아 두면 `groupBy`로 그대로 묶인다.
+- 조회는 `GET /me/ai-usage`(본인)와 `GET /admin/ai-usage`(ADMIN — 상위 소비 사용자 포함, 이메일이 실리므로 일반 사용자에게 열지 않는다). 기간은 `USAGE_MAX_RANGE_DAYS`로 상한을 둔다.
+
+⚠️ 현재 **문항 생성(`POST /ai-generations`)은 AI 크레딧을 소모하지 않는다** — 방어선이 IP당 시간 30건(`AI_GENERATION_THROTTLE`)뿐이다. 튜터 채팅만 무료 쿼터+크레딧으로 게이팅돼 있다. 원장은 그 상한을 **근거 있게** 정하기 위한 선행 계측이다.
 
 ### Exam sessions — snapshot, mask, grade
 

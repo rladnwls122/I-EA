@@ -15,7 +15,20 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { WORKBOOK_VISIBILITIES } from '@/common/constants/question';
-import { PaginationQueryDto } from '@/common/dto/pagination.dto';
+import { PaginationQueryDto, SEARCH_QUERY_MAX } from '@/common/dto/pagination.dto';
+
+/**
+ * 문제집 설명 길이 상한. 컬럼은 `TEXT`라 DB가 65,535**바이트**에서 막는데, 그 초과는
+ * Prisma P2000 → 500이라 클라이언트가 고칠 수 없는 오류처럼 보인다. 리뷰 본문·주석 메모와
+ * 같은 2,000자로 맞춘다 — 카드 밑에 붙는 소개문이라 그 이상은 화면에서도 읽히지 않는다.
+ */
+export const WORKBOOK_DESCRIPTION_MAX = 2000;
+
+/**
+ * 탐색 필터로 오는 시험/대분류 이름 상한. `subjects.exam_type`/`exam_category` 컬럼이
+ * VarChar(50)이라 그보다 긴 값은 어차피 아무것도 매칭하지 못한다.
+ */
+export const SUBJECT_LABEL_MAX = 50;
 
 export class CreateWorkbookDto {
   @ApiProperty({ description: '문제집 제목', maxLength: 200 })
@@ -24,9 +37,10 @@ export class CreateWorkbookDto {
   @MaxLength(200)
   title!: string;
 
-  @ApiPropertyOptional({ description: '설명' })
+  @ApiPropertyOptional({ description: '설명', maxLength: WORKBOOK_DESCRIPTION_MAX })
   @IsOptional()
   @IsString()
+  @MaxLength(WORKBOOK_DESCRIPTION_MAX)
   description?: string;
 
   @ApiPropertyOptional({ description: '표지 이미지 public URL', maxLength: 500 })
@@ -64,9 +78,10 @@ export class UpdateWorkbookDto {
   @MaxLength(200)
   title?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ maxLength: WORKBOOK_DESCRIPTION_MAX })
   @IsOptional()
   @IsString()
+  @MaxLength(WORKBOOK_DESCRIPTION_MAX)
   description?: string;
 
   @ApiPropertyOptional({ maxLength: 500 })
@@ -121,19 +136,22 @@ export class ReorderQuestionsDto {
 
 /** 문제집 탐색 쿼리. 3단 분류는 문항을 통해 간접 필터링한다. */
 export class QueryWorkbookDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ description: '제목 검색어' })
+  @ApiPropertyOptional({ description: '제목 검색어', maxLength: SEARCH_QUERY_MAX })
   @IsOptional()
   @IsString()
+  @MaxLength(SEARCH_QUERY_MAX)
   q?: string;
 
-  @ApiPropertyOptional({ description: '시험 (예: 수능)' })
+  @ApiPropertyOptional({ description: '시험 (예: 수능)', maxLength: SUBJECT_LABEL_MAX })
   @IsOptional()
   @IsString()
+  @MaxLength(SUBJECT_LABEL_MAX)
   examType?: string;
 
-  @ApiPropertyOptional({ description: '대분류 (예: 국어)' })
+  @ApiPropertyOptional({ description: '대분류 (예: 국어)', maxLength: SUBJECT_LABEL_MAX })
   @IsOptional()
   @IsString()
+  @MaxLength(SUBJECT_LABEL_MAX)
   examCategory?: string;
 
   @ApiPropertyOptional({ description: '소분류 subject ID(단일, 레거시)' })

@@ -16,6 +16,16 @@ export type MarkStyle = (typeof MARK_STYLES)[number];
 export const REASON_CODES = ['CONCEPT', 'MISTAKE', 'TIME', 'OTHER'] as const;
 export type ReasonCode = (typeof REASON_CODES)[number];
 
+/**
+ * 주석 `selectedText`(하이라이트 원본 문구) 길이 상한.
+ *
+ * 컬럼은 `TEXT`(65,535바이트)다. UTF-8 한글 3바이트·이모지 4바이트를 감안하면 10,000자는
+ * 최악의 경우에도 40,000바이트라 컬럼 안에 든다. 상한이 없으면 컬럼 크기를 넘는 값이
+ * Prisma 오류(P2000)로 **500**이 되어 클라이언트가 고칠 수 없는 오류처럼 보인다.
+ * 실제 하이라이트는 지문 한 단락 수준(수백 자)이라 정상 사용을 막지 않는다.
+ */
+export const ANNOTATION_SELECTED_TEXT_MAX = 10_000;
+
 /** 오답 원인 코드 → 한글 라벨 (오답노트 통계 byReason 표기용). */
 export const REASON_LABELS: Record<ReasonCode, string> = {
   CONCEPT: '개념부족',

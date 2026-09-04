@@ -44,7 +44,7 @@ CI (`.github/workflows/ci.yml`) runs on every PR: backend lint/typecheck/test, f
 - **Hard-required always:** `DATABASE_URL`, `JWT_SECRET` (rejected if blank or a known example string like `change-me`).
 - **Hard-required when `NODE_ENV=production`:** `ALLOWED_ORIGINS` (comma-separated); `JWT_SECRET` must also be ≥32 chars.
 - **Optional, degrade at run time:** `GEMINI_API_KEY`/`GEMINI_MODEL`/`GEMINI_MAX_TOKENS` (generation jobs fail), `AWS_REGION`/`AWS_S3_BUCKET`/`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_S3_PUBLIC_BASE_URL` (presign returns 503).
-- **Other:** `REDIS_HOST/PORT/PASSWORD`, `REDIS_TLS` (`true` only for managed Redis like Aiven — leave unset for local/Railway), `VERCEL_PREVIEW_PREFIX` (narrows which `*.vercel.app` origins CORS accepts), `ENABLE_SWAGGER`.
+- **Other:** `REDIS_HOST/PORT/PASSWORD`, `REDIS_TLS` (`true` only for managed Redis like Aiven — leave unset for local dev), `VERCEL_PREVIEW_PREFIX` (narrows which `*.vercel.app` origins CORS accepts), `ENABLE_SWAGGER`.
 
 ## Architecture
 
@@ -60,7 +60,7 @@ Media/visuals are minimal in the MVP: images only. The client crops and uploads 
 - `@Roles(...)` + `RolesGuard` restrict CREATOR/ADMIN-only actions (master data, publishing). `RolesGuard` assumes `JwtAuthGuard` already populated `request.user`.
 - **Auth is email + password with bcrypt** (`auth.service.ts`: `register`/`login`, `passwordHash` column, 12 rounds — older 10-round hashes still verify since the cost is stored in the hash). `LOCAL_TEST_GUIDE.md` §3.1 walks through `POST /auth/register` then `/auth/login` with this scheme — keep it in sync if the DTOs change.
 - **Token revocation:** JWTs carry a `tv` claim = `users.token_version` at issue time, and `JwtStrategy.validate` rejects the token when it no longer matches. `POST /auth/logout-all` bumps the column. `validate` already reads the user row every request, so this costs nothing extra. Any future password-change flow must bump it too. Tokens issued before this existed have no `tv` and are treated as version 0.
-- **Rate limiting** (`ThrottlerGuard`) is registered as an `APP_GUARD` **before** `JwtAuthGuard` — order in the `providers` array is execution order, and auth hits the DB on every request, so throttling must come first. Defaults and per-route overrides live in `src/common/throttler/throttler.config.ts`. Auth routes additionally use `AuthThrottlerGuard`, which keys on the target **email** so a distributed attack on one account shares a bucket even across IPs. `app.set('trust proxy', 1)` in `main.ts` is what makes `req.ip` the real client behind Railway/Vercel — without it every user collapses into one bucket.
+- **Rate limiting** (`ThrottlerGuard`) is registered as an `APP_GUARD` **before** `JwtAuthGuard` — order in the `providers` array is execution order, and auth hits the DB on every request, so throttling must come first. Defaults and per-route overrides live in `src/common/throttler/throttler.config.ts`. Auth routes additionally use `AuthThrottlerGuard`, which keys on the target **email** so a distributed attack on one account shares a bucket even across IPs. `app.set('trust proxy', 1)` in `main.ts` is what makes `req.ip` the real client behind Vercel's proxy — without it every user collapses into one bucket.
 - **Login must not leak account existence.** Identical message *and* identical timing: a missing user still pays a dummy bcrypt compare (`burnCompare`). Don't "optimize" that early return back in.
 
 ### Classification & question types (MVP model)
@@ -87,6 +87,19 @@ Media/visuals are minimal in the MVP: images only. The client crops and uploads 
 
 **LLM provider:** Gemini only. `GeminiLlmService` calls the Gemini REST API via `fetch`, and is the single class injected into `AiGenerationService` and `AiGenerationProcessor`. The vestigial `AnthropicLlmService` and the `@anthropic-ai/sdk` dependency were removed — do not reintroduce a second provider without a concrete need.
 
+### AI cost ledger (`llm_usage`)
+
+LLM calls are the one resource here that costs real money in proportion to usage. Every Gemini call therefore reads `usageMetadata` (token counts) off the response and writes one row to `llm_usage` — the same ledger pattern as `xp_history`/`coin_history`.
+
+- **There is exactly one recording point: `GeminiLlmService`.** `callGemini` wraps both the success and failure paths, and streaming (`streamChat`) **overwrites** the cumulative `usageMetadata` that arrives on each frame (summing it would inflate cost by the frame count) and records once when the stream ends. That is why every public method takes a `meta: LlmCallMeta` (who, and which feature) — the LLM service knows the prompt but not the user, so the caller must supply it. Adding a new LLM call path makes passing `meta` a **compile error**, not a thing to remember.
+- **Failed calls are recorded too.** Input tokens may already be billed, and the failure rate is itself a cost signal. `status` separates them.
+- **The recorder never throws** (`LlmUsageRecorder`). Accounting must not kill the feature — losing a generation the user waited for because a ledger write failed costs more than the missing row. Failures go to the log only.
+- **Cost is derived, tokens are fact.** Tokens are always recorded; the amount (`costMicros`, USD micros) is filled in only when **both** `GEMINI_PRICE_INPUT_PER_MTOK` and `GEMINI_PRICE_OUTPUT_PER_MTOK` are set, and is `null` otherwise. Model prices are not hardcoded: they are outside our control and would quietly become the basis for a wrong number. Thinking tokens are billed at the output rate (they are stored separately so you can see whether reducing thinking would lower cost).
+- **The day axis is a stored `usage_date` (YYYY-MM-DD).** `DATE(created_at)` would use the DB timezone, splitting "today" from the app's own day boundary (free credits, streaks). Computing it app-side on write lets `groupBy` fold it directly.
+- Read it via `GET /me/ai-usage` (own rows) and `GET /admin/ai-usage` (ADMIN — includes top spenders, so it carries emails and is not open to regular users). The range is capped by `USAGE_MAX_RANGE_DAYS`.
+
+⚠️ Question generation (`POST /ai-generations`) currently consumes **no AI credit** — its only guard is 30/hour per IP (`AI_GENERATION_THROTTLE`); only tutor chat is gated by the free-quota + credit system. The ledger is the measurement that has to come first before that cap can be set on evidence.
+
 ### Exam sessions — snapshot, mask, grade
 
 This is the subtlest subsystem (`src/modules/exam-sessions/`, `grading.util.ts`):
@@ -112,7 +125,7 @@ The wrong-answer notebook is two decoupled axes, joined only on the client (and 
 
 ### Deployment
 
-Railway via `railway.json` → `npm run start:railway`, which runs `prisma db push --skip-generate` then `node dist/main.js`. **Production uses `db push`, not migrations** — the `prisma/migrations` dev flow and the deployed schema-sync path differ; keep `schema.prisma` authoritative. `--accept-data-loss` was deliberately dropped: on schema drift the deploy now fails loudly instead of silently dropping columns. Don't add it back to quiet a failing deploy — fix the drift. The frontend is deployed to **Vercel** (`https://i-ea.vercel.app`); `@cloudflare/next-on-pages`/`wrangler` remain in `web/package.json` from an earlier abandoned Cloudflare Pages attempt (no `wrangler.toml` present) — don't assume that path is live.
+The backend runs on **Vercel serverless** (`railway.json` and `start:railway` were deleted when the project left Railway — the path older docs describe no longer exists). **Production schema sync is `db push`, not migrations**: `vercel.json`'s `buildCommand` runs `prisma db push --skip-generate` only when `VERCEL_ENV=production`. Previews skip it — previews share the same `DATABASE_URL`, so without that guard a feature branch's schema would be pushed into the production DB. TiDB Serverless refuses the first connection when idle (P1001), so the command retries exactly once. `--accept-data-loss` is deliberately omitted: on schema drift the deploy fails loudly instead of silently dropping columns. Don't add it back to quiet a failing deploy — fix the drift. The `prisma/migrations` dev flow and the deploy path differ; keep `schema.prisma` authoritative. There are two Vercel projects: backend `i-ea` (`https://i-ea.vercel.app`, where `vercel.json` rewrites every path to the `api/index.js` serverless function) and frontend `i-ea-web` (`https://i-ea-web.vercel.app`, Root Directory = `web`). The frontend's `NEXT_PUBLIC_API_URL` must include the `/api` suffix (`lib/api.ts` falls back to `http://localhost:3000/api`, and `next.config.mjs` derives the CSP `connect-src` origin from it). It is a build-time value, so changing it requires redeploying the frontend. A Cloudflare Pages deployment was attempted once and abandoned; its leftovers (`@cloudflare/next-on-pages`/`wrangler`, plus an unconfigured `orval`) have been removed — don't bring them back.
 
 ### Frontend (`web/`) notes
 

@@ -96,6 +96,6 @@ AI를 통한 문항 생성은 시간이 오래 걸리는 작업이므로 **비�
 
 ## 6. 인프라 및 배포 (Infrastructure)
 
-- **Backend**: Railway를 통해 배포되며, `db push` 방식을 사용하여 스키마를 동기화합니다.
-- **Frontend**: Cloudflare Pages 또는 Vercel을 타겟으로 빌드됩니다.
+- **Backend**: Vercel 서버리스 함수(프로젝트 `i-ea`)로 배포되며, 스키마는 마이그레이션이 아니라 `db push`로 동기화합니다. `vercel.json`의 `buildCommand`가 프로덕션 빌드에서만 이를 실행하고 프리뷰에서는 건너뜁니다(프리뷰가 같은 DB를 보기 때문입니다).
+- **Frontend**: Vercel(프로젝트 `i-ea-web`, Root Directory = `web`)에 배포됩니다. Cloudflare Pages를 타겟으로 하던 시도는 폐기됐고 관련 의존성도 제거됐습니다.
 - **Local Dev**: Docker를 사용하여 MySQL과 Redis 환경을 구성합니다. 상세 설정은 `LOCAL_TEST_GUIDE.md`를 참조하십시오.

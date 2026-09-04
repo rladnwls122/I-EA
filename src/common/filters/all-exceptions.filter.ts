@@ -20,6 +20,9 @@ import { isPrismaConnectionError } from '../prisma-connection-error';
  * - HttpException(우리가 의도적으로 던진 4xx/5xx)은 그대로 통과시킨다.
  * - 그 밖의 오류는 500 + 고정 문구로 바꾸고, 원본은 서버 로그에만 남긴다.
  * - 개발 환경에서는 디버깅을 위해 원본 메시지를 응답에 포함한다.
+ *
+ * 상태 코드는 "누구 잘못인가"로 가른다 — 커넥션 장애는 503(재시도하면 되는 인프라),
+ * 요청 값이 컬럼에 안 들어가는 건 400(요청을 고쳐야 한다), 나머지가 500이다.
  */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -59,15 +62,32 @@ export class AllExceptionsFilter implements ExceptionFilter {
      * 오인하지 않으려고) — 그 판정을 공유해 경로에 따라 얼굴이 달라지지 않게 한다.
      */
     const connectionFailure = isPrismaConnectionError(exception);
+
+    /**
+     * P2000(값이 컬럼 길이를 초과)은 서버 버그가 아니라 **요청이 너무 긴 값을 보낸 것**이다.
+     * 500으로 나가면 클라이언트는 재시도해야 할 장애로 읽고, 사용자는 무엇을 줄여야
+     * 하는지 알 수 없다 — 같은 값을 다시 보내면 똑같이 실패한다.
+     *
+     * 1차 방어선은 DTO의 @MaxLength다(그쪽이 어느 필드인지까지 알려준다). 여기는 그 그물을
+     * 빠져나온 경우의 마지막 안전망이라, 사유 문구는 컬럼명을 담은 Prisma 메시지 대신
+     * 고정 문구를 쓴다 — 필터의 존재 이유가 스키마 유출 차단이다.
+     */
+    const valueTooLong =
+      exception instanceof Prisma.PrismaClientKnownRequestError && exception.code === 'P2000';
+
     const status = connectionFailure
       ? HttpStatus.SERVICE_UNAVAILABLE
-      : HttpStatus.INTERNAL_SERVER_ERROR;
+      : valueTooLong
+        ? HttpStatus.BAD_REQUEST
+        : HttpStatus.INTERNAL_SERVER_ERROR;
 
     res.status(status).json({
       statusCode: status,
       message: connectionFailure
         ? '일시적인 DB 오류입니다. 잠시 후 다시 시도해주세요.'
-        : '서버 내부 오류가 발생했습니다.',
+        : valueTooLong
+          ? '입력값이 너무 깁니다. 길이를 줄여 다시 시도해주세요.'
+          : '서버 내부 오류가 발생했습니다.',
       path: req.url,
       // 운영에서는 원본을 절대 싣지 않는다(Prisma 오류의 테이블·컬럼명 유출 차단).
       ...(this.isProduction ? {} : { debug: describe(exception) }),

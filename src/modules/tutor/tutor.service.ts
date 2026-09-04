@@ -87,7 +87,9 @@ export class TutorService {
     const system = buildReviewTutorSystemPrompt(ctx.snapshot, ctx.attempt);
     const history = await this.loadHistoryAt(this.reviewHistoryKey(userId, dto.questionId));
 
-    const iterator = this.gemini.streamChat(system, history, dto.message)[Symbol.asyncIterator]();
+    const iterator = this.gemini
+      .streamChat(system, history, dto.message, { userId, feature: 'TUTOR' })
+      [Symbol.asyncIterator]();
     // 차감은 이 await **이후**다. LLM이 아예 응답하지 않으면 여기서 예외가 나고,
     // 헤더도 안 나간 상태라 일반 HTTP 에러로 끝난다 — 크레딧은 그대로 남는다.
     const first = await iterator.next();

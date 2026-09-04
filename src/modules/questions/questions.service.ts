@@ -532,7 +532,7 @@ export class QuestionsService {
       subjectName: question.subject?.name,
       examCategory: question.subject?.examCategory,
       examType: question.subject?.examType,
-    });
+    }, { userId, feature: 'CHOICES' });
 
     // 저장하지 않았음을 응답으로도 알린다.
     return { ...result, persisted: false };
