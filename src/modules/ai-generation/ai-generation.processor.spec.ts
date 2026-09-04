@@ -177,6 +177,7 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
         answerMode: 'single',
         templateHints: expect.arrayContaining([expect.stringContaining('빈칸')]),
       }),
+      expect.objectContaining({ feature: 'GENERATION', generationId: 'gen-1' }),
     );
   });
 
@@ -192,6 +193,7 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
     await processor.process(makeJob());
     expect(generate).toHaveBeenCalledWith(
       expect.objectContaining({ choiceCount: 5, language: 'ko' }),
+      expect.objectContaining({ feature: 'GENERATION', generationId: 'gen-1' }),
     );
   });
 
@@ -227,6 +229,7 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
     await processor.process(makeJob());
     expect(generate).toHaveBeenCalledWith(
       expect.objectContaining({ includePassage: true, passageCount: 2 }),
+      expect.objectContaining({ feature: 'GENERATION', generationId: 'gen-1' }),
     );
   });
 
@@ -315,6 +318,7 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
       await processor.process(makeJob());
       expect(generate).toHaveBeenCalledWith(
         expect.objectContaining({ blanksInPassage: true, includePassage: true, passageCount: 1 }),
+        expect.objectContaining({ feature: 'GENERATION', generationId: 'gen-1' }),
       );
     });
 
@@ -492,6 +496,7 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
             difficulty: 4,
           }),
         }),
+        expect.objectContaining({ feature: 'GENERATION', generationId: 'gen-1' }),
       );
     });
 
@@ -536,6 +541,7 @@ describe('AiGenerationProcessor.process — 템플릿 해석', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('없는-템플릿'));
     expect(generate).toHaveBeenCalledWith(
       expect.objectContaining({ templateHints: [], answerMode: 'single' }),
+      expect.objectContaining({ feature: 'GENERATION', generationId: 'gen-1' }),
     );
   });
 });

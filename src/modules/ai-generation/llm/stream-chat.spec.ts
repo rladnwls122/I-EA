@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { LlmUsageRecorder } from '@/modules/ai-usage/llm-usage.recorder';
 import { GeminiLlmService } from './gemini-llm.service';
 
 /**
@@ -16,7 +17,7 @@ describe('GeminiLlmService.streamChat — SSE 프레임 파싱', () => {
     const config = {
       get: (k: string) => (k === 'GEMINI_API_KEY' ? 'test-key' : undefined),
     } as unknown as ConfigService;
-    return new GeminiLlmService(config);
+    return new GeminiLlmService(config, { record: jest.fn() } as unknown as LlmUsageRecorder);
   }
 
   /** 주어진 바이트 청크들을 스트리밍하는 fetch 응답 mock. */

@@ -10,7 +10,11 @@
  */
 import 'dotenv/config';
 import { ConfigService } from '@nestjs/config';
+import { LlmUsageRecorder } from '@/modules/ai-usage/llm-usage.recorder';
 import { GeminiLlmService } from '@/modules/ai-generation/llm/gemini-llm.service';
+
+/** 원장 기록용 호출 주체. 이 스펙들은 기록기를 스텁으로 갈아 끼우므로 값 자체는 의미가 없다. */
+const USAGE_META = { userId: 'user-1', feature: 'GENERATION' } as const;
 
 const RUN = process.env.RUN_LLM_TESTS === '1';
 const d = RUN ? describe : describe.skip;
@@ -21,7 +25,7 @@ d('실제 Gemini 호출 — regenerateChoices', () => {
   beforeAll(() => {
     // ConfigService 대신 process.env를 그대로 읽는 얇은 어댑터.
     const config = { get: (k: string) => process.env[k] } as unknown as ConfigService;
-    llm = new GeminiLlmService(config);
+    llm = new GeminiLlmService(config, { record: jest.fn() } as unknown as LlmUsageRecorder);
     expect(llm.isConfigured).toBe(true);
   });
 
@@ -33,7 +37,9 @@ d('실제 Gemini 호출 — regenerateChoices', () => {
       examType: '수능',
       examCategory: '수학',
       subjectName: '대수',
-    });
+    },
+      USAGE_META,
+    );
 
     expect(result.choices).toHaveLength(5);
     expect(result.choices.filter((c) => c.isCorrect)).toHaveLength(1);
@@ -60,7 +66,9 @@ d('실제 Gemini 호출 — regenerateChoices', () => {
       examType: '수능',
       examCategory: '수학',
       subjectName: '미적분',
-    });
+    },
+      USAGE_META,
+    );
 
     expect(result.choices).toHaveLength(4);
     const all = result.choices.map((c) => c.content).join(' ');
@@ -84,7 +92,9 @@ d('실제 Gemini 호출 — regenerateChoices', () => {
       examType: '수능',
       examCategory: '국어',
       subjectName: '문학',
-    });
+    },
+      USAGE_META,
+    );
 
     expect(result.choices).toHaveLength(3);
     expect(result.choices.filter((c) => c.isCorrect)).toHaveLength(1);
@@ -97,14 +107,16 @@ d('실제 Gemini 호출 — regenerateChoices', () => {
 
   // 무료 티어는 분당 요청 한도가 빡빡하다. 동시 호출은 429를 자초하므로 순차로 부른다.
   it('경계값: 최소 2지선다 / 최대 8지선다', async () => {
-    const two = await llm.regenerateChoices({ stemText: '지구는 둥근가?', choiceCount: 2 });
+    const two = await llm.regenerateChoices({ stemText: '지구는 둥근가?', choiceCount: 2 }, USAGE_META);
     expect(two.choices).toHaveLength(2);
     expect(two.choices.filter((c) => c.isCorrect)).toHaveLength(1);
 
     const eight = await llm.regenerateChoices({
       stemText: '1부터 8까지의 자연수 중 소수가 아닌 것은?',
       choiceCount: 8,
-    });
+    },
+      USAGE_META,
+    );
     expect(eight.choices).toHaveLength(8);
     expect(eight.choices.filter((c) => c.isCorrect)).toHaveLength(1);
   }, 60_000);

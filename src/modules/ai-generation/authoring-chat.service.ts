@@ -89,7 +89,7 @@ export class AuthoringChatService {
 
     // 4) 첫 델타를 헤더 전송 전에 당겨온다.
     const iterator = this.gemini
-      .streamChat(system, history, dto.message)
+      .streamChat(system, history, dto.message, { userId, feature: 'AUTHORING' })
       [Symbol.asyncIterator]();
     const first = await iterator.next();
 
@@ -126,7 +126,7 @@ export class AuthoringChatService {
       // 사람이 기다리는 시간만 늘고 얻는 건 없다(어차피 다듬기 전에 읽어야 한다).
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       await this.appendTurns(userId, dto.workbookId, history, dto.message, full);
-      await this.streamSelfReview(res, dto, subject, full);
+      await this.streamSelfReview(userId, res, dto, subject, full);
     } catch (err) {
       this.logger.warn(`출제 채팅 스트림 오류: ${(err as Error).message}`);
       res.write(
@@ -151,8 +151,11 @@ export class AuthoringChatService {
    *    (프로세서의 selfReview가 문항을 그대로 저장하는 것과 같은 정신).
    * 3. **크레딧을 더 받지 않는다.** 이 호출은 사용자가 요청한 게 아니라 우리가 품질을 위해
    *    거는 것이다. 사용자에게 청구할 근거가 없다(레이트 리밋도 사용자 발화 기준 그대로).
+   *    다만 **원가 원장에는 남긴다** — 청구하지 않는 것과 돈이 안 드는 것은 다르다.
+   *    이 호출을 안 적으면 "자기검증을 켜면 원가가 얼마나 늘어나는가"에 답할 수 없다.
    */
   private async streamSelfReview(
+    userId: string,
     res: Response,
     dto: AuthoringChatDto,
     subject: { name: string; examCategory: string | null; examType: string | null } | null,
@@ -181,6 +184,7 @@ export class AuthoringChatService {
           examType: subject?.examType ?? undefined,
         },
         toReviewInput(questions, difficulty),
+        { userId, feature: 'SELF_REVIEW' },
       );
       // index는 **파싱된 문항 배열의 자리**다. 프런트도 같은 파서로 같은 배열을 만들기 때문에
       // 그 자리로 카드를 되짚는다(authoring-chat.review.ts 주석 참고).

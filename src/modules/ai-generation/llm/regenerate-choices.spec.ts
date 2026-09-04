@@ -1,5 +1,6 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { LlmUsageRecorder } from '@/modules/ai-usage/llm-usage.recorder';
 import { GeminiLlmService } from './gemini-llm.service';
 
 /**
@@ -11,7 +12,7 @@ describe('GeminiLlmService.parseChoicesResult', () => {
 
   beforeAll(() => {
     const config = { get: () => undefined } as unknown as ConfigService;
-    const service = new GeminiLlmService(config);
+    const service = new GeminiLlmService(config, { record: jest.fn() } as unknown as LlmUsageRecorder);
     parse = (raw, expected) =>
       (
         service as unknown as {

@@ -19,6 +19,7 @@ import { PassagesModule } from './modules/passages/passages.module';
 import { AnnotationsModule } from './modules/annotations/annotations.module';
 import { ExamSessionsModule } from './modules/exam-sessions/exam-sessions.module';
 import { AiGenerationModule } from './modules/ai-generation/ai-generation.module';
+import { AiUsageModule } from './modules/ai-usage/ai-usage.module';
 import { MeModule } from './modules/me/me.module';
 import { TutorModule } from './modules/tutor/tutor.module';
 import { LootBoxesModule } from './modules/loot-boxes/loot-boxes.module';
@@ -80,6 +81,7 @@ import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storag
     PassagesModule,
     AnnotationsModule,
     ExamSessionsModule,
+    AiUsageModule,
     AiGenerationModule,
     MeModule,
     TutorModule,

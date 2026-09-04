@@ -87,6 +87,19 @@ Media/visuals are minimal in the MVP: images only. The client crops and uploads 
 
 **LLM provider:** Gemini only. `GeminiLlmService` calls the Gemini REST API via `fetch`, and is the single class injected into `AiGenerationService` and `AiGenerationProcessor`. The vestigial `AnthropicLlmService` and the `@anthropic-ai/sdk` dependency were removed — do not reintroduce a second provider without a concrete need.
 
+### AI cost ledger (`llm_usage`)
+
+LLM calls are the one resource here that costs real money in proportion to usage. Every Gemini call therefore reads `usageMetadata` (token counts) off the response and writes one row to `llm_usage` — the same ledger pattern as `xp_history`/`coin_history`.
+
+- **There is exactly one recording point: `GeminiLlmService`.** `callGemini` wraps both the success and failure paths, and streaming (`streamChat`) **overwrites** the cumulative `usageMetadata` that arrives on each frame (summing it would inflate cost by the frame count) and records once when the stream ends. That is why every public method takes a `meta: LlmCallMeta` (who, and which feature) — the LLM service knows the prompt but not the user, so the caller must supply it. Adding a new LLM call path makes passing `meta` a **compile error**, not a thing to remember.
+- **Failed calls are recorded too.** Input tokens may already be billed, and the failure rate is itself a cost signal. `status` separates them.
+- **The recorder never throws** (`LlmUsageRecorder`). Accounting must not kill the feature — losing a generation the user waited for because a ledger write failed costs more than the missing row. Failures go to the log only.
+- **Cost is derived, tokens are fact.** Tokens are always recorded; the amount (`costMicros`, USD micros) is filled in only when **both** `GEMINI_PRICE_INPUT_PER_MTOK` and `GEMINI_PRICE_OUTPUT_PER_MTOK` are set, and is `null` otherwise. Model prices are not hardcoded: they are outside our control and would quietly become the basis for a wrong number. Thinking tokens are billed at the output rate (they are stored separately so you can see whether reducing thinking would lower cost).
+- **The day axis is a stored `usage_date` (YYYY-MM-DD).** `DATE(created_at)` would use the DB timezone, splitting "today" from the app's own day boundary (free credits, streaks). Computing it app-side on write lets `groupBy` fold it directly.
+- Read it via `GET /me/ai-usage` (own rows) and `GET /admin/ai-usage` (ADMIN — includes top spenders, so it carries emails and is not open to regular users). The range is capped by `USAGE_MAX_RANGE_DAYS`.
+
+⚠️ Question generation (`POST /ai-generations`) currently consumes **no AI credit** — its only guard is 30/hour per IP (`AI_GENERATION_THROTTLE`); only tutor chat is gated by the free-quota + credit system. The ledger is the measurement that has to come first before that cap can be set on evidence.
+
 ### Exam sessions — snapshot, mask, grade
 
 This is the subtlest subsystem (`src/modules/exam-sessions/`, `grading.util.ts`):

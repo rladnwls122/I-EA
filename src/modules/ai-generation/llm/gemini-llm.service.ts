@@ -25,6 +25,13 @@ import {
   resolveOutputLanguage,
 } from '../exam-format';
 import { AnswerMode } from '../format-templates';
+import {
+  EMPTY_TOKEN_USAGE,
+  LlmCallMeta,
+  LlmTokenUsage,
+  LlmUsageRecorder,
+  parseUsageMetadata,
+} from '@/modules/ai-usage/llm-usage.recorder';
 
 /**
  * 인라인 재생성은 사용자가 버튼을 누르고 기다린다. 배치보다 짧게 끊는다.
@@ -108,7 +115,10 @@ export class GeminiLlmService {
   private readonly maxTokens: number;
   private readonly baseUrl: string;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly usage: LlmUsageRecorder,
+  ) {
     // 여러 키를 콤마로 받는다(GEMINI_KEYS=key1,key2,key3).
     // 하위호환으로 단일 GEMINI_API_KEY도 함께 흡수한다(풀 내부에서 중복/공백 정리).
     const multiKeys = (this.config.get<string>('GEMINI_KEYS') ?? '').split(',');
@@ -159,7 +169,7 @@ export class GeminiLlmService {
    * 지문/문항을 생성하고 계약(LlmGenerationResult)에 맞는 JSON을 반환한다.
    * 출력이 계약을 어기면 예외를 던져 프로세서가 FAILED 처리하도록 한다.
    */
-  async generate(ctx: LlmGenerationContext): Promise<LlmGenerationResult> {
+  async generate(ctx: LlmGenerationContext, meta: LlmCallMeta): Promise<LlmGenerationResult> {
     // 지문 수 — passageCount 명시가 없으면 includePassage로 0/1을 따른다(종전 동작).
     // 2 이상이면 다중지문 세트 모드(gap 3): 스키마·프롬프트·검증이 passages[] 계약으로 바뀐다.
     const passageCount = ctx.passageCount ?? (ctx.includePassage ? 1 : 0);
@@ -169,6 +179,8 @@ export class GeminiLlmService {
     const raw = await this.callGemini(
       this.buildSystemPrompt(ctx.language ?? 'ko', passageCount, blankCount),
       this.buildUserPrompt(ctx),
+      {},
+      meta,
     );
     // choiceCount를 명시한 요청만 개수를 검증한다 — 시험별 관행 권고와 ox 힌트는
     // 종전대로 프롬프트 유도까지이고 검증 대상이 아니다(멀쩡한 배치를 FAILED로 떨구지 않도록).
@@ -194,12 +206,14 @@ export class GeminiLlmService {
   async reviewGeneration(
     ctx: LlmGenerationContext,
     result: LlmGenerationResult,
+    meta: LlmCallMeta,
   ): Promise<LlmReviewResult> {
     const raw = await this.callGemini(
       this.buildReviewSystemPrompt(result.questions.length),
       this.buildReviewUserPrompt(ctx, result),
       // 배치 경로지만 판정은 부가 기능이다 — 무기한 매달려 생성 잡을 붙잡고 있지 않도록 끊는다.
       { timeoutMs: SELF_REVIEW_TIMEOUT_MS },
+      meta,
     );
     return this.parseReviewResult(raw, result.questions.length);
   }
@@ -215,7 +229,10 @@ export class GeminiLlmService {
    * 기다리므로 (1) 짧은 타임아웃, (2) 일시적 장애에 대한 자체 재시도가 필요하다.
    * thinking은 끈다 — 선지 생성은 단순 작업이고, 켜면 지연이 2~3배가 된다.
    */
-  async regenerateChoices(ctx: LlmRegenerateChoicesContext): Promise<LlmRegenerateChoicesResult> {
+  async regenerateChoices(
+    ctx: LlmRegenerateChoicesContext,
+    meta: LlmCallMeta,
+  ): Promise<LlmRegenerateChoicesResult> {
     const raw = await this.callGemini(
       // 선지 재생성도 같은 언어 규칙을 따라야 한다 — 영어 지문 문항에 한국어 선지가 붙으면 못 쓴다.
       this.buildChoicesSystemPrompt(
@@ -224,6 +241,7 @@ export class GeminiLlmService {
       ),
       this.buildChoicesUserPrompt(ctx),
       { timeoutMs: REGENERATE_TIMEOUT_MS, attempts: REGENERATE_ATTEMPTS, disableThinking: true },
+      meta,
     );
     return this.parseChoicesResult(raw, ctx.choiceCount);
   }
@@ -244,6 +262,7 @@ export class GeminiLlmService {
     system: string,
     history: TutorTurn[],
     userText: string,
+    meta?: LlmCallMeta,
   ): AsyncIterable<string> {
     if (!this.keyPool.hasKeys) {
       throw new ServiceUnavailableException('Gemini API 키가 설정되지 않았습니다.');
@@ -330,6 +349,10 @@ export class GeminiLlmService {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    // 스트리밍은 프레임마다 usageMetadata를 싣고 **마지막 값이 누적 총계**다 —
+    // 더하면 안 되고 덮어써야 한다(더하면 원가가 프레임 수만큼 부풀려진다).
+    let usage: LlmTokenUsage = EMPTY_TOKEN_USAGE;
+    let interrupted = false;
     try {
       for (;;) {
         const { done, value } = await reader.read();
@@ -340,30 +363,37 @@ export class GeminiLlmService {
         while ((sep = buffer.indexOf('\n\n')) !== -1) {
           const frame = buffer.slice(0, sep);
           buffer = buffer.slice(sep + 2);
-          const text = this.extractSseText(frame);
-          if (text) yield text;
+          const parsed = this.parseSseFrame(frame);
+          if (parsed.usage) usage = parsed.usage;
+          if (parsed.text) yield parsed.text;
         }
       }
       // 종료 시 남은 버퍼도 마지막 프레임으로 처리한다.
-      const tail = this.extractSseText(buffer);
-      if (tail) yield tail;
+      const tail = this.parseSseFrame(buffer);
+      if (tail.usage) usage = tail.usage;
+      if (tail.text) yield tail.text;
     } catch (err) {
       // 스트림 도중 실패 — 이미 델타를 보냈을 수 있으므로 재시도/예외 대신 조용히 종료한다.
+      interrupted = true;
       this.logger.warn(`튜터 스트림 중단: ${(err as Error).message}`);
+    } finally {
+      // 중단됐어도 그때까지의 토큰은 청구된다 — 상태만 갈라 적고 행은 남긴다.
+      // 소비자가 스트림을 일찍 버려도(return) finally는 돈다.
+      if (meta) void this.usage.record(meta, this.model, interrupted ? 'FAILED' : 'OK', usage);
     }
   }
 
   /**
-   * Gemini SSE 프레임 하나에서 텍스트 델타를 뽑는다.
+   * Gemini SSE 프레임 하나에서 텍스트 델타와 토큰 사용량을 뽑는다.
    * 프레임은 여러 줄일 수 있고, 텍스트는 "data:" 라인의 JSON에 담겨 온다.
    */
-  private extractSseText(frame: string): string {
+  private parseSseFrame(frame: string): { text: string; usage: LlmTokenUsage | null } {
     const payload = frame
       .split('\n')
       .filter((l) => l.startsWith('data:'))
       .map((l) => l.slice(5).trim())
       .join('');
-    if (!payload || payload === '[DONE]') return '';
+    if (!payload || payload === '[DONE]') return { text: '', usage: null };
     try {
       const json = JSON.parse(payload) as GeminiResponse & {
         promptFeedback?: { blockReason?: string };
@@ -381,13 +411,14 @@ export class GeminiLlmService {
       }
       // thinking 모델(gemini-2.5/3)의 사고 과정(thought: true 파트)은 사용자에게
       // 노출하지 않는다 — 최종 답변 파트만 델타로 흘린다.
-      return (json.candidates?.[0]?.content?.parts ?? [])
+      const text = (json.candidates?.[0]?.content?.parts ?? [])
         .filter((p) => (p as { thought?: boolean }).thought !== true)
         .map((p) => p.text ?? '')
         .join('');
+      return { text, usage: parseUsageMetadata(json.usageMetadata) };
     } catch {
       // 부분 JSON/키프레임이 아닌 라인은 조용히 무시한다.
-      return '';
+      return { text: '', usage: null };
     }
   }
 
@@ -403,7 +434,27 @@ export class GeminiLlmService {
     system: string,
     user: string,
     opts: { timeoutMs?: number; attempts?: number; disableThinking?: boolean } = {},
+    meta?: LlmCallMeta,
   ): Promise<string> {
+    // 원장 기록은 실패 경로가 여러 갈래(키 소진·4xx·재시도 소진)라, 각 return/throw마다
+    // 흩뿌리는 대신 여기서 한 번 감싼다. 어느 갈래로 나가든 정확히 한 행이 남는다.
+    try {
+      const { text, usage } = await this.callGeminiWithRotation(system, user, opts);
+      if (meta) void this.usage.record(meta, this.model, 'OK', usage);
+      return text;
+    } catch (err) {
+      // 실패해도 입력 토큰은 이미 청구됐을 수 있고, 실패율 자체가 원가 지표다.
+      if (meta) void this.usage.record(meta, this.model, 'FAILED', EMPTY_TOKEN_USAGE);
+      throw err;
+    }
+  }
+
+  /** 키 회전·재시도 본체. 원장 기록은 호출부(callGemini)가 감싼다. */
+  private async callGeminiWithRotation(
+    system: string,
+    user: string,
+    opts: { timeoutMs?: number; attempts?: number; disableThinking?: boolean } = {},
+  ): Promise<{ text: string; usage: LlmTokenUsage }> {
     if (!this.keyPool.hasKeys) {
       throw new ServiceUnavailableException('Gemini API 키가 설정되지 않았습니다.');
     }
@@ -472,7 +523,7 @@ export class GeminiLlmService {
     system: string,
     user: string,
     opts: { timeoutMs?: number; disableThinking?: boolean },
-  ): Promise<string> {
+  ): Promise<{ text: string; usage: LlmTokenUsage }> {
     const url = `${this.baseUrl}/models/${this.model}:generateContent?key=${key}`;
 
     let response: Response;
@@ -513,7 +564,12 @@ export class GeminiLlmService {
     }
 
     const data = (await response.json()) as GeminiResponse;
-    return (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
+    return {
+      text: (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join(''),
+      // usageMetadata가 없는 응답(구버전·비정상)은 0으로 남긴다 — 행 자체는 남겨야
+      // "호출은 있었는데 토큰을 못 읽었다"가 집계에서 보인다.
+      usage: parseUsageMetadata(data.usageMetadata) ?? EMPTY_TOKEN_USAGE,
+    };
   }
 
   private parseResult(
@@ -1002,4 +1058,6 @@ interface GeminiResponse {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string }> };
   }>;
+  /** 토큰 사용량. 원가 원장(llm_usage)의 유일한 근거라 파싱해서 흘려보낸다. */
+  usageMetadata?: unknown;
 }
