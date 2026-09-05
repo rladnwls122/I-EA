@@ -75,6 +75,7 @@ export function SolveQuestionCard({
       {sessionPassages(item.snapshot).map((p, i) => (
         <div
           key={i}
+          data-highlightable
           className="mb-4 rounded-lg bg-surface-raised px-3 py-2.5 text-sm leading-relaxed text-foreground"
         >
           {p.label && (
@@ -84,10 +85,14 @@ export function SolveQuestionCard({
         </div>
       ))}
 
-      <RichContent
-        value={item.snapshot.stem}
-        className="mb-4 text-sm leading-relaxed text-foreground"
-      />
+      {/* 형광펜(useSolveHighlights)이 칠할 수 있는 영역. 선지는 뺀다 —
+          버튼 안에서 드래그하면 텍스트를 고르려다 답이 선택된다. */}
+      <div data-highlightable>
+        <RichContent
+          value={item.snapshot.stem}
+          className="mb-4 text-sm leading-relaxed text-foreground"
+        />
+      </div>
 
       {isObjective ? (
         <div className="space-y-2">

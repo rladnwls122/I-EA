@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useIsMutating } from "@tanstack/react-query";
-import { Calculator as CalculatorIcon, Check, ClipboardList, Pencil, Send, Timer } from "lucide-react";
+import { Calculator as CalculatorIcon, Check, ClipboardList, Highlighter, Pencil, Send, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 function formatElapsed(sec: number): string {
@@ -14,6 +14,10 @@ export function SolveBottomBar({
   startedAt,
   answeredCount,
   totalCount,
+  highlightEnabled,
+  onToggleHighlight,
+  highlightCount,
+  onClearHighlights,
   drawingEnabled,
   onToggleDrawing,
   calculatorOpen,
@@ -25,6 +29,11 @@ export function SolveBottomBar({
   startedAt: string | null;
   answeredCount: number;
   totalCount: number;
+  /** 형광펜 모드. 미지원 브라우저에서는 null이라 버튼을 그리지 않는다. */
+  highlightEnabled: boolean | null;
+  onToggleHighlight: () => void;
+  highlightCount: number;
+  onClearHighlights: () => void;
   drawingEnabled: boolean;
   onToggleDrawing: () => void;
   calculatorOpen: boolean;
@@ -94,6 +103,34 @@ export function SolveBottomBar({
             <ClipboardList size={16} />
             <span className="hidden sm:inline">답안지</span>
           </button>
+          {highlightEnabled !== null && (
+            <button
+              type="button"
+              onClick={onToggleHighlight}
+              aria-pressed={highlightEnabled}
+              className={`flex h-10 w-10 items-center justify-center rounded-lg border transition-colors duration-150 ease-swift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                highlightEnabled
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+              title="형광펜 — 지문·발문을 드래그해 칠하고, 칠한 곳을 누르면 지워진다"
+            >
+              <Highlighter size={16} />
+            </button>
+          )}
+          {/* 지우개는 형광펜을 켰고 칠한 게 있을 때만 — 평소엔 자리를 차지하지 않는다.
+              한 군데만 지우려면 그 자리를 누르면 된다(형광펜 모드에서). */}
+          {highlightEnabled && highlightCount > 0 && (
+            <button
+              type="button"
+              onClick={onClearHighlights}
+              className="flex h-10 items-center gap-1.5 rounded-lg border border-border px-3 text-xs text-muted-foreground transition-colors duration-150 ease-swift hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              title="형광펜 전체 지우기"
+            >
+              <span className="font-mono tabular-nums">{highlightCount}</span>
+              <span className="hidden sm:inline">지우기</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggleDrawing}

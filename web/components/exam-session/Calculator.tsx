@@ -41,6 +41,10 @@ export function Calculator({ onClose }: { onClose: () => void }) {
   };
 
   const onHeaderPointerDown = (e: React.PointerEvent) => {
+    // 헤더 안의 버튼(닫기)에서 시작한 포인터는 드래그로 삼지 않는다.
+    // setPointerCapture를 걸면 이어지는 click이 캡처한 헤더로 재타겟되어
+    // 버튼의 onClick이 아예 발화하지 않는다 — 그래서 X를 눌러도 안 닫혔다.
+    if ((e.target as HTMLElement).closest("button")) return;
     dragging.active = true;
     dragging.offX = e.clientX - pos.x;
     dragging.offY = e.clientY - pos.y;

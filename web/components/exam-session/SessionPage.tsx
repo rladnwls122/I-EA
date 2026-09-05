@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,6 +14,7 @@ import { SolveQuestionCard } from "./SolveQuestionCard";
 import { SolveBottomBar } from "./SolveBottomBar";
 import { SubmitDialog } from "./SubmitDialog";
 import { DrawingOverlay } from "./DrawingOverlay";
+import { highlightApiSupported, useSolveHighlights } from "./useSolveHighlights";
 import { ResultBanner } from "./ResultBanner";
 import { AxisReportCard } from "./AxisReportCard";
 import { ResultQuestionCard } from "./ResultQuestionCard";
@@ -47,9 +48,28 @@ export function SessionPage({ id }: { id: string }) {
   // 추천 카드 클릭 시 열리는 미리보기 사이드바(결과 모드 전용).
   const [recPreviewId, setRecPreviewId] = useState<string | null>(null);
 
+  // 풀이 중에는 전역 내비(좌측 레일 / 모바일 하단 탭)를 숨긴다 — 시험지 화면에 딴 데로
+  // 새는 링크를 띄워둘 이유가 없다. 레일은 RootLayout 소유라 이 컴포넌트가 직접 못 지운다.
+  // body 클래스 한 장으로 스위치를 넘기고 실제 숨김 규칙은 globals.css가 갖는다.
+  // 결과 화면(isResult)은 오답노트·추천으로 이동하는 화면이라 내비를 되살린다.
+  const solving = !!session && !isResult;
+  useEffect(() => {
+    if (!solving) return;
+    document.body.classList.add("solving-focus");
+    return () => document.body.classList.remove("solving-focus");
+  }, [solving]);
+
   const [answeredIds, setAnsweredIds] = useState<Set<string>>(new Set());
   // 객관식 선택 상태의 단일 소스 — 문제카드와 답안지 OMR이 함께 읽고 쓴다.
   const [objectiveAnswers, setObjectiveAnswers] = useState<Record<string, string>>({});
+  // 형광펜 — 지문·발문을 드래그해 칠한다. 지원 여부는 마운트 후에 본다(SSR엔 CSS 객체가 없다).
+  const [highlightEnabled, setHighlightEnabled] = useState(false);
+  const [highlightSupported, setHighlightSupported] = useState(false);
+  useEffect(() => setHighlightSupported(highlightApiSupported()), []);
+  const { count: highlightCount, clearAll: clearHighlights } = useSolveHighlights(
+    highlightEnabled && solving,
+  );
+
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [omrOpen, setOmrOpen] = useState(false);
@@ -379,6 +399,10 @@ export function SessionPage({ id }: { id: string }) {
         startedAt={session.startedAt}
         answeredCount={answeredIds.size}
         totalCount={session.questions.length}
+        highlightEnabled={highlightSupported ? highlightEnabled : null}
+        onToggleHighlight={() => setHighlightEnabled((v) => !v)}
+        highlightCount={highlightCount}
+        onClearHighlights={clearHighlights}
         drawingEnabled={drawingEnabled}
         onToggleDrawing={() => setDrawingEnabled((v) => !v)}
         calculatorOpen={calculatorOpen}
