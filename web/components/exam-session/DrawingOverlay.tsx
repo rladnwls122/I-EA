@@ -61,7 +61,7 @@ export function DrawingOverlay({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-[60]">
       <canvas
         ref={canvasRef}
-        className="absolute inset-0 h-full w-full cursor-crosshair touch-none"
+        className={`absolute inset-0 h-full w-full touch-none ${erasing ? "cursor-crosshair" : "cursor-pencil"}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

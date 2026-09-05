@@ -304,3 +304,15 @@ label {
   }
   .wb-dust-particle { display: none; }
 }
+
+
+/* 화면필기 커서 — 연필. 손이 무엇을 하는 중인지 커서가 말해준다(십자선은 조준이지 필기가 아니다).
+   흰 굵은 획을 깔고 그 위에 어두운 획을 그려 밝은 지문 위에서도, 어두운 테마에서도 보인다.
+   핫스팟은 연필심 끝(4 20). 커서 이미지를 못 그리는 환경은 crosshair로 떨어진다. */
+.cursor-pencil { cursor: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cg stroke='%23ffffff' stroke-width='4'%3E%3Cpath d='M4 20l4.5-1.2L19.3 8l-3.3-3.3L5.2 15.5z'/%3E%3Cpath d='M15.4 5.4l3.3 3.3'/%3E%3C/g%3E%3Cg stroke='%23111827' stroke-width='1.8'%3E%3Cpath d='M4 20l4.5-1.2L19.3 8l-3.3-3.3L5.2 15.5z'/%3E%3Cpath d='M15.4 5.4l3.3 3.3'/%3E%3C/g%3E%3C/svg%3E") 4 20, crosshair; }
+
+/* 풀이 몰입 모드 — 문제를 푸는 동안 전역 내비게이션(좌측 레일 / 모바일 하단 탭)을 숨긴다.
+   레일이 사라진 만큼 body에 걸린 자리(pl/pb)도 함께 걷어내야 본문이 왼쪽으로 붙는다.
+   SessionPage가 풀이 중에만 body.solving-focus를 켜고, 결과 화면에서는 다시 끈다. */
+body.solving-focus [data-app-nav] { display: none; }
+body.solving-focus { padding-left: 0; padding-bottom: 0; }
