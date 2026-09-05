@@ -160,6 +160,8 @@ function AnnotationItem({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
+              // 되돌릴 수 없는 삭제다 — 메모를 길게 써 둔 주석이 오클릭 한 번에 사라지지 않게.
+              if (!window.confirm("이 주석을 삭제할까요? 메모와 원인 태그가 함께 사라집니다.")) return;
               remove.mutate(ann.id);
             }}
             className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-swift hover:bg-surface-raised hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"

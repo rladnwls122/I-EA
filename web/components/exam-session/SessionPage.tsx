@@ -231,6 +231,7 @@ export function SessionPage({ id }: { id: string }) {
               key={q.sessionQuestionId}
               item={q}
               order={q.displayOrder}
+              sessionId={id}
               isReview={!!session.isReview}
               onSelfGraded={() => {
                 /* useSelfGrade는 세션 쿼리를 자동 invalidate하지 않으므로

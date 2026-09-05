@@ -50,7 +50,8 @@ export default function NotesSidebarPage() {
   };
 
   return (
-    <>
+    // 사이드바 껍데기 — layout이 아니라 여기서 그린다(레이아웃 주석 참고).
+    <aside className="flex w-full flex-col gap-6 overflow-y-auto border-t border-border bg-card/50 p-4 md:w-[320px] md:border-l md:border-t-0 md:p-6 xl:w-[360px]">
       <section className="rounded-xl border border-border bg-card p-5 shadow-surface">
         <h3 className="mb-1 text-[15px] font-semibold">오답 원인 분석</h3>
         <p className="mb-4 text-xs text-muted-foreground">최근 기록한 원인 태그 통계입니다.</p>
@@ -125,6 +126,6 @@ export default function NotesSidebarPage() {
           </p>
         )}
       </section>
-    </>
+    </aside>
   );
 }

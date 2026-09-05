@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Check, CheckSquare, Loader2, Sparkles, Square, X } from "lucide-react";
+import { ArrowUpRight, Check, CheckSquare, Loader2, NotebookPen, Sparkles, Square, X } from "lucide-react";
 import { ReviewTutorPanel } from "@/components/tutor/ReviewTutorPanel";
 import { Badge } from "@/components/ui/badge";
 import { useSelfGrade } from "@/lib/hooks";
@@ -22,10 +22,13 @@ export function ResultQuestionCard({
   order,
   onSelfGraded,
   isReview = false,
+  sessionId,
 }: {
   item: SessionQuestionItem;
   order: number;
   onSelfGraded: (sessionQuestionId: string, isCorrect: boolean) => void;
+  /** 오답노트 링크에 실어 보낼 세션 — 그 세션의 스냅샷·내 답안 기준으로 문항을 보여준다. */
+  sessionId: string;
   /** 복습 세션 결과면 상태 뱃지 노출(상태 변화가 복습의 보상) */
   isReview?: boolean;
 }) {
@@ -312,6 +315,16 @@ export function ResultQuestionCard({
         >
           <Sparkles size={12} /> AI 코치
         </button>
+        {/* 틀린 문항만 — 원인을 적기 가장 좋은 순간은 방금 틀린 지금이다.
+            여기가 없으면 오답노트로 가서 같은 문항을 다시 찾아 들어가야 했다. */}
+        {item.answer?.isCorrect === false && (
+          <Link
+            href={`/notes/${item.questionId}?sessionId=${sessionId}`}
+            className="inline-flex h-10 items-center gap-1 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors duration-150 ease-swift hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
+            <NotebookPen size={12} /> 오답노트에 기록
+          </Link>
+        )}
         </div>
         {accuracyPercent !== null && (
           <span className="font-mono text-xs tabular-nums text-muted-foreground">
