@@ -17,14 +17,23 @@ export interface KeyPoolOptions {
   cooldownQuotaMs?: number;
   /** 테스트용 시계 주입. 기본 Date.now. */
   now?: () => number;
+  /**
+   * 라운드-로빈 시작 위치. 기본은 **무작위**다.
+   *
+   * Vercel 서버리스는 인스턴스가 짧게 살고 계속 새로 뜬다. 커서를 0으로 고정하면
+   * 콜드스타트마다 keys[0]을 먼저 잡아 첫 키만 쿼터를 태우고 나머지는 논다.
+   * 인스턴스별로 시작점을 흩뿌리면 프로세스 간 공유 상태 없이도 부하가 고르게 퍼진다.
+   * 테스트는 0을 명시해 결정적으로 검증한다.
+   */
+  startIndex?: number;
 }
 
 export class GeminiKeyPool {
   private readonly keys: string[];
   /** key → 이 시각(ms)까지 쿨다운. 없으면 가용. */
   private readonly cooldownUntil = new Map<string, number>();
-  /** 라운드-로빈 커서. */
-  private cursor = 0;
+  /** 라운드-로빈 커서. 시작 위치는 생성자에서 정한다(기본 무작위, KeyPoolOptions.startIndex 참고). */
+  private cursor: number;
   private readonly cooldownMs: number;
   private readonly cooldownQuotaMs: number;
   private readonly now: () => number;
@@ -43,6 +52,10 @@ export class GeminiKeyPool {
     this.cooldownMs = opts.cooldownMs ?? 60_000;
     this.cooldownQuotaMs = opts.cooldownQuotaMs ?? 900_000;
     this.now = opts.now ?? (() => Date.now());
+    this.cursor =
+      this.keys.length === 0
+        ? 0
+        : (opts.startIndex ?? Math.floor(Math.random() * this.keys.length)) % this.keys.length;
   }
 
   /** 풀에 등록된 전체 키 수(쿨다운 포함). */
