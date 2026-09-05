@@ -14,6 +14,7 @@ import { SolveQuestionCard } from "./SolveQuestionCard";
 import { SolveBottomBar } from "./SolveBottomBar";
 import { SubmitDialog } from "./SubmitDialog";
 import { DrawingOverlay } from "./DrawingOverlay";
+import { highlightApiSupported, useSolveHighlights } from "./useSolveHighlights";
 import { ResultBanner } from "./ResultBanner";
 import { AxisReportCard } from "./AxisReportCard";
 import { ResultQuestionCard } from "./ResultQuestionCard";
@@ -61,6 +62,14 @@ export function SessionPage({ id }: { id: string }) {
   const [answeredIds, setAnsweredIds] = useState<Set<string>>(new Set());
   // 객관식 선택 상태의 단일 소스 — 문제카드와 답안지 OMR이 함께 읽고 쓴다.
   const [objectiveAnswers, setObjectiveAnswers] = useState<Record<string, string>>({});
+  // 형광펜 — 지문·발문을 드래그해 칠한다. 지원 여부는 마운트 후에 본다(SSR엔 CSS 객체가 없다).
+  const [highlightEnabled, setHighlightEnabled] = useState(false);
+  const [highlightSupported, setHighlightSupported] = useState(false);
+  useEffect(() => setHighlightSupported(highlightApiSupported()), []);
+  const { count: highlightCount, clearAll: clearHighlights } = useSolveHighlights(
+    highlightEnabled && solving,
+  );
+
   const [drawingEnabled, setDrawingEnabled] = useState(false);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [omrOpen, setOmrOpen] = useState(false);
@@ -390,6 +399,10 @@ export function SessionPage({ id }: { id: string }) {
         startedAt={session.startedAt}
         answeredCount={answeredIds.size}
         totalCount={session.questions.length}
+        highlightEnabled={highlightSupported ? highlightEnabled : null}
+        onToggleHighlight={() => setHighlightEnabled((v) => !v)}
+        highlightCount={highlightCount}
+        onClearHighlights={clearHighlights}
         drawingEnabled={drawingEnabled}
         onToggleDrawing={() => setDrawingEnabled((v) => !v)}
         calculatorOpen={calculatorOpen}
