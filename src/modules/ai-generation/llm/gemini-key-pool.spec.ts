@@ -26,7 +26,7 @@ describe('GeminiKeyPool', () => {
   });
 
   it('라운드-로빈으로 키를 순환한다', () => {
-    const pool = new GeminiKeyPool(['a', 'b', 'c']);
+    const pool = new GeminiKeyPool(['a', 'b', 'c'], { startIndex: 0 });
     expect(pool.acquire()).toBe('a');
     expect(pool.acquire()).toBe('b');
     expect(pool.acquire()).toBe('c');
@@ -35,7 +35,7 @@ describe('GeminiKeyPool', () => {
 
   it('penalize된 키는 쿨다운 동안 건너뛴다', () => {
     const clock = fakeClock();
-    const pool = new GeminiKeyPool(['a', 'b'], { now: clock.now, cooldownMs: 60_000 });
+    const pool = new GeminiKeyPool(['a', 'b'], { now: clock.now, cooldownMs: 60_000, startIndex: 0 });
 
     const first = pool.acquire(); // 'a'
     expect(first).toBe('a');
@@ -76,7 +76,7 @@ describe('GeminiKeyPool', () => {
 
   it('모든 키가 쿨다운이면 acquire는 null, 회복 후 다시 순환', () => {
     const clock = fakeClock();
-    const pool = new GeminiKeyPool(['a', 'b'], { now: clock.now, cooldownMs: 60_000 });
+    const pool = new GeminiKeyPool(['a', 'b'], { now: clock.now, cooldownMs: 60_000, startIndex: 0 });
 
     pool.penalize('a', 429);
     pool.penalize('b', 429);
@@ -86,5 +86,18 @@ describe('GeminiKeyPool', () => {
     clock.advance(60_001);
     expect(pool.availableCount()).toBe(2);
     expect(pool.acquire()).not.toBeNull();
+  });
+
+  it('시작 커서를 흩뿌린다 — 콜드스타트마다 첫 키만 때리지 않는다(Vercel 서버리스)', () => {
+    // 인스턴스 100개가 새로 뜬 상황을 흉내낸다. 첫 acquire가 전부 'a'면 부하가 안 퍼진 것.
+    const firstKeys = new Set(
+      Array.from({ length: 100 }, () => new GeminiKeyPool(['a', 'b', 'c']).acquire()),
+    );
+    expect(firstKeys.size).toBeGreaterThan(1);
+  });
+
+  it('startIndex를 주면 그 자리에서 시작하고, 범위를 넘으면 감싼다', () => {
+    expect(new GeminiKeyPool(['a', 'b', 'c'], { startIndex: 1 }).acquire()).toBe('b');
+    expect(new GeminiKeyPool(['a', 'b', 'c'], { startIndex: 5 }).acquire()).toBe('c');
   });
 });
