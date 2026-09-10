@@ -27,7 +27,7 @@
     "clsx": "^2.1.1",
     "dompurify": "^3.4.11",
     "katex": "^0.17.0",
-    "lucide-react": "^1.23.0",
+    "lucide-react": "^1.41.0",
     "mathjs": "^15.2.0",
     "motion": "^12.42.2",
     "next": "14.2.35",
