@@ -42,15 +42,33 @@ const s3UploadOrigin = (() => {
 
 const isDev = process.env.NODE_ENV !== 'production';
 
+/**
+ * Google AdSense 출처. NEXT_PUBLIC_ADSENSE_CLIENT(ca-pub-…)가 있을 때만 CSP를 연다 —
+ * layout.tsx가 같은 env로 스크립트 삽입 여부를 정하므로 둘은 항상 같이 켜지고 같이 꺼진다.
+ * 광고를 안 쓰는 배포에서 구글 도메인을 열어 둘 이유가 없다.
+ */
+const adsense = process.env.NEXT_PUBLIC_ADSENSE_CLIENT
+  ? {
+      script:
+        ' https://pagead2.googlesyndication.com https://partner.googleadservices.com https://tpc.googlesyndication.com https://www.googletagservices.com https://adservice.google.com https://googleads.g.doubleclick.net https://fundingchoicesmessages.google.com https://ep1.adtrafficquality.google https://ep2.adtrafficquality.google',
+      connect:
+        ' https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://adservice.google.com https://ep1.adtrafficquality.google https://ep2.adtrafficquality.google https://csi.gstatic.com https://fundingchoicesmessages.google.com',
+      frame:
+        ' https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google.com https://ep1.adtrafficquality.google https://ep2.adtrafficquality.google https://fundingchoicesmessages.google.com',
+    }
+  : { script: '', connect: '', frame: '' };
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}${adsense.script}`,
   // Tailwind/컴포넌트가 인라인 style 속성을 쓴다.
   "style-src 'self' 'unsafe-inline'",
   // S3/CloudFront 업로드 이미지가 임의 호스트일 수 있어 https 전체를 허용한다.
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `connect-src 'self'${apiOrigin ? ` ${apiOrigin}` : ''}${s3UploadOrigin ? ` ${s3UploadOrigin}` : ''}${isDev ? ' ws: http://localhost:*' : ''}`,
+  `connect-src 'self'${apiOrigin ? ` ${apiOrigin}` : ''}${s3UploadOrigin ? ` ${s3UploadOrigin}` : ''}${isDev ? ' ws: http://localhost:*' : ''}${adsense.connect}`,
+  // 광고 iframe. AdSense가 꺼져 있으면 default-src 'self'가 그대로 적용된다.
+  `frame-src 'self'${adsense.frame}`,
   "frame-ancestors 'none'", // 클릭재킹 차단
   "base-uri 'self'",
   "form-action 'self'",

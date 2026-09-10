@@ -10,7 +10,7 @@ import { usePathname, useRouter } from "next/navigation";
  *
  * 토큰은 localStorage에 있어 Next 미들웨어(서버)로는 못 읽는다 — 클라이언트 가드로 구현.
  */
-const PUBLIC_PATHS = ["/", "/intro", "/login", "/signup"];
+const PUBLIC_PATHS = ["/", "/intro", "/login", "/signup", "/about", "/privacy", "/terms", "/contact"];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || (p !== "/" && pathname.startsWith(`${p}/`)));
