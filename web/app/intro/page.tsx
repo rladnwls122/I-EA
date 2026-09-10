@@ -7,6 +7,7 @@ import { ArrowRight, BookOpenCheck, BrainCircuit, Check, Lightbulb } from "lucid
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarkingField } from "@/components/marking-field";
+import { PUBLIC_PAGES } from "@/lib/site";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -271,7 +272,15 @@ export default function IntroPage() {
         </motion.section>
 
         <footer className="relative z-10 border-t border-border px-8 py-8 text-center font-mono text-xs text-muted-foreground">
-          IΔEA — AI 문제은행과 오답노트
+          <p>IΔEA — AI 문제은행과 오답노트</p>
+          {/* 공개 문서 링크 — 크롤러·광고 심사 봇이 랜딩에서 방침·약관을 찾는다. */}
+          <nav aria-label="사이트 문서" className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1">
+            {PUBLIC_PAGES.filter(({ path }) => path !== "/intro").map(({ path, label }) => (
+              <Link key={path} href={path} className="hover:text-foreground">
+                {label}
+              </Link>
+            ))}
+          </nav>
         </footer>
       </div>
     </MotionConfig>

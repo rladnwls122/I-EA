@@ -1,6 +1,6 @@
 # Q-Idea Web (`web/`)
 
-IΔEA / Q-Idea 프론트엔드 — Next.js 14 App Router. 루트의 NestJS API와는 **코드를 공유하지 않고** HTTP로만 통신합니다.
+IΔEA / Q-Idea 프론트엔드 — Next.js 16 App Router(webpack 빌드 — `next.config.mjs`의 canvas 스텁 때문에 `--webpack`). 루트의 NestJS API와는 **코드를 공유하지 않고** HTTP로만 통신합니다.
 
 상세한 작업 규칙(레이아웃 구조, Vega 클라이언트 전용 렌더링, ProseMirror 필드 취급,
 목데이터와 실 API 혼재 상황)은 **[`WEB_GUIDE.md`](./WEB_GUIDE.md)** 를 보세요.
@@ -12,7 +12,7 @@ IΔEA / Q-Idea 프론트엔드 — Next.js 14 App Router. 루트의 NestJS API�
 npm install
 npm run dev      # 개발 서버
 npm run build    # 프로덕션 빌드
-npm run lint     # next lint
+npm run lint     # eslint . (flat config: eslint.config.mjs)
 npx tsc --noEmit # 타입 검사 (CI가 도는 것과 동일)
 ```
 
@@ -25,8 +25,11 @@ npx tsc --noEmit # 타입 검사 (CI가 도는 것과 동일)
 |---|---|
 | `NEXT_PUBLIC_API_URL` | 백엔드 API 베이스 URL. 미설정 시 `http://localhost:3000/api` |
 | `NEXT_PUBLIC_S3_UPLOAD_ORIGIN` | 이미지 업로드용 S3 오리진. 미설정 시 업로드만 CSP에 막힘 |
+| `NEXT_PUBLIC_SITE_URL` | 사이트 정본 URL(canonical·OG·sitemap 기준). 미설정 시 `https://i-ea-web.vercel.app`. 커스텀 도메인 붙이면 반드시 변경 |
+| `NEXT_PUBLIC_ADSENSE_CLIENT` | Google AdSense 게시자 ID(`ca-pub-…`). 설정하면 `adsbygoogle.js` 삽입 + CSP에 구글 광고 출처 허용. 비우면 둘 다 꺼짐 |
+| `NEXT_PUBLIC_CONTACT_EMAIL` | `/contact`·`/privacy`에 표시할 문의 이메일. 비우면 안내 문구만 노출 |
 
-두 값 모두 런타임 호출뿐 아니라 **`next.config.mjs`의 CSP `connect-src`를 빌드 시점에
+API·S3·AdSense 값은 런타임 호출뿐 아니라 **`next.config.mjs`의 CSP `connect-src`를 빌드 시점에
 구성**하는 데 쓰입니다. 빌드 환경에 넣지 않으면 브라우저가 해당 요청을 CSP로 차단합니다.
 
 `NEXT_PUBLIC_S3_UPLOAD_ORIGIN`은 이미지 업로드가 우리 API가 아니라 **S3로 직접**

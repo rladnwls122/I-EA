@@ -19,7 +19,7 @@
 │   ├── common/         # 공통 데코레이터, DTO, 유틸리티
 │   ├── prisma/         # Prisma 서비스 및 데이터베이스 연결 설정
 │   └── redis/          # Redis 및 BullMQ 설정
-├── web/                # Frontend (Next.js 14 App Router)
+├── web/                # Frontend (Next.js 16 App Router)
 │   ├── app/            # 페이지 라우팅 및 레이아웃
 │   │   ├── edit/       # 저작 캔버스 (문항 출제 — 정본 편집기)
 │   │   ├── workbook/   # 문제집 및 응시 화면
@@ -37,7 +37,7 @@
 | 구분 | 기술 | 상세 |
 | --- | --- | --- |
 | **Backend** | NestJS 11 | REST API 서버 프레임워크 |
-| **Frontend** | Next.js 14 | App Router 기반 웹 애플리케이션 |
+| **Frontend** | Next.js 16 | App Router 기반 웹 애플리케이션 |
 | **Database** | MySQL | Prisma ORM을 통한 데이터 관리 |
 | **Cache/Queue** | Redis | BullMQ를 이용한 비동기 작업 처리 |
 | **AI Provider** | Google Gemini | 문항 생성 및 AI 튜터 서비스 |
