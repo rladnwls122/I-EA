@@ -1,6 +1,6 @@
 # Q-Idea Web (`web/`)
 
-IΔEA / Q-Idea 프론트엔드 — Next.js 14 App Router. 루트의 NestJS API와는 **코드를 공유하지 않고** HTTP로만 통신합니다.
+IΔEA / Q-Idea 프론트엔드 — Next.js 16 App Router(webpack 빌드 — `next.config.mjs`의 canvas 스텁 때문에 `--webpack`). 루트의 NestJS API와는 **코드를 공유하지 않고** HTTP로만 통신합니다.
 
 상세한 작업 규칙(레이아웃 구조, Vega 클라이언트 전용 렌더링, ProseMirror 필드 취급,
 목데이터와 실 API 혼재 상황)은 **[`WEB_GUIDE.md`](./WEB_GUIDE.md)** 를 보세요.
@@ -12,7 +12,7 @@ IΔEA / Q-Idea 프론트엔드 — Next.js 14 App Router. 루트의 NestJS API�
 npm install
 npm run dev      # 개발 서버
 npm run build    # 프로덕션 빌드
-npm run lint     # next lint
+npm run lint     # eslint . (flat config: eslint.config.mjs)
 npx tsc --noEmit # 타입 검사 (CI가 도는 것과 동일)
 ```
 
