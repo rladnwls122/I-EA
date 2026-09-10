@@ -20,6 +20,7 @@ import { AnnotationsModule } from './modules/annotations/annotations.module';
 import { ExamSessionsModule } from './modules/exam-sessions/exam-sessions.module';
 import { AiGenerationModule } from './modules/ai-generation/ai-generation.module';
 import { AiUsageModule } from './modules/ai-usage/ai-usage.module';
+import { MailModule } from './common/mail/mail.module';
 import { MeModule } from './modules/me/me.module';
 import { TutorModule } from './modules/tutor/tutor.module';
 import { LootBoxesModule } from './modules/loot-boxes/loot-boxes.module';
@@ -82,6 +83,8 @@ import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storag
     AnnotationsModule,
     ExamSessionsModule,
     AiUsageModule,
+    // 발신 메일(SMTP). 전역 — CommentsModule 등이 MailService를 바로 주입한다.
+    MailModule,
     AiGenerationModule,
     MeModule,
     TutorModule,

@@ -50,6 +50,9 @@ import {
   purchaseItem,
   equipCosmetic,
   fetchMyPurchases,
+  fetchSettings,
+  updateSettings,
+  type MeSettings,
 } from './api';
 import type {
   Subject,
@@ -692,5 +695,20 @@ export function useMyPurchases(enabled = true) {
     queryKey: ['my-purchases'],
     queryFn: fetchMyPurchases,
     enabled,
+  });
+}
+
+// ─── 설정 ───────────────────────────────────────────────────────────
+
+export function useSettings(enabled = true) {
+  return useQuery({ queryKey: ['me', 'settings'], queryFn: fetchSettings, enabled });
+}
+
+/** 토글 즉시 반영: 서버 응답을 캐시에 바로 써서 재조회 없이 체크 상태가 맞는다. */
+export function useUpdateSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: Partial<MeSettings>) => updateSettings(patch),
+    onSuccess: (data) => queryClient.setQueryData(['me', 'settings'], data),
   });
 }

@@ -687,6 +687,23 @@ export class MeService {
     });
   }
 
+  /** 알림 설정. 항목이 늘면 여기 select와 UpdateSettingsDto에 같이 추가한다. */
+  async settings(userId: string) {
+    const u = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { notifyCommentEmail: true },
+    });
+    return u;
+  }
+
+  async updateSettings(userId: string, dto: { notifyCommentEmail?: boolean }) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { notifyCommentEmail: dto.notifyCommentEmail },
+      select: { notifyCommentEmail: true },
+    });
+  }
+
   /** 코스메틱 장착 — 소유 검증 후 칭호/이름색 세팅. 미소유·비코스메틱이면 BadRequest. */
   async equipCosmetic(userId: string, itemKey: string) {
     const item = getShopItem(itemKey as ShopItemKey);
