@@ -62,7 +62,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^5.18.0",
     "@vercel/functions": "^3.9.5",
-    "bcryptjs": "^2.4.3",
+    "bcryptjs": "^3.0.3",
     "bullmq": "^6.3.4",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
@@ -78,7 +78,7 @@
   "devDependencies": {
     "@nestjs/cli": "^11.0.24",
     "@nestjs/testing": "^11.1.28",
-    "@types/bcryptjs": "^2.4.6",
+    "@types/bcryptjs": "^3.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.4.0",
     "@types/passport-jwt": "^4.0.1",
