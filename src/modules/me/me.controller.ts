@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { CurrentUserPayload } from '@/modules/auth/current-user.interface';
@@ -6,6 +6,7 @@ import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { QueryNotesDto } from './dto/query-notes.dto';
 import { QueryReviewQueueDto } from './dto/query-review-queue.dto';
 import { EquipCosmeticDto } from './dto/equip-cosmetic.dto';
+import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { MeService } from './me.service';
 
 @ApiTags('me')
@@ -71,6 +72,18 @@ export class MeController {
   @ApiOperation({ summary: '내 구매 이력(최신순, 쿠폰 상태 포함)' })
   purchases(@CurrentUser() user: CurrentUserPayload) {
     return this.service.purchases(user.id);
+  }
+
+  @Get('settings')
+  @ApiOperation({ summary: '알림 설정 조회' })
+  settings(@CurrentUser() user: CurrentUserPayload) {
+    return this.service.settings(user.id);
+  }
+
+  @Patch('settings')
+  @ApiOperation({ summary: '알림 설정 변경 (보낸 필드만)' })
+  updateSettings(@CurrentUser() user: CurrentUserPayload, @Body() dto: UpdateSettingsDto) {
+    return this.service.updateSettings(user.id, dto);
   }
 
   @Post('cosmetics/equip')

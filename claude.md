@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **IΔEA / Q-Idea** — an AI question-authoring and mock-exam platform for Korean exam prep. This repo contains two independent apps:
 
 - **Backend (`src/`, root `package.json`)** — NestJS 11 REST API. Prisma → MySQL, BullMQ → Redis. This is the primary codebase.
-- **Frontend (`web/`)** — Next.js 14 (App Router) app with its own `package.json`, tsconfig, and dependency tree. Largely a scaffold (shadcn/ui components, TanStack Query, Tiptap, Zustand).
+- **Frontend (`web/`)** — Next.js 16 (App Router, `--webpack` builds — `next lint` is gone, `npm run lint` is plain ESLint 9 flat config) app with its own `package.json`, tsconfig, and dependency tree. Largely a scaffold (shadcn/ui components, TanStack Query, Tiptap, Zustand).
 
 The two share **no code**; they communicate over HTTP. Most work happens in the backend.
 
@@ -99,6 +99,10 @@ AI 호출은 이 서비스에서 **사용량에 비례해 실제로 돈이 나�
 - 조회는 `GET /me/ai-usage`(본인)와 `GET /admin/ai-usage`(ADMIN — 상위 소비 사용자 포함, 이메일이 실리므로 일반 사용자에게 열지 않는다). 기간은 `USAGE_MAX_RANGE_DAYS`로 상한을 둔다.
 
 ⚠️ 현재 **문항 생성(`POST /ai-generations`)은 AI 크레딧을 소모하지 않는다** — 방어선이 IP당 시간 30건(`AI_GENERATION_THROTTLE`)뿐이다. 튜터 채팅만 무료 쿼터+크레딧으로 게이팅돼 있다. 원장은 그 상한을 **근거 있게** 정하기 위한 선행 계측이다.
+
+### 발신 메일 (`src/common/mail/`)
+
+`MailService`(전역)는 SMTP 한 경로만 안다 — `SMTP_HOST/PORT/USER/PASS`, `MAIL_FROM`. 도메인 전엔 Gmail 앱 비밀번호, 도메인이 생기면 Resend/SES의 SMTP로 env만 바꾼다. 공급자 SDK를 넣지 말 것. env가 비면 부팅은 되고 `send()`가 건너뛴다; `send()`는 **절대 던지지 않는다** — 알림 실패로 댓글 저장 같은 본기능을 되돌리지 않는다. 현재 유일한 발신은 댓글 알림(`comments.service.ts` → `comment-notification.ts`): 답글이면 부모 댓글 작성자, 최상위면 출제자에게, 본인 제외, `users.notify_comment_email` 옵트인한 사람에게만. 응답 뒤 `waitUntil`로 보낸다(서버리스). 설정은 `GET/PATCH /me/settings`.
 
 ### Exam sessions — snapshot, mask, grade
 

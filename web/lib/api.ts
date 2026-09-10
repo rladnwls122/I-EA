@@ -170,6 +170,21 @@ export function logoutAll() {
   });
 }
 
+// ─── 설정 ───────────────────────────────────────────────────────────
+
+export interface MeSettings {
+  notifyCommentEmail: boolean;
+}
+
+export function fetchSettings() {
+  return apiFetch<MeSettings>('/me/settings');
+}
+
+/** 보낸 필드만 바뀐다(PATCH). */
+export function updateSettings(patch: Partial<MeSettings>) {
+  return apiFetch<MeSettings>('/me/settings', { method: 'PATCH', body: JSON.stringify(patch) });
+}
+
 // ─── 과목 ───────────────────────────────────────────────────────────
 
 /** 전체 과목 목록 조회 */

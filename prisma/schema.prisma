@@ -120,6 +120,8 @@ model User {
   // 저자 발행 보상 하루 캡(날짜 바뀌면 리셋). aiFreeDate/aiFreeUsed와 동일 패턴.
   authorRewardDate  DateTime? @map("author_reward_date") @db.Date
   authorRewardCount Int       @default(0) @map("author_reward_count")
+  // 이메일 알림 옵트인: 내 문제에 댓글 / 내 댓글에 답글이 달리면 메일. 기본 꺼짐(동의한 사람만).
+  notifyCommentEmail Boolean  @default(false) @map("notify_comment_email")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
